@@ -1336,10 +1336,10 @@ const TEXT = {
   G2: 'DNAの複製が終わり、分裂の準備をしている。DNA量は4。',
 };
 const M_TEXT = {
-  前期: '前期：核の中で染色体が凝縮し、太く短いひも状に見えるようになる。',
+  前期: '前期：染色体が凝縮して太く短いひも状になり、やがて核膜が消える。',
   中期: '中期：染色体が細胞の中央（赤道面）に並ぶ。染色体の観察に適した時期。',
   後期: '後期：各染色体が縦に裂けるように分かれ、両極へ移動する。',
-  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。分裂が終わるとDNA量は4から2に戻る。',
+  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。後期に両極へ分かれた染色体がそれぞれの細胞に入るので、細胞1個あたりのDNA量は4から2に戻る。',
 };
 
 // 細胞の模式図
@@ -1465,7 +1465,7 @@ const dojo = {
     const cellCanvas = h('canvas', { role: 'img', 'aria-label': '細胞の模式図' });
     const cellCaption = h('div', { class: 'small' });
     const exp = explainBox();
-    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)));
+    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)), h('p', { class: 'small muted' }, 'M期の前期・中期・後期・終期は模式的に等しい長さで表示している（実際には前期が最も長い）。'));
 
     const playBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => toggle() }, '▶ 再生');
 
@@ -1479,21 +1479,22 @@ const dojo = {
       panel('いま何が起きているか', exp.el),
     );
 
-    // 計算ツール
+    // 計算ツール（間期の G1・S・G2 は顕微鏡では区別できないので、DNA量の測定で見分ける）
+    const COUNT_LABEL = { G1: 'G1期：DNA量2の細胞数', S: 'S期：DNA量2〜4の細胞数', G2: 'G2期：DNA量4で間期の細胞数', M: 'M期：分裂期の細胞数（顕微鏡で数える）' };
     const inputs = {};
     const totalIn = h('input', { type: 'number', inputmode: 'decimal', min: 1, step: 'any', value: 24 });
     const defaults = { G1: 40, S: 32, G2: 16, M: 12 };
     const grid = h('div', { class: 'calc-grid' }, h('label', null, '全周期（時間）', totalIn));
     for (const k of PHASES) {
       inputs[k] = h('input', { type: 'number', inputmode: 'numeric', min: 0, step: 1, value: defaults[k] });
-      grid.append(h('label', null, `${k}期の細胞数`, inputs[k]));
+      grid.append(h('label', null, COUNT_LABEL[k], inputs[k]));
     }
     const result = h('div', { 'aria-live': 'polite' });
     const applyBtn = h('button', { type: 'button', class: 'btn', onclick: () => applyCalc() }, '求めた長さをグラフに反映');
     root.append(
       panel('計算ツール：細胞数の割合から各期の長さを求める',
-        h('p', { class: 'small muted' }, '体細胞分裂が盛んな組織を固定・染色して観察すると、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。'),
-        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 観察した細胞の総数）')),
+        h('p', { class: 'small muted' }, '細胞が各時期にばらばらに分布している組織では、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。固定・染色して顕微鏡で観察すると間期と分裂期（前期〜終期）は区別できるが、間期のG1期・S期・G2期は見分けられないので、細胞1個あたりのDNA量を測定して数える（DNA量2＝G1期、2〜4＝S期、4＝G2期とM期）。'),
+        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 調べた細胞の総数）')),
         grid,
         h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => calc(true) }, '計算する'), applyBtn),
         result,
@@ -1627,6 +1628,7 @@ __m["models/glucose.js"] = (function () {
 //   dN/dt = kN·(low(G) − N)          low(G) は血糖値が低いほど大きい
 //   dX/dt = kX·(I − X)               X＝インスリンの作用（血中インスリンより少し遅れて効く）
 // 上式の I のはたらき（放出の抑制・取り込みの促進）は X を通して効かせる。時間の単位は分。
+// 健康な人では、食後に上昇した血糖値が空腹時の値（約100）へ戻り、空腹時を下回らない（教科書の図の形）。
 const PRESETS = {
   healthy: { label: '健康', meal: 1, cap: 1, sens: 1 },
   type1: { label: '1型糖尿病', meal: 1, cap: 0.03, sens: 1 },
@@ -1638,13 +1640,13 @@ const P = {
   ka: 1 / 30, // 小腸からの吸収速度
   dose: 170, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
   u0: 0.0028, // インスリンによらない取り込み（脳など）
-  si: 0.07, // インスリンによる取り込み
+  si: 0.05, // インスリンによる取り込み
   p0: 0.75, // 肝臓からの基礎的な放出
   pg: 1.8, // グルカゴンによる肝臓からの放出（グリコーゲンの分解）
-  hi: 1.5, // インスリンによる肝臓からの放出の抑制
+  hi: 1, // インスリンによる肝臓からの放出の抑制
   kI: 1 / 15,
   kN: 1 / 15,
-  kX: 1 / 15,
+  kX: 1 / 4, // インスリンの作用の遅れは短くする（長いと食後に空腹時より下がる「行き過ぎ」が出る）
   gHalf: 140,
   gLow: 80,
 };
@@ -1749,7 +1751,7 @@ function at(run, minute) {
 const dojo = {
   tasks: [
     { id: 'peak', text: '「健康」で、血糖値が最も高くなる時刻に「時刻」スライダーを合わせよう。', short: '血糖値のピークを発見' },
-    { id: 'glucagon', text: '「健康」で、血糖値が空腹時より下がってグルカゴンが増えている時刻を探そう。', short: 'グルカゴンの出番を発見' },
+    { id: 'glucagonDown', text: '「健康」で、血糖値が上がっている間はグルカゴンが空腹時の半分以下に減っていることを、時刻スライダーで確かめよう。', short: 'グルカゴンが減る' },
     { id: 'type1', text: '「1型糖尿病」に切り替えて、インスリンがほとんど増えないことを確かめよう。', short: '1型を確認' },
     { id: 'sens', text: 'インスリンの分泌能力はそのまま（1.0倍以上）で、効きやすさを0.3倍以下にしてみよう。', short: '効きにくさを体験' },
   ],
@@ -1819,7 +1821,7 @@ const dojo = {
         vlines: [{ x: cursor / 60, color: 'fg', dash: 'dash', width: 1.2 }],
         series: [
           !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
-          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値' },
+          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値', labelAt: sm.peakT / 60 },
           { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
           { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
         ].filter(Boolean),
@@ -1835,24 +1837,37 @@ const dojo = {
 
       const lines = [];
       const fast = sm.fastingG;
-      if (cursor < sm.peakT && cur.G > fast + 3) {
-        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が感知し、インスリンの分泌が増えはじめる。');
-      } else if (cur.G > fast + 3) {
-        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。');
+      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
+      const rising = cursor < sm.peakT && cur.G > fast + 3;
+      const high = cur.G > fast + 3;
+      if (kind === 'type1') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。しかしB細胞がはたらかないため、血糖値が上がってもインスリンはほとんど増えない。');
+        else if (high) lines.push('インスリンがほとんどないので、細胞へのグルコースの取り込みや肝臓でのグリコーゲン合成が進まない。脳などでのインスリンによらない消費でゆっくり下がるだけで、高い血糖値が続く。');
+        else lines.push('インスリンがほとんど分泌されないので、空腹時から血糖値が高い。');
+      } else if (kind === 'type2') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。B細胞はインスリンを分泌するが、量が少ない、または効きにくいため、血糖値が大きく上がる。');
+        else if (high) lines.push('インスリンは分泌されているが、効きにくい（または量が少ない）ので、細胞へのグルコースの取り込みが進まず、血糖値が下がるのに時間がかかる。');
+        else lines.push('インスリンのはたらきが弱いので、空腹時の血糖値もやや高めに保たれている。');
+      } else if (rising) {
+        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が直接感知するほか、間脳の視床下部も感知して副交感神経を通じてB細胞を刺激するので、インスリンの分泌が増える。グルカゴンの分泌は減る。');
+      } else if (high) {
+        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。血糖値が下がるにつれてインスリンの分泌も減り、空腹時の値に戻ったところで落ち着く。');
       } else if (cur.G < fast - 3) {
-        lines.push('血糖値が空腹時より下がったので、ランゲルハンス島のA細胞からグルカゴンの分泌が増えている。グルカゴンは肝臓のグリコーゲンの分解を促し、血糖値を元に戻す。');
+        lines.push('血糖値が空腹時より下がっている。ランゲルハンス島のA細胞からグルカゴンの分泌が増え、肝臓のグリコーゲンの分解を促して血糖値を元に戻す。');
       } else {
-        lines.push('血糖値はほぼ一定に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
+        lines.push('血糖値は空腹時の値（約100 mg/100mL）に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
       }
       lines.push(`空腹時 ${fmt(fast, 0)} → 最大 ${fmt(sm.peakG, 0)} mg/100mL（食後 ${fmt(sm.peakT, 0)} 分）。食後2時間で ${fmt(sm.g120, 0)} mg/100mL。`);
-      if (prm.cap < 0.15) {
+      if (kind === 'type1') {
         lines.push('インスリンがほとんど分泌されないので（1型糖尿病のような状態）、取り込みが進まず、血糖値が高いまま下がりにくい。1型糖尿病は、免疫のはたらきでB細胞が破壊されることなどで起こり、治療にはインスリンの注射が必要になる。');
-      } else if (sm.peakG >= 180 || sm.fastingG >= 126) {
+      } else if (kind === 'type2') {
         lines.push(`インスリンは分泌されている（最大 ${fmt(sm.insulinPeak / ref.I, 1)}）のに血糖値が高いままになりやすい。インスリンが効きにくい、または分泌量が少ないから（2型糖尿病のような状態）。生活習慣などが関係する。`);
       } else if (prm.meal === 0) {
         lines.push('食事をしていないので、血糖値は空腹時の値のまま保たれる。');
+      } else if (prm.meal >= 1.5) {
+        lines.push('食事量が多いので血糖値は大きく上がるが、インスリンも多く分泌されるので、2時間ほどで空腹時の値に戻る。健康な人では、血糖値が高いまま下がらないことはない。');
       } else {
-        lines.push('血糖値が上がるとインスリンが増え、下がるとインスリンが減ってグルカゴンが増える。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
+        lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値に戻るとインスリンも元の量に戻る。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
       }
       exp.set(lines);
       ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
@@ -1863,7 +1878,7 @@ const dojo = {
 };
 
 dojo.tasks[0].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && Math.abs(s.cursor - s.sm.peakT) <= 4;
-dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cur.G < s.sm.fastingG - 3 && s.cur.N / s.ref.N > 1.15;
+dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cursor < s.sm.peakT + 30 && s.cur.G > s.sm.fastingG + 15 && s.cur.N / s.ref.N <= 0.5;
 dojo.tasks[2].check = (s) => s.preset === 'type1';
 dojo.tasks[3].check = (s) => s.prm.cap >= 1 && s.prm.sens <= 0.3 && s.prm.meal >= 0.5;
 return { dojo };
@@ -1876,7 +1891,7 @@ __m["models/immune.js"] = (function () {
 //   一次応答：潜伏期が長く（約1週間）、量が少ない
 //   二次応答：同じ抗原の記憶細胞があるとき。立ち上がりが速く、量が非常に多く、長く続く
 // 記憶細胞は抗原ごとに特異的なので、別の抗原Bでは一次応答になる。
-const PRIMARY = { lag: 4, rise: 8, decay: 9, amp: 1 };
+const PRIMARY = { lag: 6, rise: 8, decay: 9, amp: 1 }; // 約1週間で増えはじめ、約2週間で最大
 const SECONDARY = { lag: 1.5, rise: 4.5, decay: 30, amp: 100 };
 const FLOOR = 0.01; // 検出限界程度の基礎量
 const MEMORY_DAYS = 7; // 記憶細胞ができるまでの日数（これより前の再侵入は一次応答として扱う）
@@ -1948,7 +1963,7 @@ const { antibodyModel, peakDelay, PRIMARY, SECONDARY, MEMORY_DAYS } = __m["model
 const { sample } = __m["lib/series.js"];
 
 const DAYS = 100;
-const MIN_GAP = 10;
+const MIN_GAP = 21;
 
 const dojo = {
   tasks: [
@@ -1983,7 +1998,7 @@ const dojo = {
     const segAg = segmented({ label: '2回目の抗原', options: [{ value: 'A', label: '同じ抗原A' }, { value: 'B', label: '別の抗原B' }], value: st.antigen2, onChange: (v) => { st.antigen2 = v; update(); } });
     const exp = explainBox();
     root.append(
-      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あとに設定できる（記憶細胞ができるまでの時間を考えて）。`)),
+      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あと（一次応答がおさまってから）に設定できる。`)),
       panel('いま何が起きているか', exp.el),
     );
 
@@ -2012,7 +2027,7 @@ const dojo = {
       });
 
       const lines = [];
-      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約${PRIMARY.lag}日かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
+      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約1週間かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
       if (second.kind === 'secondary') {
         lines.push(`2回目（同じ抗原A）：1回目にできた記憶細胞がすぐに増殖して形質細胞（抗体産生細胞）になるので、約${peakDelay(SECONDARY)}日で最大になり、量は約${fmt(p2 / pA1, 0)}倍（${fmt(p2, 0)}）。これが二次応答で、一次応答より速く、多量の抗体がつくられる。`);
       } else {
@@ -2033,7 +2048,7 @@ const dojo = {
 dojo.tasks[0].check = (s) => s.log;
 dojo.tasks[1].check = (s) => s.antigen2 === 'B';
 dojo.tasks[2].check = (s) => s.antigen2 === 'A' && s.d2 - s.d1 >= 50 && s.kind2 === 'secondary';
-// MEMORY_DAYS（7日）より MIN_GAP（10日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
+// MEMORY_DAYS（7日）より MIN_GAP（21日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
 if (MIN_GAP < MEMORY_DAYS) throw new Error('MIN_GAP must be >= MEMORY_DAYS');
 return { dojo };
 })();
@@ -2041,35 +2056,30 @@ return { dojo };
 // ---- models/photosynthesis.js ----
 __m["models/photosynthesis.js"] = (function () {
 // B4 光の強さと光合成
-// 光合成速度 P(I) = Pmax·I / (K + I)、見かけの光合成速度 = P(I) − R（R：呼吸速度）
+// 光合成速度 P(I) は非直角双曲線 θP² − (αI ＋ Pmax)P ＋ αI·Pmax ＝ 0 の小さいほうの解。
+//   α：弱い光での傾き（光の強さに比例して増える割合）、Pmax：最大の光合成速度、θ：曲がり方（1に近いほど鋭く折れる）
+// θ を1に近くとると、弱い光では P ≒ αI（直線）、強い光では P ＝ Pmax で明確に頭打ちになり、教科書の図の形になる。
+// 見かけの光合成速度 ＝ P(I) − R（R：呼吸速度）
 // 単位：光の強さ［キロルクス］、速度［CO₂吸収速度の相対値］
+const THETA = 0.995;
 const PLANTS = {
-  sun: { name: '陽生植物', Pmax: 20, K: 6, R: 4 },
-  shade: { name: '陰生植物', Pmax: 6, K: 1.5, R: 0.6 },
+  sun: { name: '陽生植物', Pmax: 20, alpha: 1.25, R: 2 },
+  shade: { name: '陰生植物', Pmax: 6, alpha: 1.25, R: 0.4 },
 };
-const SAT_FRACTION = 0.9; // 光飽和点の目安：光合成速度が Pmax の90%に達する光の強さ
 
 function gross(p, I) {
-  return (p.Pmax * I) / (p.K + I);
+  if (I <= 0) return 0;
+  const b = p.alpha * I + p.Pmax;
+  const disc = b * b - 4 * THETA * p.alpha * I * p.Pmax;
+  return (b - Math.sqrt(Math.max(0, disc))) / (2 * THETA);
 }
 
 function apparent(p, I) {
   return gross(p, I) - p.R;
 }
 
-// 補償点：見かけの光合成速度 = 0（光合成速度 = 呼吸速度）
-function compensationPoint(p) {
-  return (p.R * p.K) / (p.Pmax - p.R);
-}
-
-// 光飽和点（このモデルでは Pmax の90%に達する光の強さ）
-function saturationPoint(p) {
-  return (SAT_FRACTION * p.K) / (1 - SAT_FRACTION);
-}
-
-// 2本の見かけの光合成曲線の交点（二分法）
-function crossingPoint(a, b, lo = 0, hi = 100) {
-  const f = (I) => apparent(a, I) - apparent(b, I);
+// 二分法（f(lo) と f(hi) の符号が違うとき）
+function solve(f, lo, hi) {
   let fl = f(lo);
   if (fl * f(hi) > 0) return null;
   for (let i = 0; i < 80; i++) {
@@ -2083,7 +2093,30 @@ function crossingPoint(a, b, lo = 0, hi = 100) {
   }
   return (lo + hi) / 2;
 }
-return { PLANTS, SAT_FRACTION, gross, apparent, compensationPoint, saturationPoint, crossingPoint };
+
+// 補償点：見かけの光合成速度 = 0（光合成速度 = 呼吸速度）
+function compensationPoint(p) {
+  return solve((I) => apparent(p, I), 0, 1000);
+}
+
+// 光合成速度の傾き dP/dI（陰関数の微分）
+function slope(p, I) {
+  const P = gross(p, I);
+  return (p.alpha * (p.Pmax - P)) / (p.alpha * I + p.Pmax - 2 * THETA * P);
+}
+
+// 光飽和点：これ以上光を強くしても光合成速度が増えなくなる点。
+// 曲線の傾きが弱い光での傾きのほぼ0（1%）まで小さくなった点を、図の上で「増えなくなる点」とした。
+const FLAT = 0.01;
+function saturationPoint(p) {
+  return solve((I) => slope(p, I) - FLAT * p.alpha, 1e-6, 1000);
+}
+
+// 2本の見かけの光合成曲線の交点
+function crossingPoint(a, b, lo = 0, hi = 100) {
+  return solve((I) => apparent(a, I) - apparent(b, I), lo, hi);
+}
+return { THETA, PLANTS, gross, apparent, compensationPoint, slope, FLAT, saturationPoint, crossingPoint };
 })();
 
 // ---- dojo/b4.js ----
@@ -2101,10 +2134,11 @@ const STYLE = { sun: { color: 'c2', dash: 'solid' }, shade: { color: 'c1', dash:
 function status(p, I) {
   const a = apparent(p, I);
   const ic = compensationPoint(p);
+  if (I <= 0) return '暗黒（光の強さ0）：光合成は行われず、呼吸によるCO₂の放出だけが起こっている。このときのCO₂放出速度が呼吸速度である';
   if (Math.abs(I - ic) < Math.max(0.02, ic * 0.04)) return 'ほぼ補償点：光合成速度と呼吸速度が等しく、見かけ上CO₂の出入りがない';
-  if (a < 0) return '補償点より弱い光：呼吸速度が光合成速度を上回り、CO₂を放出している（光合成は行っている）';
-  if (I >= saturationPoint(p)) return '光飽和点以上：光を強くしても速度はほとんど増えない（CO₂濃度や温度が限定要因）';
-  return '補償点と光飽和点の間：光を強くするほど見かけの光合成速度が大きくなる';
+  if (a < 0) return '補償点より弱い光：光合成は行っているが、呼吸速度のほうが大きいのでCO₂を放出している';
+  if (I >= saturationPoint(p)) return '光飽和点以上：これ以上光を強くしても光合成速度は増えない（CO₂濃度や温度が限定要因）';
+  return '補償点と光飽和点の間：光を強くするほど光合成速度が大きくなる（光の強さが限定要因）';
 }
 
 const dojo = {
@@ -2122,7 +2156,7 @@ const dojo = {
     top.append(h('h2', null, '光の強さとCO₂吸収速度 ', modelNote()));
     const chart = createChart(top, { label: '光の強さと見かけの光合成速度のグラフ', aspect: 0.75 });
     const leg = h('div');
-    top.append(leg, h('p', { class: 'small muted' }, '光合成速度 P ＝ Pmax·I/(K＋I)、見かけの光合成速度 ＝ P − 呼吸速度。光飽和点は、ここでは光合成速度が最大値の90%に達する光の強さとした。'));
+    top.append(leg, h('p', { class: 'small muted' }, '見かけの光合成速度 ＝ 光合成速度 − 呼吸速度。光飽和点は、これ以上光を強くしても光合成速度が増えなくなる点（■と縦の点線）。光飽和点より右では曲線が水平になる。'));
 
     const segShow = segmented({ label: '表示する植物', options: [{ value: 'sun', label: '陽生植物' }, { value: 'shade', label: '陰生植物' }, { value: 'both', label: '両方' }], value: st.show, onChange: (v) => { st.show = v; update(); } });
     const segZoom = segmented({ label: '横軸の範囲', options: [{ value: false, label: '全体（0〜60）' }, { value: true, label: '弱光を拡大（0〜6）' }], value: st.zoom, onChange: (v) => {
@@ -2143,6 +2177,7 @@ const dojo = {
       const series = [];
       const markers = [];
       const hlines = [];
+      const satLines = [];
       for (const k of keys) {
         const p = PLANTS[k];
         series.push({ points: sample((I) => apparent(p, I), 0, xMax, 300), color: STYLE[k].color, dash: STYLE[k].dash, width: 3, label: p.name, legendLabel: p.name + '（見かけの光合成速度）' });
@@ -2150,13 +2185,16 @@ const dojo = {
         const is = saturationPoint(p);
         const single = keys.length === 1;
         markers.push({ x: ic, y: 0, color: STYLE[k].color, label: single || st.zoom ? (single ? '補償点' : `補償点（${p.name.slice(0, 2)}）`) : null, dy: k === 'shade' ? -18 : 0 });
-        if (is <= xMax) markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+        if (is <= xMax) {
+          markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+          satLines.push({ x: is, color: STYLE[k].color, dash: 'dot', width: 1.2 });
+        }
         if (keys.length === 1) {
           series.push({ points: sample((I) => gross(p, I), 0, xMax, 300), color: 'muted', dash: 'dot', width: 2, label: '光合成速度', legendLabel: '光合成速度（見かけ＋呼吸）' });
           hlines.push({ y: -p.R, color: 'muted', dash: 'dot', label: `呼吸速度 ${fmt(p.R, 1)}（光がなくても続く）` });
         }
       }
-      const yMin = keys.includes('sun') ? -6 : -2;
+      const yMin = keys.includes('sun') ? -4 : -2;
       const yMax = st.zoom ? (keys.includes('sun') ? 8 : 6) : keys.length === 1 && keys[0] === 'shade' ? 8 : 22;
       chart.draw({
         alt: `光の強さ ${fmt(st.I, 2)} キロルクス`,
@@ -2165,7 +2203,7 @@ const dojo = {
         series,
         markers,
         hlines,
-        vlines: [{ x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
+        vlines: [...satLines, { x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
       });
       leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
 
@@ -2177,7 +2215,7 @@ const dojo = {
       if (keys.length === 2) {
         lines.push(`2本の曲線は約 ${fmt(cross, 1)} キロルクスで交わる。これより弱い光では陰生植物のほうが見かけの光合成速度が大きい。陰生植物は呼吸速度が小さく補償点が低いので、弱い光でも成長できるからである。`);
       }
-      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 1)} キロルクス。`);
+      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 0)} キロルクス。`);
       if (st.I < 3) {
         lines.push('森林の林床はこのくらい暗い。陽樹の芽生えは補償点が高く育ちにくいが、陰樹の芽生えは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
       }
@@ -2245,9 +2283,18 @@ function simulate({ o0 = 1, o1 = 1, tHunt = 20, tEnd = 150, dt = 0.1 } = {}) {
   return out;
 }
 
-// 表示用の相対値（0〜100）
-const SCALE = { k: 100, u: 150, o: 100 };
-return { K, otterAt, equilibrium, simulate, SCALE };
+// 表示用の相対値：3種とも「乱獲前（ラッコ 1 の平衡状態）＝100」にそろえる。
+// 種ごとに基準が違うので、縦軸の値どうしで「どちらが多いか」は比べられない（変化の割合だけを比べる）。
+const BASE = equilibrium(1);
+const SCALE = { k: 100 / BASE.k, u: 100 / BASE.u, o: 100 };
+
+// 縦軸の上限（100単位に切り上げ）
+function yMaxFor(run) {
+  let m = 100;
+  for (const r of run) m = Math.max(m, r.o * SCALE.o, r.u * SCALE.u, r.k * SCALE.k);
+  return m <= 110 ? 120 : Math.ceil((m * 1.05) / 100) * 100;
+}
+return { K, otterAt, equilibrium, simulate, SCALE, yMaxFor };
 })();
 
 // ---- dojo/b5.js ----
@@ -2257,7 +2304,7 @@ const { h } = __m["lib/dom.js"];
 const { fmt } = __m["lib/format.js"];
 const { createChart, legend } = __m["lib/chart.js"];
 const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
-const { simulate, SCALE } = __m["models/keystone.js"];
+const { simulate, SCALE, yMaxFor } = __m["models/keystone.js"];
 
 const T_HUNT = 20;
 const T_END = 150;
@@ -2273,15 +2320,15 @@ const dojo = {
 
     const top = panel(null);
     root.append(top);
-    top.append(h('h2', null, 'ラッコ・ウニ・ケルプの個体数 ', modelNote()));
-    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの個体数の変化のグラフ' });
+    top.append(h('h2', null, 'ラッコ・ウニの個体数とケルプの量 ', modelNote()));
+    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの量の変化のグラフ' });
     top.append(
       legend([
         { label: 'ラッコ', color: 'c4', dash: 'dashdot' },
         { label: 'ウニ', color: 'c2', dash: 'dash' },
-        { label: 'ケルプ（海藻）', color: 'c3' },
+        { label: 'ケルプ（海藻の現存量）', color: 'c3' },
       ]),
-      h('p', { class: 'small muted' }, `個体数は相対値。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
+      h('p', { class: 'small muted' }, `縦軸は3種とも「乱獲前＝100」とした相対値（種ごとに基準が違うので、どの種が多いかは比べられない。変化の割合を比べる）。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
     );
     const sO = slider({ label: '乱獲後のラッコの数（元を100%として）', min: 0, max: 100, step: 5, value: 70, format: (v) => v + '%', onInput: (v) => {
       st.o1 = v / 100;
@@ -2301,9 +2348,9 @@ const dojo = {
         { points: run.map((r) => [r.t, r.k * SCALE.k]), color: 'c3', width: 3, label: 'ケルプ' },
       ];
       chart.draw({
-        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}`,
+        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}（乱獲前＝100）`,
         x: { min: 0, max: T_END, label: '時間（年）', step: 25 },
-        y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+        y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: yMaxFor(run) > 400 ? 100 : yMaxFor(run) > 200 ? 50 : 20 },
         series,
         vlines: st.o1 < 1 ? [{ x: T_HUNT, color: 'muted', label: '乱獲' }] : [],
       });
@@ -2312,7 +2359,7 @@ const dojo = {
       const lines = [];
       if (st.o1 >= 0.999) {
         lines.push('ラッコがウニを食べているので、ウニは少なく保たれ、ケルプ（海藻）の森が豊かに保たれている。');
-        lines.push('ラッコの数は多くないが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
+        lines.push('ラッコは個体数の少ない上位の捕食者だが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
       } else {
         lines.push(`ラッコが ${fmt(st.o1 * 100, 0)}% に減ると、食べられる量が減ったウニが増え（約${fmt(du, 1)}倍）、そのウニに食べられてケルプが減る（約${fmt(dk * 100, 0)}%に）。`);
         lines.push('ラッコはケルプを直接食べないのに、ウニを介してケルプの量に影響している。このような影響を間接効果という。ケルプの森をすみかや産卵場所にする魚などにも影響が広がる。');
@@ -2405,7 +2452,11 @@ const { rate, inhibited, lineweaver, tempRate, optimumTemp, afterTreatment, acti
 const { sample } = __m["lib/series.js"];
 
 const KI = 2;
-const S_MAX = 40;
+// 横軸の右端は、見かけの Km の12倍以上（v が Vmax の約92%以上になる）まで広げる。
+// そうしないと競争的阻害で最大速度が変わらないことがグラフから読み取れない。
+function sMaxFor(...kms) {
+  return Math.max(40, Math.ceil((12 * Math.max(...kms)) / 50) * 50);
+}
 
 const dojo = {
   tasks: [
@@ -2432,10 +2483,10 @@ const dojo = {
 
     // ① 基質濃度
     const sV = slider({ label: '最大速度 Vmax', min: 20, max: 100, step: 5, value: st.Vmax, format: (v) => String(v), onInput: (v) => { st.Vmax = v; update(); } });
-    const sK = slider({ label: 'ミカエリス定数 Km', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
+    const sK = slider({ label: 'ミカエリス定数 Km（発展）', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
     const segI = segmented({ label: '阻害剤', options: [{ value: 'none', label: 'なし' }, { value: 'competitive', label: '競争的阻害' }, { value: 'noncompetitive', label: '非競争的阻害' }], value: st.inh, onChange: (v) => { st.inh = v; if (v !== 'none' && st.I === 0) { st.I = 4; sI.set(4, true); } update(); } });
     const sI = slider({ label: '阻害剤の濃度 [I]', min: 0, max: 10, step: 0.5, value: st.I, format: (v) => fmt(v, 1), onInput: (v) => { st.I = v; update(); } });
-    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
+    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク（発展）' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
     const ctlS = h('div', null, segI.el, sI.el, segLB.el, sV.el, sK.el);
 
     // ② 温度
@@ -2461,6 +2512,7 @@ const dojo = {
       const base = { Vmax: st.Vmax, Km: st.Km };
       const cur = inhibited(st.inh, st.Vmax, st.Km, st.I, KI);
       const hasInh = st.inh !== 'none' && st.I > 0;
+      const S_MAX = sMaxFor(base.Km, cur.Km);
       title.replaceChildren('基質濃度と反応速度 ', modelNote());
       if (!st.lb) {
         const series = [];
@@ -2468,7 +2520,7 @@ const dojo = {
         series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
         chart.draw({
           alt: `Vmax ${fmt(cur.Vmax, 1)}、Km ${fmt(cur.Km, 1)}`,
-          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: 5 },
+          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: niceStep(S_MAX, 8) },
           y: { min: 0, max: 110, label: '反応速度 v', step: 20 },
           series,
           hlines: [
@@ -2540,9 +2592,10 @@ const dojo = {
       if (st.T < To - 2) lines.push(`${fmt(st.T, 1)}℃：温度が上がるほど分子の運動が活発になり、酵素と基質がよく出会うので反応速度が大きくなる。低温では反応がおそいだけで、酵素はこわれていない。`);
       else if (st.T <= To + 2) lines.push(`${fmt(st.T, 1)}℃：最適温度付近。温度上昇で速くなる効果と、熱変性で酵素が失活する効果のつり合いで、反応速度が最大になる。ヒトの酵素の多くは体温付近〜40℃くらいが最適温度である。`);
       else lines.push(`${fmt(st.T, 1)}℃：酵素はタンパク質でできているので、高温では立体構造が変化（変性）し、活性部位の形がくずれて失活する。熱変性していない酵素は約${fmt(activeFraction(st.T) * 100, 0)}%しかない。`);
-      lines.push(st.Th > To + 5
-        ? `処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)} までしか回復しない。熱による変性は不可逆的だからである。`
-        : `処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では変性が起こっていないからである。`);
+      const kept = vAfter / tempRate(To);
+      if (kept < 0.98) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)}（処理しない場合の約${fmt(kept * 100, 0)}%）までしか回復しない。熱で変性した酵素は元に戻らない（不可逆的）からである。`);
+      else if (st.Th < To) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では反応がおそくなるだけで、変性は起こっていないからである。`);
+      else lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、ほぼもとどおりにはたらく。この温度では熱変性がほとんど起こっていないからである。`);
       exp.set(lines);
     }
 
@@ -2562,7 +2615,7 @@ const dojo = {
       const vals = Object.values(ENZYMES).map((e) => `${e.name} ${fmt(phRate(st.pH, e.opt), 2)}`);
       exp.set([
         `pH ${fmt(st.pH, 1)} での反応速度：${vals.join('、')}。`,
-        '酵素ごとに最もよくはたらく pH（最適pH）がある。胃液は強い酸性なのでペプシンの最適pHは約2、だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8である。',
+        '酵素ごとに最もよくはたらく pH（最適pH）がある。ペプシンの最適pHは約2で、強い酸性の胃液の中でよくはたらく。だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8が最適pHである。',
         '最適pHから外れると、酵素タンパク質の立体構造や電荷の状態が変わり、活性部位が基質と結合しにくくなるから、反応速度が下がる。',
       ]);
     }
@@ -2737,7 +2790,7 @@ const dojo = {
     top.append(leg, table);
 
     const segC = segmented({ label: '交配', options: [{ value: 'mono', label: 'Aa × Aa' }, { value: 'testMono', label: 'Aa × aa（検定交雑）' }, { value: 'di', label: 'AaBb × AaBb' }], value: st.cross, onChange: (v) => { st.cross = v; update(); } });
-    const sN = slider({ label: '子の数 n（交配の回数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
+    const sN = slider({ label: '子の数 n（調べた子の個体数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
     const sR = slider({ label: '組換え価 r', min: 0, max: 50, step: 1, value: st.r, format: (v) => v + ' %', onInput: (v) => { st.r = v; update(); } });
     const again = h('button', { type: 'button', class: 'btn primary', onclick: () => { st.seed = randomSeed(); st.rerolls += 1; update(); } }, '🎲 もう一度交配');
     const ctlRatio = h('div', null, segC.el);
@@ -3153,7 +3206,7 @@ const WHY = {
   G1: 'G1期はDNA合成の準備をする時期で、DNA量は複製前の2のままだから、DNA量が2で一定の区間になる。',
   S: 'S期にはDNAが複製されるから、DNA量が2から4へしだいに増える区間になる。',
   G2: 'G2期は複製が終わって分裂の準備をする時期だから、DNA量は4で一定の区間になる。',
-  M: 'M期の終わりに細胞質分裂が起こってDNAが2つの細胞に分けられるから、DNA量が4から2へ急に減る直前の区間になる。',
+  M: 'M期の後期に染色体が両極へ分かれ、終わりに細胞質分裂で細胞が2つになるから、DNA量が4から2へ急に減る直前の区間になる。',
 };
 
 // 指定した時期から始まる1周期分のDNA量の点列と区間
@@ -3223,7 +3276,7 @@ const B1 = [
         text: '体細胞分裂で、細胞1個あたりのDNA量が4から2に減るのはいつか。',
         correct: 'M期の終わり（細胞質分裂が起こるとき）',
         wrong: ['S期の終わり', 'G2期のはじめ', 'M期の中期（染色体が赤道面に並ぶとき）', 'G1期の終わり'],
-        explanation: 'DNA量が半分に戻るのはM期の終わりである。細胞質分裂で1つの細胞が2つに分かれ、複製されたDNAが2つの細胞に等しく分配されるからである。',
+        explanation: 'DNA量が半分に戻るのはM期の終わりである。複製された染色体は核分裂（後期）で両極へ等しく分かれ、続く細胞質分裂で細胞が2つに分かれるから、細胞1個あたりのDNA量がここで半分になる。',
       };
     },
   },
@@ -3245,11 +3298,11 @@ const B1 = [
       const ans = (T * c) / N;
       const d = distinctNumbers(ans, [(c / N) * 100, (T * (N - c)) / N, ans * 2, ans / 2, c / T, ans + T / 10, T - ans + 1], ' 時間');
       return {
-        text: `ある組織の細胞を固定・染色して観察したところ、G1期 ${counts.G1}個、S期 ${counts.S}個、G2期 ${counts.G2}個、M期 ${counts.M}個であった。この細胞の細胞周期が ${T}時間のとき、${NAME[ask]}の長さは何時間か。`,
+        text: `ある組織の細胞について、細胞1個あたりのDNA量（相対値）を測定したところ、DNA量が2の細胞 ${counts.G1}個、2と4の間の細胞 ${counts.S}個、4の細胞 ${counts.G2 + counts.M}個であった。また顕微鏡で観察すると、DNA量4の細胞のうち ${counts.M}個が分裂期（M期）の細胞であった。この細胞の細胞周期が ${T}時間のとき、${NAME[ask]}の長さは何時間か。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）で求める。${T} × ${c}/${N} ＝ ${fmt(ans, 2)}時間となる。細胞がそれぞれの時期にいる割合は、その時期にかかる時間の割合に等しいとみなせるからである。`,
+        explanation: `DNA量2の細胞がG1期、2と4の間がS期、DNA量4のうち分裂期でない細胞がG2期なので、${NAME[ask]}の細胞は ${c}個であり、各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 総数）より ${T} × ${c}/${N} ＝ ${fmt(ans, 2)}時間となる。間期のG1期・S期・G2期は顕微鏡では区別できないのでDNA量で見分け、細胞がそれぞれの時期にいる割合はその時期にかかる時間の割合に等しいとみなせるからである。`,
       };
     },
   },
@@ -3267,7 +3320,7 @@ const B1 = [
       const ans = (N * len[ask]) / T;
       const d = distinctNumbers(ans, [(N * len[ask]) / 100, N / 4, N - ans, ans * 2, ans / 2, ans + k], ' 個', 1);
       return {
-        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間である。この細胞が細胞周期のさまざまな時期にばらばらに分布している組織で ${N}個の細胞を観察すると、${NAME[ask]}の細胞はおよそ何個見られるか。`,
+        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間である。この細胞が細胞周期のさまざまな時期にばらばらに分布している組織の細胞 ${N}個を${ask === 'M' ? '顕微鏡で観察すると、分裂期（M期）' : `、細胞1個あたりのDNA量を測定して調べると、${NAME[ask]}（DNA量が${ask === 'S' ? '2と4の間' : '4で分裂期でないもの'}）`}の細胞はおよそ何個あるか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -3329,10 +3382,16 @@ const B1 = [
     kind: 'term',
     make(rng) {
       const D = {
-        前期: '核の中で染色体が凝縮し、太く短いひも状に見えるようになる',
+        前期: '染色体が凝縮して太く短いひも状になり、やがて核膜が消える',
         中期: '染色体が細胞の中央の赤道面に並ぶ',
         後期: '各染色体が縦に裂けるように分かれ、両極へ移動する',
         終期: '核膜が再び現れ、細胞質分裂が起こる',
+      };
+      const SUBWHY = {
+        前期: '前期には、分裂に備えて長い糸状だった染色体が凝縮するので、太く短いひも状に見えるようになる。',
+        中期: '中期には、両極から伸びた紡錘糸が各染色体に付着して引き合うので、染色体が赤道面に並ぶ。',
+        後期: '後期には、紡錘糸に引かれて、縦に分かれた染色体が両極へ移動するので、同じ染色体のセットが両側に分かれる。',
+        終期: '終期には、両極に分かれた染色体のまわりに核膜ができ、細胞質も2つに分かれるので、2つの娘細胞ができる。',
       };
       const keys = Object.keys(D);
       const k = rng.pick(keys);
@@ -3341,14 +3400,14 @@ const B1 = [
           text: `体細胞分裂のM期で、「${D[k]}」のはどの時期か。`,
           correct: k,
           wrong: keys,
-          explanation: `これは${k}の特徴である。M期は染色体の様子によって前期・中期・後期・終期に分けられ、染色体を正確に2つに分けるためにこの順に進むからである。`,
+          explanation: `これは${k}の特徴である。${SUBWHY[k]}`,
         };
       }
       return {
         text: `体細胞分裂のM期の「${k}」の特徴として正しいものはどれか。`,
         correct: D[k],
         wrong: keys.map((x) => D[x]).concat(['DNAが複製され、DNA量が2倍になる']),
-        explanation: `${k}には${D[k]}。M期は前期→中期→後期→終期の順に進み、染色体を2つの細胞へ等しく分けるからである。`,
+        explanation: `${k}には${D[k]}。${SUBWHY[k]}`,
       };
     },
   },
@@ -3448,7 +3507,7 @@ const B2 = [
     kind: 'term',
     make(rng) {
       const Q = [
-        { h: 'インスリン', a: 'すい臓のランゲルハンス島のB細胞', why: 'B細胞は血糖値の上昇を感知してインスリンを分泌し、血糖値を下げるからである' },
+        { h: 'インスリン', a: 'すい臓のランゲルハンス島のB細胞', why: 'B細胞は血糖値の上昇を直接感知するほか、視床下部から副交感神経を通じて刺激されてインスリンを分泌し、血糖値を下げるからである' },
         { h: 'グルカゴン', a: 'すい臓のランゲルハンス島のA細胞', why: 'A細胞は血糖値の低下を感知してグルカゴンを分泌し、血糖値を上げるからである' },
         { h: 'アドレナリン', a: '副腎髄質', why: '血糖値が下がると視床下部から交感神経を通じて副腎髄質が刺激され、アドレナリンが分泌されるからである' },
         { h: '糖質コルチコイド', a: '副腎皮質', why: '脳下垂体前葉からの副腎皮質刺激ホルモンによって副腎皮質が刺激され、糖質コルチコイドが分泌されるからである' },
@@ -3808,7 +3867,7 @@ const B3 = [
     make(rng) {
       const Q = [
         { q: '抗体をつくって放出する細胞', a: '形質細胞（抗体産生細胞）', why: 'B細胞がヘルパーT細胞によって活性化されると、増殖して形質細胞に分化するからである' },
-        { q: '抗原を取り込んで、ヘルパーT細胞に抗原の情報を提示する細胞', a: '樹状細胞', why: '樹状細胞は抗原を取り込んでリンパ節へ移動し、抗原提示によってT細胞を活性化するからである' },
+        { q: '抗原を取り込んでリンパ節へ移動し、まだ抗原に出会っていないT細胞に抗原提示を行って獲得免疫を始めさせる細胞', a: '樹状細胞', why: '樹状細胞は抗原を取り込んでリンパ節へ移動し、抗原提示によってT細胞を活性化するからである' },
         { q: '同じ抗原を認識したB細胞を活性化させる細胞', a: 'ヘルパーT細胞', why: 'ヘルパーT細胞は抗原提示を受けて活性化し、同じ抗原を認識したB細胞やキラーT細胞のはたらきを促すからである' },
         { q: 'ウイルスに感染した細胞を直接攻撃して破壊する細胞', a: 'キラーT細胞', why: 'キラーT細胞は感染細胞の表面の抗原を認識し、その細胞を直接破壊するからである（細胞性免疫）' },
       ];
@@ -3816,7 +3875,7 @@ const B3 = [
       return {
         text: `獲得免疫で、「${x.q}」はどれか。`,
         correct: x.a,
-        wrong: Q.map((y) => y.a).concat(['マクロファージ']),
+        wrong: Q.map((y) => y.a).concat(['好中球']),
         explanation: `${x.q}は${x.a}である。${x.why}。`,
       };
     },
@@ -3838,7 +3897,7 @@ const B3 = [
       return {
         text: '毒ヘビにかまれたとき、ウマなどにつくらせておいた抗体をふくむ血清を注射する治療法を何というか。',
         correct: '血清療法',
-        wrong: ['予防接種', '化学療法', '自己免疫療法'],
+        wrong: ['予防接種', '化学療法', '免疫抑制療法'],
         explanation: 'これは血清療法である。すでにできている抗体を注射するので、自分で抗体をつくるのを待たずにすぐに毒を無毒化できるからである。',
       };
     },
@@ -3887,7 +3946,7 @@ const B3 = [
         chart: twoExposureChart(d1, d2, 'A', true),
         correct: lab(ans),
         wrong: [1, 2, 6, 12, 25, 40].filter((n) => n !== ans).map(lab),
-        explanation: `${which}回目の注射から約${ans}日で最大になっている。${which === 1 ? '一次応答では、抗原に合うリンパ球が活性化・増殖して形質細胞になるまでに時間がかかるからである。' : '二次応答では記憶細胞がすぐに増殖して形質細胞になるから、一次応答（約12日）より速く最大になる。'}`,
+        explanation: `${which}回目の注射から約${ans}日で最大になっている。${which === 1 ? '一次応答では、抗原に合うリンパ球が活性化・増殖して形質細胞になるまでに時間がかかるからである。' : '二次応答では記憶細胞がすぐに増殖して形質細胞になるから、一次応答（約${peakDelay(PRIMARY)}日）より速く最大になる。'}`,
       };
     },
   },
@@ -3956,7 +4015,7 @@ __m["questions/b4.js"] = (function () {
 // B4 光の強さと光合成 の問題
 const { fmt } = __m["lib/format.js"];
 const { KATA, distinctNumbers } = __m["questions/common.js"];
-const { PLANTS, apparent, compensationPoint } = __m["models/photosynthesis.js"];
+const { PLANTS, apparent, compensationPoint, saturationPoint } = __m["models/photosynthesis.js"];
 const { sample } = __m["lib/series.js"];
 
 const signed = (x) => fmt(x, 2);
@@ -4008,29 +4067,30 @@ const B4 = [
     level: 2,
     kind: 'graph',
     make(rng) {
-      const n = rng.pick([1, 2, 3]);
-      const m = rng.int(1, 3);
-      const Pmax = (n + 1) * 2 * m;
-      const K = rng.pick([2, 4, 5]);
-      const R = rng.pick([2, 4]);
-      const X = K * n;
-      const P = (Pmax * n) / (n + 1);
-      const p = { Pmax, K, R };
-      const ap = P - R;
-      const d = distinctNumbers(P, [ap, Math.abs(ap - R), Pmax, R, P + 2 * R, P * 2, P + 1, P + 3], '', 0);
+      const R = rng.pick([1, 2, 3, 4]);
+      const Pmax = rng.pick([8, 10, 12, 14, 16]);
+      const p = { Pmax, alpha: 1, R };
+      const sat = saturationPoint(p);
+      const xMax = Math.ceil((sat * 1.6) / 5) * 5;
+      const flat = rng.chance(0.5);
+      const X = flat ? Math.round((sat + (xMax - sat) / 2) / 1) : Math.max(R + 1, Math.round(Pmax / 2));
+      const ap = Math.round(apparent(p, X));
+      const P = ap + R;
+      const d = distinctNumbers(P, [ap, Math.abs(ap - R), R, P + R, P * 2, P + 1, Pmax + R], '', 0);
       return {
-        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とする。`,
+        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とし、図の目盛りから整数で読み取ること。`,
         chart: {
-          x: { min: 0, max: K * 6, label: '光の強さ', step: K },
-          y: { min: -R - 2, max: Pmax, label: 'CO₂吸収速度', step: 2 },
-          series: [{ points: sample((I) => apparent(p, I), 0, K * 6, 200), color: 'c2', width: 3 }],
-          markers: [{ x: X, y: ap, color: 'c2' }],
+          x: { min: 0, max: xMax, label: '光の強さ', step: 5 },
+          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: 1 },
+          series: [{ points: sample((I) => apparent(p, I), 0, xMax, 200), color: 'c2', width: 3 }],
+          markers: [{ x: X, y: apparent(p, X), color: 'c2' }],
+          vlines: [{ x: X, color: 'muted', dash: 'dot', label: `${X}` }],
           alt: '見かけの光合成速度のグラフ',
         },
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${signed(ap)} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${signed(ap)} ＋ ${R} ＝ ${fmt(P, 2)} となる。`,
+        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${ap} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${ap} ＋ ${R} ＝ ${P} となる。`,
       };
     },
   },
@@ -4056,7 +4116,7 @@ const B4 = [
         },
         correct,
         wrong: [
-          `${lab[ask]}：呼吸速度が大きいから`,
+          ask === 'sun' ? `${lab.sun}：呼吸速度が小さいから` : `${lab.shade}：呼吸速度が大きいから`,
           `${lab[other]}：補償点と光飽和点がともに${ask === 'shade' ? '小さい' : '大きい'}から`,
           `${lab[other]}：最大の光合成速度が${ask === 'shade' ? '大きい' : '小さい'}から`,
           `${lab[ask]}：光が弱いと光合成をしないから`,
@@ -4119,19 +4179,17 @@ const B4 = [
     level: 3,
     kind: 'calc',
     make(rng) {
-      const cands = [];
-      for (const Ic of [0.5, 1, 1.5, 2, 3, 4]) for (const R of [1, 2, 3, 4]) for (const K of [2, 3, 4, 5, 6, 8, 10]) {
-        const Pmax = (R * (K + Ic)) / Ic;
-        if (Number.isInteger(Pmax) && Pmax <= 40 && Pmax > R) cands.push({ Ic, R, K, Pmax });
-      }
-      const c = rng.pick(cands);
-      const d = distinctNumbers(c.Ic, [(c.R * c.K) / c.Pmax, (c.R * c.K) / (c.Pmax + c.R), c.K, c.Pmax / c.R, c.Ic * 2, c.K / c.R], '', 2);
+      const k = rng.pick([0.5, 1, 1.5, 2, 2.5, 4]);
+      const Ic = rng.pick([0.4, 0.5, 0.8, 1, 1.2, 1.5, 2]);
+      const R = Number((k * Ic).toFixed(2));
+      if (!Number.isInteger(R * 10)) return this.make(rng);
+      const d = distinctNumbers(Ic, [k / R, R * k, R + k, R / k / 2, Ic * 2, Ic + 0.5, Ic * 3, Ic + 1.5], ' キロルクス', 2);
       return {
-        text: `ある植物の光合成速度 P（呼吸を差し引く前）が、光の強さ I を用いて P ＝ ${c.Pmax}I／(${c.K} ＋ I) で表され、呼吸速度は ${c.R} で一定である。この植物の補償点（光の強さ）はいくらか。`,
+        text: `ある植物では、弱い光の範囲で光合成速度（呼吸を差し引く前）が光の強さに比例し、光の強さが1キロルクス増えるごとに光合成速度が ${k} ずつ大きくなる。呼吸速度が ${R} で一定のとき、この植物の補償点は何キロルクスか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `補償点では光合成速度と呼吸速度が等しいので、${c.Pmax}I／(${c.K}＋I) ＝ ${c.R} を解く。${c.Pmax}I ＝ ${c.R}(${c.K}＋I) より I ＝ ${c.R}×${c.K}／(${c.Pmax}−${c.R}) ＝ ${fmt(c.Ic, 2)} となり、これは見かけの光合成速度が0になる光の強さだからである。`,
+        explanation: `補償点では光合成速度と呼吸速度が等しいので、${k} × I ＝ ${R} より I ＝ ${R} ÷ ${k} ＝ ${fmt(Ic, 2)} キロルクスとなる。補償点は見かけの光合成速度が0になる光の強さだから、光合成速度が呼吸速度に追いつく点を求めればよい。`,
       };
     },
   },
@@ -4210,7 +4268,7 @@ return { B4 };
 __m["questions/b5.js"] = (function () {
 // B5 生態系のバランス（キーストーン種）の問題
 const { KATA, assignmentQuestion, distinctNumbers } = __m["questions/common.js"];
-const { simulate, SCALE } = __m["models/keystone.js"];
+const { simulate, SCALE, yMaxFor } = __m["models/keystone.js"];
 
 const B5 = [
   {
@@ -4278,10 +4336,10 @@ const B5 = [
       const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c4', dash: 'dot' }];
       const aq = assignmentQuestion(labels, order);
       return {
-        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは3種の個体数（相対値）の変化を表している。ア〜ウの組合せとして正しいものはどれか。',
+        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは、3種の量（ラッコ・ウニは個体数、ケルプは現存量）を、それぞれ乱獲前を100とした相対値で表している。ア〜ウの組合せとして正しいものはどれか。',
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
           vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
           alt: '3種の個体数の変化ア・イ・ウ',
@@ -4332,7 +4390,7 @@ const B5 = [
           text: '台風や山火事などで生態系が乱されても、その程度が小さければやがて元の状態に戻る。生態系のこのような性質を何というか。',
           correct: '復元力',
           wrong: ['生物濃縮', '富栄養化', '間接効果'],
-          explanation: 'これは生態系の復元力である。撹乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
+          explanation: 'これは生態系の復元力である。かく乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
         };
       }
       return {
@@ -4370,10 +4428,10 @@ const B5 = [
       const target = rng.pick(['ウニ', 'ケルプ']);
       const up = target === 'ウニ';
       return {
-        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニ・ケルプの個体数（相対値）である。乱獲後に十分時間がたったとき、${target}の個体数は乱獲前と比べてどうなったか。`,
+        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニの個体数とケルプの現存量を、それぞれ乱獲前を100とした相対値で表したものである。乱獲後に十分時間がたったとき、${target}の${up ? '個体数' : '量'}は乱獲前と比べてどうなったか。`,
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: [
             { points: run.map((r) => [r.t, r.o * SCALE.o]), color: 'c4', dash: 'dashdot', width: 3, label: 'ラッコ' },
             { points: run.map((r) => [r.t, r.u * SCALE.u]), color: 'c2', dash: 'dash', width: 3, label: 'ウニ' },
@@ -4444,7 +4502,7 @@ const A1 = [
       const v = (Vmax * n) / (n + 1);
       const d = distinctNumbers(v, [Vmax / 2, (Vmax * S) / Km, Vmax, Vmax - v, (Vmax * Km) / (Km + S), v / 2, v + Vmax / 10], '', 2);
       return {
-        text: `ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -4478,8 +4536,10 @@ const A1 = [
       const k = rng.pick(['competitive', 'noncompetitive']);
       const Vmax = rng.pick([40, 50, 60, 80]);
       const Km = rng.pick([2, 3, 4]);
-      const I = rng.pick([2, 4, 6]);
+      // 競争的阻害は阻害剤を薄くし、横軸を広げて、高い基質濃度で最大速度に近づく様子が見えるようにする
+      const I = k === 'competitive' ? 2 : rng.pick([2, 4, 6]);
       const cur = inhibited(k, Vmax, Km, I, 2);
+      const sMax = 200;
       const A = {
         competitive: '競争的阻害（基質濃度を高くすると、阻害の影響が小さくなる）',
         noncompetitive: '非競争的阻害（基質濃度を高くしても、最大速度は回復しない）',
@@ -4487,11 +4547,11 @@ const A1 = [
       return {
         text: '図は、ある酵素の基質濃度と反応速度の関係を、阻害剤を加えない場合（実線）と加えた場合（破線）で比べたものである。この阻害剤による阻害として最も適当なものはどれか。',
         chart: {
-          x: { min: 0, max: 60, label: '基質濃度', step: 10 },
+          x: { min: 0, max: sMax, label: '基質濃度', step: sMax / 5 },
           y: { min: 0, max: Vmax * 1.2, label: '反応速度', step: 10 },
           series: [
-            { points: sample((S) => rate(S, Vmax, Km), 0, 60, 200), color: 'c1', width: 3, label: '阻害剤なし' },
-            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, 60, 200), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
+            { points: sample((S) => rate(S, Vmax, Km), 0, sMax, 300), color: 'c1', width: 3, label: '阻害剤なし' },
+            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, sMax, 300), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
           ],
           alt: '阻害剤のありなしで比べた反応速度のグラフ',
         },
@@ -4516,7 +4576,7 @@ const A1 = [
       ];
       const x = rng.pick(Q);
       return {
-        text: `反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
+        text: `【発展：教科書の範囲外】反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
         correct: x.a,
         wrong: ['1/Vmax', '−1/Km', 'Km/Vmax', 'Vmax', 'Km', 'Vmax/Km'],
         explanation: `ミカエリス・メンテンの式の逆数をとると 1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax となるので、${x.q}は ${x.a} を表す。1次関数 y ＝ ax ＋ b と同じ形になるから、傾きが Km/Vmax、y切片が 1/Vmax、y＝0 とおいた x切片が −1/Km になる。`,
@@ -4538,7 +4598,7 @@ const A1 = [
       const cands = ask === 'Vmax' ? [yi, Km, -xi, Vmax * 2, Vmax / 2, Vmax / Km, Vmax * 10, Vmax / 10] : [-xi, Vmax, yi, Km * 2, Km / 2, Km * Vmax, Km * 10, Km / 10];
       const d = distinctNumbers(ans, cands, '', 3);
       return {
-        text: `ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -4942,7 +5002,7 @@ const A3 = [
       return {
         text: '個体群密度が高くなると、食物や生活空間の不足、排出物の増加などによって個体の発育や増殖率が変化する。このような影響を何というか。',
         correct: '密度効果',
-        wrong: ['環境収容力', '間接効果', '相変異', '競争的排除'],
+        wrong: ['環境収容力', '間接効果', '生物濃縮', '競争的排除'],
         explanation: 'これは密度効果である。密度が高くなると1個体あたりの資源が減るから、出生率が下がったり死亡率が上がったりして、個体群の成長がおさえられる。',
       };
     },
@@ -5823,8 +5883,8 @@ const GLOSSARY = {
     { term: 'M期（分裂期）', desc: '核分裂と細胞質分裂が起こる時期。前期・中期・後期・終期に分けられる。終わりにDNA量が4から2に戻る。' },
     { term: '間期', desc: 'G1期・S期・G2期をまとめた呼び名。細胞周期の大部分を占めるので、観察すると多くの細胞が間期にある。' },
     { term: '中期', desc: 'M期のうち、染色体が細胞の中央（赤道面）に並ぶ時期。染色体の形や数の観察に適している。' },
-    { term: '細胞質分裂', desc: '核分裂のあと、細胞質が2つに分かれること。これによって複製されたDNAが2つの娘細胞に等しく分配される。' },
-    { term: '各期の長さの求め方', desc: '各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）。細胞が各時期にばらばらに分布しているときに使える。' },
+    { term: '細胞質分裂', desc: '核分裂のあと、細胞質が2つに分かれること。核分裂（後期）で両極に分かれた染色体がそれぞれの娘細胞に入り、細胞1個あたりのDNA量はここで半分（4→2）になる。' },
+    { term: '各期の長さの求め方', desc: '各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 調べた細胞の総数）。細胞が各時期にばらばらに分布しているときに使える。間期のG1期・S期・G2期は顕微鏡では区別できないので、細胞1個あたりのDNA量を測定して見分ける。' },
   ],
   b2: [
     { term: '血糖値', desc: '血液中のグルコース濃度。健康な人の空腹時は約100 mg/100mL（約0.1%）に保たれている。' },
@@ -5868,20 +5928,20 @@ const GLOSSARY = {
     { term: 'キーストーン種', desc: '個体数は多くなくても、生態系のバランスを保つうえで大きな影響をもつ種。例：ラッコ、岩礁のヒトデ。' },
     { term: '間接効果', desc: 'ある生物が、直接の捕食・被食関係のない生物に、ほかの生物を介して影響をおよぼすこと。' },
     { term: '生態系のバランス', desc: '生物の種類や個体数が変動しながらも、一定の範囲内に保たれている状態。' },
-    { term: '復元力', desc: '撹乱を受けても、その程度が小さければ元の状態に戻る生態系の性質。' },
+    { term: '復元力', desc: 'かく乱を受けても、その程度が小さければ元の状態に戻る生態系の性質。' },
     { term: 'ケルプ', desc: 'コンブのなかまの大型の褐藻。海中に森のような群落（ケルプの森）をつくり、多くの生物のすみかになる。' },
-    { term: '撹乱', desc: '台風・山火事・人間の活動などで、生態系の状態が乱されること。' },
+    { term: 'かく乱', desc: '台風・山火事・人間の活動などで、生態系の状態が乱されること。' },
   ],
   a1: [
     { term: '酵素', desc: '生体内の化学反応を促進する触媒としてはたらくタンパク質。反応の前後で変化せず、くり返しはたらく。' },
     { term: '基質・活性部位', desc: '酵素が作用する物質が基質。酵素の中で基質が結合して反応が起こる部分が活性部位。' },
     { term: '基質特異性', desc: '酵素が特定の基質にだけ作用する性質。活性部位の立体構造に合う基質としか結合できないため。' },
     { term: '酵素−基質複合体', desc: '酵素と基質が一時的に結合したもの。基質濃度が十分高いとほぼすべての酵素がこの状態になり、反応速度が最大（Vmax）になる。' },
-    { term: 'ミカエリス・メンテンの式', desc: 'v ＝ Vmax[S]／(Km＋[S])。基質濃度 [S] と反応速度 v の関係を表す。' },
-    { term: 'ミカエリス定数 Km', desc: '反応速度が最大速度の半分（Vmax/2）になるときの基質濃度。小さいほど酵素と基質が結合しやすい。' },
+    { term: 'ミカエリス・メンテンの式（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。v ＝ Vmax[S]／(Km＋[S])。基質濃度 [S] と反応速度 v の関係を表す。' },
+    { term: 'ミカエリス定数 Km（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。反応速度が最大速度の半分（Vmax/2）になるときの基質濃度。小さいほど酵素と基質が結合しやすい。' },
     { term: '競争的阻害', desc: '基質と似た阻害剤が活性部位を基質と奪い合う阻害。見かけの Km が大きくなるが、Vmax は変わらない。基質濃度を高くすると影響が小さくなる。' },
     { term: '非競争的阻害', desc: '阻害剤が活性部位以外に結合して酵素のはたらきを失わせる阻害。Vmax が小さくなり、Km は変わらない。' },
-    { term: 'ラインウィーバー・バークのプロット', desc: '1/v を縦軸、1/[S] を横軸にとったグラフ。1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax の直線になり、y切片が 1/Vmax、x切片が −1/Km、傾きが Km/Vmax。' },
+    { term: 'ラインウィーバー・バークのプロット（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。1/v を縦軸、1/[S] を横軸にとったグラフ。1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax の直線になり、y切片が 1/Vmax、x切片が −1/Km、傾きが Km/Vmax。' },
     { term: '最適温度・失活', desc: '反応速度が最大になる温度が最適温度。高温では酵素タンパク質が熱変性して失活し、温度を下げても戻らない（不可逆的）。' },
     { term: '最適pH', desc: '酵素が最もよくはたらく pH。ペプシン約2、だ液アミラーゼ約7、トリプシン約8。' },
   ],
@@ -5903,7 +5963,7 @@ const GLOSSARY = {
     { term: '指数関数的成長', desc: '資源に制限がないとき、個体数に比例した速さで増え続ける成長（dN/dt ＝ rN）。J字形の曲線になる。' },
     { term: 'ロジスティック成長', desc: 'dN/dt ＝ rN(K − N)/K で表される成長。増加速度は N ＝ K/2 で最大になり、個体数は環境収容力 K に近づく。' },
     { term: '環境収容力', desc: 'ある環境で維持できる最大の個体数（K）。食物・空間などの資源で決まる。' },
-    { term: '内的自然増加率', desc: '資源に制限がないときの、1個体あたりの増加の速さ（r）。' },
+    { term: '内的自然増加率（発展）', desc: '高校の教科書の範囲外。資源に制限がないときの、1個体あたりの増加の速さ（r）。' },
     { term: '密度効果', desc: '個体群密度の変化が、個体の発育や増殖率などに影響をおよぼすこと。' },
     { term: '被食者−捕食者相互関係', desc: '被食者が増えると捕食者が遅れて増え、捕食者が増えると被食者が減る…という周期的な変動が起こることがある。' },
     { term: '標識再捕法', desc: '捕まえた個体に標識をつけて放し、再び捕まえたときの標識個体の割合から全体の数を推定する方法。全体 ＝ 標識数 × 再捕獲数 ÷ 再捕獲中の標識数。' },

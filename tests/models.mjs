@@ -60,9 +60,12 @@ section('B2 血糖値の調節');
   check('健康：血糖値の上昇に続いてインスリンが上昇する（インスリンのピークは血糖値のピークより後）', sH.insulinPeakT > sH.peakT && sH.insulinPeak > H[0].I * 2, `血糖 ${sH.peakT}分 → インスリン ${sH.insulinPeakT}分、${f(sH.insulinPeak / H[0].I, 1)}倍`);
   const g180 = H[180].G;
   check('健康：食後2〜3時間で元に戻る（180分で空腹時±10以内）', near(g180, sH.fastingG, 10), `180分 ${f(g180, 0)}`);
-  const below = H.filter((r) => r.G < sH.fastingG - 3);
-  const gnMax = Math.max(...below.map((r) => r.N));
-  check('負のフィードバック：血糖値が空腹時より下がるとグルカゴンが増える', below.length > 0 && gnMax > H[0].N * 1.1, `グルカゴン最大 ${f(gnMax / H[0].N, 2)}倍`);
+  const dips = [0.5, 1, 1.5, 2].map((m) => {
+    const sm = gl.summarize(gl.simulate({ ...gl.PRESETS.healthy, meal: m }));
+    return sm.fastingG - sm.minG;
+  });
+  check('健康：食後に上昇した血糖値は空腹時の値へ戻り、空腹時を下回らない（食事量0.5〜2倍、下回りは1 mg/100mL未満）', dips.every((d) => d < 1), `下回り ${dips.map((d) => f(d, 1)).join('・')}`);
+  check('負のフィードバック：血糖値が低いほどグルカゴンの分泌が大きくなる（60＞100＞140 mg/100mL）', gl.low(60) > gl.low(100) && gl.low(100) > gl.low(140), `${f(gl.low(60), 2)} ＞ ${f(gl.low(100), 2)} ＞ ${f(gl.low(140), 3)}`);
   const high = H.filter((r) => r.G > sH.fastingG + 20);
   check('負のフィードバック：血糖値が高い間はグルカゴンが減る', high.every((r) => r.N < H[0].N), '');
   const T1 = gl.simulate(gl.PRESETS.type1);
@@ -135,6 +138,7 @@ section('B3 免疫の一次応答・二次応答');
   check('二次応答のピーク ＞ 一次応答のピーク（10倍以上、20通りの侵入日）', ok, detail);
   check('二次応答は一次応答より速く立ち上がる（同じ量に達するまでの日数が短い）', fasterOk);
   check('2回目が別の抗原Bなら一次応答と同じ形（ピーク量・ピークまでの日数が一致）＝記憶細胞は特異的', bOk);
+  check('一次応答：抗体が増えはじめるまで約1週間（6〜7日）、最大まで約2週間（12〜16日）', im.PRIMARY.lag >= 6 && im.PRIMARY.lag <= 7 && im.peakDelay(im.PRIMARY) >= 12 && im.peakDelay(im.PRIMARY) <= 16, `${im.PRIMARY.lag}日・${im.peakDelay(im.PRIMARY)}日`);
   check('一次応答は侵入後しばらく（潜伏期）抗体が増えない', im.responseShape(im.PRIMARY.lag - 0.1, im.PRIMARY) === 0 && im.PRIMARY.lag > im.SECONDARY.lag, `潜伏期 一次 ${im.PRIMARY.lag}日 > 二次 ${im.SECONDARY.lag}日`);
 }
 
@@ -149,6 +153,13 @@ section('B4 光の強さと光合成');
   check('補償点で見かけの光合成速度 = 0（光合成速度 = 呼吸速度）', near(ph.apparent(S, icS), 0, 1e-12) && near(ph.apparent(D, icD), 0, 1e-12));
   check('補償点：陽生植物 ＞ 陰生植物', icS > icD, `${f(icS)} ＞ ${f(icD)} キロルクス`);
   check('光飽和点：陽生植物 ＞ 陰生植物', ph.saturationPoint(S) > ph.saturationPoint(D), `${f(ph.saturationPoint(S), 1)} ＞ ${f(ph.saturationPoint(D), 1)}`);
+  const flat = [S, D].every((p) => {
+    const is = ph.saturationPoint(p);
+    return ph.gross(p, is) >= 0.98 * p.Pmax && ph.gross(p, 3 * is) - ph.gross(p, is) < 0.01 * p.Pmax;
+  });
+  check('光飽和点より強い光では光合成速度が増えない（飽和点で最大値の98%以上、飽和点の3倍の光でも増加は最大値の1%未満）', flat, `陽生 ${f(ph.gross(S, ph.saturationPoint(S)) / S.Pmax * 100, 1)}%・陰生 ${f(ph.gross(D, ph.saturationPoint(D)) / D.Pmax * 100, 1)}%`);
+  check('弱い光では光合成速度が光の強さにほぼ比例する（補償点の2倍までで直線からのずれ5%未満）', [S, D].every((p) => { const I = 2 * ph.compensationPoint(p); return Math.abs(ph.gross(p, I) - p.alpha * I) < 0.05 * p.alpha * I; }));
+  check('陽生植物の光飽和点はグラフの横軸（0〜60キロルクス）の中ほどにある', ph.saturationPoint(S) > 15 && ph.saturationPoint(S) < 40, `${f(ph.saturationPoint(S), 1)} キロルクス`);
   check('光の強さ0での見かけの光合成速度 = −呼吸速度', ph.apparent(S, 0) === -S.R && ph.apparent(D, 0) === -D.R);
   const x = ph.crossingPoint(S, D);
   let below = true;
@@ -157,8 +168,8 @@ section('B4 光の強さと光合成');
   for (let I = x + 0.01; I <= 60; I += 0.5) if (!(ph.apparent(S, I) > ph.apparent(D, I))) above = false;
   check('2本の曲線が弱光側で1回だけ交差する（交点より弱い光では陰生植物が有利、強い光では陽生植物が有利）', x != null && x < 10 && below && above, `交点 ${f(x)} キロルクス`);
   let mono = true;
-  for (let I = 0; I < 100; I += 0.5) if (ph.apparent(S, I + 0.5) <= ph.apparent(S, I) || ph.apparent(D, I + 0.5) <= ph.apparent(D, I)) mono = false;
-  check('見かけの光合成速度は光が強いほど大きく、頭打ちに近づく（単調増加・Pmax−R を超えない）', mono && ph.apparent(S, 1e6) < S.Pmax - S.R);
+  for (let I = 0; I < 100; I += 0.5) if (ph.apparent(S, I + 0.5) < ph.apparent(S, I) || ph.apparent(D, I + 0.5) < ph.apparent(D, I)) mono = false;
+  check('見かけの光合成速度は光が強いほど大きく（減らない）、Pmax−R を超えない', mono && ph.apparent(S, 1e6) <= S.Pmax - S.R + 1e-9);
   check('弱光（補償点の間）では陰生植物だけがCO₂を吸収する', ph.apparent(D, (icD + icS) / 2) > 0 && ph.apparent(S, (icD + icS) / 2) < 0);
 }
 
@@ -166,6 +177,7 @@ section('B4 光の強さと光合成');
 section('B5 生態系のバランス');
 {
   const base = ks.simulate({ o0: 1, o1: 1 });
+  check('表示は3種とも乱獲前＝100の相対値', near(base[0].o * ks.SCALE.o, 100, 1e-9) && near(base[0].u * ks.SCALE.u, 100, 1e-9) && near(base[0].k * ks.SCALE.k, 100, 1e-9));
   check('ラッコが変わらなければ、ウニ・ケルプも一定に保たれる', base.every((r) => near(r.u, base[0].u, 1e-6) && near(r.k, base[0].k, 1e-6)));
   const levels = [1, 0.8, 0.6, 0.4, 0.2, 0];
   const ends = levels.map((o1) => {

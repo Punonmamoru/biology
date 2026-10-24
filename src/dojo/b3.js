@@ -7,7 +7,7 @@ import { antibodyModel, peakDelay, PRIMARY, SECONDARY, MEMORY_DAYS } from '../mo
 import { sample } from '../lib/series.js';
 
 const DAYS = 100;
-const MIN_GAP = 10;
+const MIN_GAP = 21;
 
 export const dojo = {
   tasks: [
@@ -42,7 +42,7 @@ export const dojo = {
     const segAg = segmented({ label: '2回目の抗原', options: [{ value: 'A', label: '同じ抗原A' }, { value: 'B', label: '別の抗原B' }], value: st.antigen2, onChange: (v) => { st.antigen2 = v; update(); } });
     const exp = explainBox();
     root.append(
-      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あとに設定できる（記憶細胞ができるまでの時間を考えて）。`)),
+      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あと（一次応答がおさまってから）に設定できる。`)),
       panel('いま何が起きているか', exp.el),
     );
 
@@ -71,7 +71,7 @@ export const dojo = {
       });
 
       const lines = [];
-      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約${PRIMARY.lag}日かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
+      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約1週間かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
       if (second.kind === 'secondary') {
         lines.push(`2回目（同じ抗原A）：1回目にできた記憶細胞がすぐに増殖して形質細胞（抗体産生細胞）になるので、約${peakDelay(SECONDARY)}日で最大になり、量は約${fmt(p2 / pA1, 0)}倍（${fmt(p2, 0)}）。これが二次応答で、一次応答より速く、多量の抗体がつくられる。`);
       } else {
@@ -92,5 +92,5 @@ export const dojo = {
 dojo.tasks[0].check = (s) => s.log;
 dojo.tasks[1].check = (s) => s.antigen2 === 'B';
 dojo.tasks[2].check = (s) => s.antigen2 === 'A' && s.d2 - s.d1 >= 50 && s.kind2 === 'secondary';
-// MEMORY_DAYS（7日）より MIN_GAP（10日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
+// MEMORY_DAYS（7日）より MIN_GAP（21日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
 if (MIN_GAP < MEMORY_DAYS) throw new Error('MIN_GAP must be >= MEMORY_DAYS');

@@ -1,7 +1,7 @@
 // B4 光の強さと光合成 の問題
 import { fmt } from '../lib/format.js';
 import { KATA, distinctNumbers } from './common.js';
-import { PLANTS, apparent, compensationPoint } from '../models/photosynthesis.js';
+import { PLANTS, apparent, compensationPoint, saturationPoint } from '../models/photosynthesis.js';
 import { sample } from '../lib/series.js';
 
 const signed = (x) => fmt(x, 2);
@@ -53,29 +53,30 @@ export const B4 = [
     level: 2,
     kind: 'graph',
     make(rng) {
-      const n = rng.pick([1, 2, 3]);
-      const m = rng.int(1, 3);
-      const Pmax = (n + 1) * 2 * m;
-      const K = rng.pick([2, 4, 5]);
-      const R = rng.pick([2, 4]);
-      const X = K * n;
-      const P = (Pmax * n) / (n + 1);
-      const p = { Pmax, K, R };
-      const ap = P - R;
-      const d = distinctNumbers(P, [ap, Math.abs(ap - R), Pmax, R, P + 2 * R, P * 2, P + 1, P + 3], '', 0);
+      const R = rng.pick([1, 2, 3, 4]);
+      const Pmax = rng.pick([8, 10, 12, 14, 16]);
+      const p = { Pmax, alpha: 1, R };
+      const sat = saturationPoint(p);
+      const xMax = Math.ceil((sat * 1.6) / 5) * 5;
+      const flat = rng.chance(0.5);
+      const X = flat ? Math.round((sat + (xMax - sat) / 2) / 1) : Math.max(R + 1, Math.round(Pmax / 2));
+      const ap = Math.round(apparent(p, X));
+      const P = ap + R;
+      const d = distinctNumbers(P, [ap, Math.abs(ap - R), R, P + R, P * 2, P + 1, Pmax + R], '', 0);
       return {
-        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とする。`,
+        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とし、図の目盛りから整数で読み取ること。`,
         chart: {
-          x: { min: 0, max: K * 6, label: '光の強さ', step: K },
-          y: { min: -R - 2, max: Pmax, label: 'CO₂吸収速度', step: 2 },
-          series: [{ points: sample((I) => apparent(p, I), 0, K * 6, 200), color: 'c2', width: 3 }],
-          markers: [{ x: X, y: ap, color: 'c2' }],
+          x: { min: 0, max: xMax, label: '光の強さ', step: 5 },
+          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: 1 },
+          series: [{ points: sample((I) => apparent(p, I), 0, xMax, 200), color: 'c2', width: 3 }],
+          markers: [{ x: X, y: apparent(p, X), color: 'c2' }],
+          vlines: [{ x: X, color: 'muted', dash: 'dot', label: `${X}` }],
           alt: '見かけの光合成速度のグラフ',
         },
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${signed(ap)} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${signed(ap)} ＋ ${R} ＝ ${fmt(P, 2)} となる。`,
+        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${ap} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${ap} ＋ ${R} ＝ ${P} となる。`,
       };
     },
   },
@@ -101,7 +102,7 @@ export const B4 = [
         },
         correct,
         wrong: [
-          `${lab[ask]}：呼吸速度が大きいから`,
+          ask === 'sun' ? `${lab.sun}：呼吸速度が小さいから` : `${lab.shade}：呼吸速度が大きいから`,
           `${lab[other]}：補償点と光飽和点がともに${ask === 'shade' ? '小さい' : '大きい'}から`,
           `${lab[other]}：最大の光合成速度が${ask === 'shade' ? '大きい' : '小さい'}から`,
           `${lab[ask]}：光が弱いと光合成をしないから`,
@@ -164,19 +165,17 @@ export const B4 = [
     level: 3,
     kind: 'calc',
     make(rng) {
-      const cands = [];
-      for (const Ic of [0.5, 1, 1.5, 2, 3, 4]) for (const R of [1, 2, 3, 4]) for (const K of [2, 3, 4, 5, 6, 8, 10]) {
-        const Pmax = (R * (K + Ic)) / Ic;
-        if (Number.isInteger(Pmax) && Pmax <= 40 && Pmax > R) cands.push({ Ic, R, K, Pmax });
-      }
-      const c = rng.pick(cands);
-      const d = distinctNumbers(c.Ic, [(c.R * c.K) / c.Pmax, (c.R * c.K) / (c.Pmax + c.R), c.K, c.Pmax / c.R, c.Ic * 2, c.K / c.R], '', 2);
+      const k = rng.pick([0.5, 1, 1.5, 2, 2.5, 4]);
+      const Ic = rng.pick([0.4, 0.5, 0.8, 1, 1.2, 1.5, 2]);
+      const R = Number((k * Ic).toFixed(2));
+      if (!Number.isInteger(R * 10)) return this.make(rng);
+      const d = distinctNumbers(Ic, [k / R, R * k, R + k, R / k / 2, Ic * 2, Ic + 0.5, Ic * 3, Ic + 1.5], ' キロルクス', 2);
       return {
-        text: `ある植物の光合成速度 P（呼吸を差し引く前）が、光の強さ I を用いて P ＝ ${c.Pmax}I／(${c.K} ＋ I) で表され、呼吸速度は ${c.R} で一定である。この植物の補償点（光の強さ）はいくらか。`,
+        text: `ある植物では、弱い光の範囲で光合成速度（呼吸を差し引く前）が光の強さに比例し、光の強さが1キロルクス増えるごとに光合成速度が ${k} ずつ大きくなる。呼吸速度が ${R} で一定のとき、この植物の補償点は何キロルクスか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `補償点では光合成速度と呼吸速度が等しいので、${c.Pmax}I／(${c.K}＋I) ＝ ${c.R} を解く。${c.Pmax}I ＝ ${c.R}(${c.K}＋I) より I ＝ ${c.R}×${c.K}／(${c.Pmax}−${c.R}) ＝ ${fmt(c.Ic, 2)} となり、これは見かけの光合成速度が0になる光の強さだからである。`,
+        explanation: `補償点では光合成速度と呼吸速度が等しいので、${k} × I ＝ ${R} より I ＝ ${R} ÷ ${k} ＝ ${fmt(Ic, 2)} キロルクスとなる。補償点は見かけの光合成速度が0になる光の強さだから、光合成速度が呼吸速度に追いつく点を求めればよい。`,
       };
     },
   },
