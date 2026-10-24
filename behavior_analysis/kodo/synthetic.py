@@ -248,10 +248,12 @@ def _body_nodes(p: np.ndarray, body_length: float) -> np.ndarray:
     k = np.ones(9) / 9  # 体の向きは急には変わらないので、進行方向を 9 フレームでならす
     d = np.c_[np.convolve(d[:, 0], k, mode="same"), np.convolve(d[:, 1], k, mode="same")]
     norm = np.hypot(d[:, 0], d[:, 1])
+    # 止まっている間の小さな揺れで体の向きが反転しないよう、ある程度動いたときだけ向きを更新する
+    min_move = 0.3 * np.median(norm[norm > 0]) if np.any(norm > 0) else 0.0
     heading = np.zeros((n, 2))
     last = np.array([1.0, 0.0])
     for k in range(n):
-        if norm[k] > 1e-9:
+        if norm[k] > max(min_move, 1e-9):
             last = d[k] / norm[k]
         heading[k] = last
     half = body_length / 2

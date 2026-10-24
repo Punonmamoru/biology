@@ -12,9 +12,12 @@ SLEAP・TrackMate・手動追跡のどれを読み込んでも、最後はこの
 * サンプル k のフレーム番号は ``frame_start + k * frame_step``。
   ふつうは ``frame_step = 1``（全フレーム）。手動追跡で 10 フレームおきに
   クリックした場合などは ``frame_step = 10`` になる。
-* 時刻 [s] は解析区間の最初のサンプルを 0 秒として
-  ``t_k = k * frame_step / fps``。隣り合うサンプルの時間間隔は
-  ``dt = frame_step / fps``。
+* 時刻 [s] は動画の 0 フレーム目を 0 秒として ``t_k = frame_k / fps``。
+  どの形式で読み込んでも、同じ動画の同じフレームは同じ時刻になる
+  （TrackMate や手動追跡で最初の記録が 50 フレーム目なら、最初の時刻は 50/fps 秒）。
+  隣り合うサンプルの時間間隔は ``dt = frame_step / fps``。
+* 前処理の引数（max_gap, window など）の単位は「サンプル」。frame_step = 1 なら
+  フレームと同じだが、frame_step = 10 なら 1 サンプル = 10 フレーム。
 """
 from __future__ import annotations
 
@@ -148,12 +151,12 @@ class Tracks:
 
     @property
     def time(self) -> np.ndarray:
-        """各サンプルの時刻 [s]（最初のサンプルが 0 秒）。"""
-        return np.arange(self.n_frames) * self.dt
+        """各サンプルの時刻 [s] = フレーム番号 / fps（動画の 0 フレーム目が 0 秒）。"""
+        return self.frames / self.require_fps()
 
     @property
     def duration(self) -> float:
-        """解析区間の長さ [s] = (サンプル数 - 1) × dt。"""
+        """解析区間の長さ [s] = (サンプル数 - 1) × dt（最初と最後のサンプルの時刻の差）。"""
         return max(self.n_frames - 1, 0) * self.dt
 
     # ------------------------------------------------------------------ 取り出し

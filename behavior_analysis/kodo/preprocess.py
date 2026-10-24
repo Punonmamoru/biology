@@ -78,25 +78,32 @@ def _rolling_nanmedian(a: np.ndarray, window: int) -> np.ndarray:
         return np.nanmedian(win, axis=-1)
 
 
-def remove_outliers(tracks: Tracks, threshold: float, window: int = 7) -> Tracks:
+def remove_outliers(tracks: Tracks, threshold: float, window: int = 7, k_step: float = 3.0) -> Tracks:
     """移動中央値からの距離で外れ値を除く（ハンペル型フィルタ）。
 
-    定義::
+    定義（h = window // 2。窓は前後それぞれ h サンプル）::
 
-        m_t = ( median(x_{t-h..t+h}), median(y_{t-h..t+h}) )     h = window // 2
+        m_t = ( median(x_{t-h..t+h}), median(y_{t-h..t+h}) )
+        s_t = 窓の中の 1 サンプルの移動距離 |p_{u+1} - p_u| の中央値
         d_t = | p_t - m_t |
-        d_t > threshold なら p_t を欠損にする
+        d_t > max(threshold, k_step × s_t) なら p_t を欠損にする
 
-    中央値は外れ値に引きずられにくいので、``window // 2`` フレーム以下しか
-    続かない誤検出（別の物体に一瞬飛ぶなど）を取り除ける。
-    等速直線運動では m_t = p_t になる（窓の中で x, y がそれぞれ単調なので）。
+    中央値は外れ値に引きずられにくいので、h サンプル以下しか続かない誤検出
+    （別の物体に一瞬飛ぶなど）を取り除ける。等速直線運動では m_t = p_t になる。
+
+    x と y を別々に中央値にとるので、軌跡が曲がると本物の点でも m_t から離れる
+    （U ターンの頂点で 1 サンプルの移動距離の約 2 倍）。速く曲がる動物の本物の点を
+    消さないよう、許す距離を「その付近の 1 サンプルの移動距離の k_step 倍」以上にする。
+    そのため、速く動いている最中の小さな飛びは残ることがある（:func:`remove_jumps` で除ける）。
 
     Parameters
     ----------
     threshold : float
-        許す距離（tracks と同じ単位。px なら px）。目安は体長の半分程度。
+        許す距離の最小値（tracks と同じ単位。px なら px）。目安は体長の半分程度。
     window : int
-        奇数のフレーム数。
+        窓の幅（奇数のサンプル数）。
+    k_step : float
+        1 サンプルの移動距離の何倍までを本物の動きとみなすか。
     """
     if window < 3 or window % 2 == 0:
         raise ValueError("window は 3 以上の奇数にしてください")
@@ -106,10 +113,16 @@ def remove_outliers(tracks: Tracks, threshold: float, window: int = 7) -> Tracks
         mx = _rolling_nanmedian(p[:, 0], window)
         my = _rolling_nanmedian(p[:, 1], window)
         d = np.hypot(p[:, 0] - mx, p[:, 1] - my)
-        bad = d > threshold
+        steps = np.hypot(*np.diff(p, axis=0).T)
+        # サンプル t の窓に入るステップ（t-h → t+h の間の 2h 本）の中央値
+        s_med = _rolling_nanmedian(np.append(steps, np.nan), window)
+        limit = np.fmax(threshold, k_step * s_med)
+        with np.errstate(invalid="ignore"):
+            bad = d > limit
         n_removed += int(bad.sum())
         p[bad] = np.nan
-    out.history.append(f"remove_outliers(threshold={threshold}, window={window}): {n_removed} 点を除去")
+    out.history.append(f"remove_outliers(threshold={threshold}, window={window}, k_step={k_step}): "
+                       f"{n_removed} 点を除去")
     return out
 
 

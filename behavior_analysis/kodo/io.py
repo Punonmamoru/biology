@@ -91,7 +91,8 @@ def _decode_strings(arr) -> list:
     return out
 
 
-def load_sleap_h5(path, fps: Optional[float] = None, min_score: Optional[float] = None) -> Tracks:
+def load_sleap_h5(path, fps: Optional[float] = None, min_score: Optional[float] = None,
+                  y_down: bool = True) -> Tracks:
     """SLEAP の解析ファイル（File → Export Analysis HDF5 で作る ``.analysis.h5``）を読む。
 
     SLEAP はこのファイルを MATLAB 向けに転置して保存するので、h5py で読んだ
@@ -107,6 +108,8 @@ def load_sleap_h5(path, fps: Optional[float] = None, min_score: Optional[float] 
         後で ``tracks.fps = 30`` のように設定する。
     min_score : float, optional
         指定すると、点の信頼度スコア（point_scores）がこの値未満の点を欠損にする。
+    y_down : bool
+        座標の y 軸が下向き（画像の座標）なら True。SLEAP の座標は画像の座標なので True。
     """
     import h5py
 
@@ -122,10 +125,20 @@ def load_sleap_h5(path, fps: Optional[float] = None, min_score: Optional[float] 
     n_nodes = len(node_names)
     if raw.ndim != 4:
         raise ValueError(f"'tracks' の次元が想定外です: {raw.shape}")
-    if raw.shape[1] == 2 and (n_nodes == 0 or raw.shape[2] == n_nodes):
+    std_ok = raw.shape[1] == 2 and (n_nodes == 0 or raw.shape[2] == n_nodes)
+    alt_ok = raw.shape[2] == 2 and (n_nodes == 0 or raw.shape[1] == n_nodes)
+    if std_ok and alt_ok:
+        # 部位が 2 つのときは形だけでは決まらない（(T, 2, 2, F) と (F, 2, 2, T)）。個体名の数で判定する
+        n_tr = len(track_names)
+        if n_tr and n_tr == raw.shape[3] and n_tr != raw.shape[0]:
+            std_ok = False
+        elif not (n_tr and n_tr == raw.shape[0]):
+            warnings.warn("'tracks' の軸の並びを形から判定できなかったので、SLEAP の標準の"
+                          "（個体, 2, 部位, フレーム）とみなしました。個体数とフレーム数を確かめてください。")
+    if std_ok:
         xy = raw.transpose(0, 3, 2, 1)  # (T, 2, N, F) → (T, F, N, 2)
         scores = None if scores_raw is None else scores_raw.transpose(0, 2, 1)  # (T, N, F) → (T, F, N)
-    elif raw.shape[2] == 2 and (n_nodes == 0 or raw.shape[1] == n_nodes):
+    elif alt_ok:
         xy = raw.transpose(3, 0, 1, 2)  # (F, N, 2, T) → (T, F, N, 2)
         scores = None if scores_raw is None else scores_raw.transpose(2, 0, 1)  # (F, N, T) → (T, F, N)
     else:
@@ -142,6 +155,7 @@ def load_sleap_h5(path, fps: Optional[float] = None, min_score: Optional[float] 
         track_names=track_names,
         fps=fps,
         units="px",
+        y_down=y_down,
         scores=scores,
         source=path.name,
     )
@@ -205,20 +219,44 @@ def _find_col(columns, aliases) -> Optional[str]:
     return None
 
 
+#: 長さの単位 → mm への換算係数（px は換算しない）
+_TO_MM = {"mm": 1.0, "um": 1e-3, "nm": 1e-6, "cm": 10.0, "m": 1000.0}
+
+
+def _parse_unit(text: str) -> Optional[str]:
+    """単位の文字列（"(micron)", "µm", "pixel" など）を "px", "mm", "um", "nm", "cm", "m" にする。"""
+    t = text.strip().strip("()[]").strip().lower()
+    if not t:
+        return None
+    if t in ("pixel", "pixels", "px"):
+        return "px"
+    if t in ("micron", "microns", "µm", "μm", "um", "micrometer", "micrometre"):
+        return "um"
+    if t in ("nm", "nanometer", "nanometre"):
+        return "nm"
+    if t in ("mm", "millimeter", "millimetre"):
+        return "mm"
+    if t in ("cm", "centimeter", "centimetre"):
+        return "cm"
+    if t in ("m", "meter", "metre"):
+        return "m"
+    return "?" + t
+
+
 def _detect_tm_units(text_rows: pd.Series) -> Optional[str]:
-    """TrackMate の単位行（例: "(micron)", "(pixel)"）から単位を判定する。"""
+    """TrackMate の単位行（例: "(micron)", "(pixel)"）から単位を判定する。
+
+    単位らしい行が見つからなければ None、見つかったが知らない単位なら "?<単位>"。
+    """
     for v in text_rows.astype(str):
-        s = v.strip().lower()
-        if "pixel" in s:
-            return "px"
-        if "micron" in s or "µm" in s or "μm" in s or "um)" in s:
-            return "um"
-        if "mm" in s:
-            return "mm"
+        v = v.strip()
+        if v.startswith("(") and v.endswith(")"):
+            return _parse_unit(v)
     return None
 
 
-def load_trackmate_csv(path, fps: Optional[float] = None, units: Optional[str] = None) -> Tracks:
+def load_trackmate_csv(path, fps: Optional[float] = None, units: Optional[str] = None,
+                       y_down: bool = True) -> Tracks:
     """Fiji/TrackMate のスポット表（Spots の CSV 書き出し）を読む。
 
     TrackMate 7 以降の CSV は、1 行目が列名（``POSITION_X`` など）、2〜4 行目が
@@ -232,10 +270,12 @@ def load_trackmate_csv(path, fps: Optional[float] = None, units: Optional[str] =
 
     Parameters
     ----------
-    units : {"px", "mm", "um"}, optional
-        座標の単位。省略すると単位行から判定し、判定できなければ "px" とみなす。
+    units : {"px", "mm", "um", "nm", "cm", "m"}, optional
+        座標の単位。省略すると単位行から判定し、単位行がなければ "px" とみなす。
         TrackMate で画像に較正（Image → Properties）を設定していると座標は
-        µm や mm になる。"um" は mm に換算して読み込む。
+        µm や mm になる。px 以外は mm に換算して読み込む。
+    y_down : bool
+        y 軸が下向き（画像の座標）なら True。TrackMate の座標は画像の座標なので True。
     """
     path = Path(path)
     df = _read_csv_any_encoding(path, dtype=str, keep_default_na=False)
@@ -252,10 +292,15 @@ def load_trackmate_csv(path, fps: Optional[float] = None, units: Optional[str] =
         units = _detect_tm_units(header_rows[cx]) if len(header_rows) else None
         if units is None:
             units = "px"
-            warnings.warn("TrackMate の CSV から単位を判定できなかったので px とみなしました。"
+            warnings.warn("TrackMate の CSV に単位の行がなかったので px とみなしました。"
                           "較正していた場合は units='mm' などを指定してください。")
-    if units not in ("px", "mm", "um"):
-        raise ValueError('units は "px", "mm", "um" のどれかにしてください')
+        elif units.startswith("?"):
+            raise ValueError(f"TrackMate の CSV の単位「{units[1:]}」が分かりません。"
+                             "units='px' や units='um' のように指定してください。")
+    else:
+        units = _parse_unit(units) or units
+    if units != "px" and units not in _TO_MM:
+        raise ValueError('units は "px", "mm", "um", "nm", "cm", "m" のどれかにしてください')
 
     df["_frame"] = pd.to_numeric(df[cf], errors="coerce").astype(int)
     df["_x"] = pd.to_numeric(df[cx], errors="coerce")
@@ -271,10 +316,11 @@ def load_trackmate_csv(path, fps: Optional[float] = None, units: Optional[str] =
     if df.empty:
         raise ValueError("トラックに属するスポットが 1 つもありません。")
 
-    scale = 0.001 if units == "um" else 1.0
-    out_units = "mm" if units in ("mm", "um") else "px"
+    scale = _TO_MM.get(units, 1.0)
+    out_units = "px" if units == "px" else "mm"
     tracks = _long_to_tracks(df, "_track", "_frame", "_x", "_y", fps=fps, units=out_units,
                              source=path.name, scale=scale, name_prefix="track_")
+    tracks.y_down = y_down
     tracks.history.append(f"load_trackmate_csv('{path.name}', units={units})")
     return tracks
 
@@ -316,9 +362,10 @@ _MANUAL_ALIASES = {
 }
 
 
-def load_manual_csv(path, fps: Optional[float] = None, units: str = "px",
+def load_manual_csv(path, fps: Optional[float] = None, units: Optional[str] = None,
                     frame_col: Optional[str] = None, x_col: Optional[str] = None,
-                    y_col: Optional[str] = None, track_col: Optional[str] = None) -> Tracks:
+                    y_col: Optional[str] = None, track_col: Optional[str] = None,
+                    y_down: bool = True) -> Tracks:
     """手動追跡の CSV（最低限 ``frame, x, y`` の 3 列）を読む。
 
     * 列名は大文字小文字を区別しない。日本語の列名（フレーム, 個体 など）も可。
@@ -326,8 +373,14 @@ def load_manual_csv(path, fps: Optional[float] = None, units: str = "px",
     * 個体を区別する列（``id`` / ``track`` / ``個体``）があれば複数個体として扱う。
     * 10 フレームおきにクリックした、のように一定間隔で記録したデータは、
       その間隔を ``frame_step`` として保持する（間を欠損にはしない）。
-      間隔が一定でない場合は、間隔の最大公約数を frame_step にし、
-      記録のないサンプルは欠損になる。
+      間隔が一定でない場合や、個体ごとに記録したフレームがずれている場合は、
+      全個体の間隔の最大公約数を frame_step にし、記録のないサンプルは欠損になる
+      （このとき警告を出す。interpolate_gaps で埋めるか、個体ごとにファイルを分ける）。
+    * units を省略すると、x 列の名前から判定する（``x_mm`` や ``x [mm]`` なら mm、
+      それ以外は px）。指定した units と列名が食い違うとエラーにする。
+    * y_down: y 軸が下向き（画像の座標。ImageJ/Fiji の既定）なら True。
+      ImageJ の Set Measurements で "Invert Y coordinates" にしていた場合や、
+      y 軸が上向きのソフトで記録した場合は False にする（転向角の左右が逆になるため）。
     """
     path = Path(path)
     sep = "\t" if path.suffix.lower() == ".tsv" else None
@@ -351,10 +404,26 @@ def load_manual_csv(path, fps: Optional[float] = None, units: str = "px",
     df["_y"] = pd.to_numeric(df[cy], errors="coerce")
     df["_track"] = df[ct].astype(str).str.strip() if ct is not None else "0"
     prefix = "track_" if ct is None else ""
+    col_units = _units_from_colname(cx)
+    if units is None:
+        units = col_units or "px"
+    elif col_units is not None and col_units != units:
+        raise ValueError(f"units='{units}' ですが、列名「{cx}」は {col_units} 単位に見えます。どちらかを直してください。")
+    if units not in ("px", "mm"):
+        raise ValueError('units は "px" か "mm" にしてください')
     tracks = _long_to_tracks(df, "_track", "_frame", "_x", "_y", fps=fps, units=units,
                              source=path.name, name_prefix=prefix)
-    tracks.history.append(f"load_manual_csv('{path.name}')")
+    tracks.y_down = y_down
+    tracks.history.append(f"load_manual_csv('{path.name}', units={units})")
     return tracks
+
+
+def _units_from_colname(name) -> Optional[str]:
+    """列名（x_mm, "x [mm]", "X(px)" など）から単位を読む。分からなければ None。"""
+    m = re.search(r"(?:[_\s\[(]|^)(mm|px|pixel)\)?\]?\s*$", str(name).strip().lower())
+    if not m:
+        return None
+    return "mm" if m.group(1) == "mm" else "px"
 
 
 def _find_col_lower(columns, aliases) -> Optional[str]:
@@ -399,6 +468,17 @@ def _long_to_tracks(df, track_col, frame_col, x_col, y_col, fps, units, source,
     fi = ((g[frame_col].to_numpy() - f0) // step).astype(int)
     xy[ti, fi, 0, 0] = g[x_col].to_numpy() * scale
     xy[ti, fi, 0, 1] = g[y_col].to_numpy() * scale
+    for i, name in enumerate(names):
+        rec = np.flatnonzero(np.all(np.isfinite(xy[i, :, 0]), axis=1))
+        if len(rec) > 2:
+            k = int(np.median(np.diff(rec)))
+            if k > 1:
+                warnings.warn(
+                    f"個体 {name_prefix}{name} の記録は、ほとんどが {k} サンプルおきです"
+                    f"（1 サンプル = {step} フレーム）。個体ごとに記録したフレームがずれているか、"
+                    "間隔が一定でない行がまざっています。このままでは隣り合うサンプルがそろわず"
+                    f"速さが計算できないので、interpolate_gaps(max_gap={k - 1}) で埋めるか、"
+                    "個体ごとに別のファイルにしてください。")
     return Tracks(
         xy=xy,
         node_names=["point"],

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -156,7 +157,7 @@ def plot_speed(tracks: Tracks, node=None, threshold: Optional[float] = None, axe
     """
     apply_style()
     v = M.speed(tracks, node)
-    t = (np.arange(v.shape[1]) + 0.5) * tracks.dt
+    t = tracks.time[:-1] + 0.5 * tracks.dt  # ステップの中点の時刻
     n = tracks.n_tracks
     if axes is None:
         fig, axes = plt.subplots(n, 1, figsize=(8.0, 1.9 * n + 0.8), sharex=True, sharey=True, squeeze=False)
@@ -183,12 +184,16 @@ def plot_speed(tracks: Tracks, node=None, threshold: Optional[float] = None, axe
     return fig, axes
 
 
-def plot_turning_hist(tracks: Tracks, node=None, min_step: float = 0.0, bin_deg: float = 15.0,
+def plot_turning_hist(tracks: Tracks, node=None, min_step: Optional[float] = None, bin_deg: float = 15.0,
                       ax=None, title: Optional[str] = "転向角の分布"):
     """転向角（−180°〜180°、正 = 左）のヒストグラム。個体ごとに線種を変えた階段状の線で重ねる。
 
     縦軸は割合（各個体の角度の数で割る）なので、記録の長さが違う個体どうしでも比べられる。
+    min_step（転向角を測る最小の移動距離、体長の 1/4 程度）は必ず指定する。
+    0 にすると検出のぶれで角度がでたらめになる。
     """
+    if min_step is None:
+        raise ValueError("min_step（転向角を測る最小の移動距離。体長の 1/4 程度）を指定してください")
     apply_style()
     fig, ax = _new_ax(ax, (6.4, 4.2))
     edges = np.arange(-180, 180 + bin_deg, bin_deg)
@@ -209,7 +214,7 @@ def plot_turning_hist(tracks: Tracks, node=None, min_step: float = 0.0, bin_deg:
     ax.set_ylim(bottom=0)
     ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), handlelength=3.2)
     if title:
-        ax.set_title(title + (f"（min_step = {min_step:g} {_u(tracks)}）" if min_step else ""))
+        ax.set_title(f"{title}（min_step = {min_step:g} {_u(tracks)}）")
     fig.tight_layout()
     return fig, ax
 
@@ -342,7 +347,7 @@ def save_figure(fig, path, dpi: int = 200) -> Path:
 
 
 def save_all_figures(tracks: Tracks, outdir, node=None, speed_threshold: Optional[float] = None,
-                     min_step: float = 0.0, bin_size: Optional[float] = None, rois: Sequence = (),
+                     min_step: Optional[float] = None, bin_size: Optional[float] = None, rois: Sequence = (),
                      prefix: str = "", close: bool = True) -> dict:
     """軌跡・速度・転向角・ヒートマップ・MSD の 5 枚を outdir に保存し、パスの辞書を返す。"""
     outdir = Path(outdir)
@@ -353,10 +358,13 @@ def save_all_figures(tracks: Tracks, outdir, node=None, speed_threshold: Optiona
     figs = {
         "trajectory": plot_trajectories(tracks, node=node, rois=rois)[0],
         "speed": plot_speed(tracks, node=node, threshold=speed_threshold)[0],
-        "turning_hist": plot_turning_hist(tracks, node=node, min_step=min_step)[0],
-        "heatmap": plot_heatmap(tracks, bin_size=bin_size, node=node, rois=rois)[0],
-        "msd": plot_msd(tracks, node=node)[0],
     }
+    if min_step is None:
+        warnings.warn("min_step が指定されていないので、転向角のヒストグラムは保存しませんでした。")
+    else:
+        figs["turning_hist"] = plot_turning_hist(tracks, node=node, min_step=min_step)[0]
+    figs["heatmap"] = plot_heatmap(tracks, bin_size=bin_size, node=node, rois=rois)[0]
+    figs["msd"] = plot_msd(tracks, node=node)[0]
     names = {"trajectory": "軌跡", "speed": "速度", "turning_hist": "転向角", "heatmap": "ヒートマップ", "msd": "MSD"}
     paths = {}
     for k, fig in figs.items():

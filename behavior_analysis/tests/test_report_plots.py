@@ -29,7 +29,9 @@ def test_summarize_straight_and_stationary():
     b = S.stationary(n_frames=301, fps=30, position=(50, 50)).points()[0]
     tr = kodo.Tracks(xy=np.stack([a, b]), fps=30, units="mm", track_names=["直進", "静止"])
     roi = kodo.RectROI(-1, -1, 20.5, 1, name="start")
-    df = kodo.summarize(tr, speed_threshold=1.0, rois=[roi])
+    with pytest.warns(UserWarning, match="min_step"):
+        df = kodo.summarize(tr, speed_threshold=1.0, rois=[roi])
+    assert "alternation_index" not in df.columns  # min_step なしでは転向角の列を出さない
     r0, r1 = df.iloc[0], df.iloc[1]
     assert r0["straightness"] == pytest.approx(1.0)
     assert r0["total_distance"] == pytest.approx(100.0)

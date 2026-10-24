@@ -40,6 +40,7 @@ __all__ = [
     "nearest_neighbor_distance",
     "msd",
     "fit_msd",
+    "msd_noise_offset",
     "detect_id_swaps",
     "swap_tracks",
 ]
@@ -190,7 +191,8 @@ def turn_summary(theta: np.ndarray) -> dict:
     """転向角の要約。
 
     * mean_abs_turn_deg : |θ| の平均 [°]（どれだけ曲がるか）
-    * left_turn_fraction : θ > 0 の割合（0 でない角度のうち。0.5 なら左右に偏りなし）
+    * left_turn_fraction : θ > 0 の割合（0 < |θ| < π の角度のうち。0.5 なら左右に偏りなし）。
+      ちょうど 180° の U ターンは左右が決まらないので数えない。
     * turn_mean_resultant : 平均合成ベクトル長 R = |mean(e^{iθ})|。
       0〜1。1 に近いほど毎回同じ角度で曲がる（まっすぐ進み続ける場合も 1 に近い）。
     """
@@ -199,7 +201,7 @@ def turn_summary(theta: np.ndarray) -> dict:
     if len(theta) == 0:
         return {"n_turns": 0, "mean_abs_turn_deg": np.nan, "left_turn_fraction": np.nan,
                 "turn_mean_resultant": np.nan}
-    nz = theta[theta != 0]
+    nz = theta[(theta != 0) & (np.abs(theta) < np.pi)]
     return {
         "n_turns": int(len(theta)),
         "mean_abs_turn_deg": float(np.degrees(np.mean(np.abs(theta)))),
@@ -208,38 +210,53 @@ def turn_summary(theta: np.ndarray) -> dict:
     }
 
 
-def turn_events(theta: np.ndarray, turn_deg: float = 45.0, min_deg: float = 5.0) -> np.ndarray:
+def turn_events(theta: np.ndarray, turn_deg: float = 45.0, min_deg: float = 5.0,
+                max_straight: int = 3) -> np.ndarray:
     """細かい転向角の並びから「曲がり」を取り出し、その向き（+1=左, -1=右）を返す。
 
     定義::
 
-        |θ_k| < min_deg の角度は 0（直進）とみなす。
-        同じ符号の角度が連続する区間ごとに合計 Θ = Σ θ_k をとる。
+        |θ_k| ≥ min_deg の角度を「曲がる角度」、それ未満を「直進」とよぶ。
+        曲がる角度の符号が変わるか、直進が max_straight 個以上続くまでを 1 つの区間とし、
+        区間内の角度（間にはさまる直進の小さな角度も含む）を合計して Θ とする。
         |Θ| ≥ turn_deg の区間を 1 回の「曲がり」とし、その符号を返す。
 
-    1 回の曲がり（例えば 90°）が何フレームかに分かれて記録されても 1 回と数える。
+    1 回の曲がり（例えば 90°）が何サンプルかに分かれて記録されても、途中にほぼ直進の
+    角度が少しはさまっても 1 回と数える。turning_angles の min_step で間引いた角度に使うと、
+    max_straight × min_step 以上まっすぐ進んだら曲がりの区切りとみなすことになる。
     """
     theta = np.asarray(theta, dtype=float)
     theta = theta[np.isfinite(theta)]
-    th = np.where(np.abs(theta) < np.radians(min_deg), 0.0, theta)
-    sign = np.sign(th)
+    big = np.abs(theta) >= np.radians(min_deg)
     events = []
-    k = 0
-    while k < len(th):
-        if sign[k] == 0:
-            k += 1
-            continue
-        j = k
-        while j + 1 < len(th) and sign[j + 1] == sign[k]:
-            j += 1
-        total = th[k:j + 1].sum()
-        if abs(total) >= np.radians(turn_deg):
+    cur_sign, total, n_straight = 0, 0.0, 0
+
+    def close():
+        if cur_sign != 0 and abs(total) >= np.radians(turn_deg):
             events.append(int(np.sign(total)))
-        k = j + 1
+
+    for th, is_big in zip(theta, big):
+        if not is_big:
+            n_straight += 1
+            if cur_sign != 0:
+                if n_straight >= max_straight:
+                    close()
+                    cur_sign, total = 0, 0.0
+                else:
+                    total += th
+            continue
+        sgn = 1 if th > 0 else -1
+        if sgn != cur_sign:  # 向きが変わった（または新しい区間の始まり）
+            close()
+            cur_sign, total = sgn, 0.0
+        total += th
+        n_straight = 0
+    close()
     return np.asarray(events, dtype=int)
 
 
-def alternation_index(theta: np.ndarray, turn_deg: float = 45.0, min_deg: float = 5.0) -> float:
+def alternation_index(theta: np.ndarray, turn_deg: float = 45.0, min_deg: float = 5.0,
+                      max_straight: int = 3) -> float:
     """交替性転向の指数 A = （左右が入れ替わった回数）/（連続する曲がりの組の数）。
 
     曲がりの向きの列 e_1, e_2, ..., e_n（:func:`turn_events`）について::
@@ -249,8 +266,9 @@ def alternation_index(theta: np.ndarray, turn_deg: float = 45.0, min_deg: float 
     左右をでたらめに選ぶなら A ≈ 0.5、必ず交互（右→左→右…）なら 1、
     いつも同じ向きなら 0。曲がりが 2 回未満なら NaN。
     ダンゴムシの交替性転向（強制的に曲がらされた後、次は逆に曲がる）を調べるのに使う。
+    検出のぶれで角度がでたらめにならないよう、turning_angles の min_step を必ず設定すること。
     """
-    e = turn_events(theta, turn_deg=turn_deg, min_deg=min_deg)
+    e = turn_events(theta, turn_deg=turn_deg, min_deg=min_deg, max_straight=max_straight)
     if len(e) < 2:
         return float("nan")
     return float(np.mean(e[1:] != e[:-1]))
@@ -367,41 +385,55 @@ class RectROI:
         return RectROI(self.x0 * factor, self.y0 * factor, self.x1 * factor, self.y1 * factor, self.name)
 
 
-def roi_stats(p: np.ndarray, roi, dt: float, min_samples: int = 1, count_initial: bool = False) -> dict:
-    """領域の滞在時間・進入回数・最初に入るまでの時間。
+def roi_stats(p: np.ndarray, roi, dt: float, min_samples: int = 1, count_initial: bool = False,
+              t0: float = 0.0) -> dict:
+    """領域の滞在時間・進入回数・最初に入った時刻。
 
     定義（有効な点だけを時間順に並べ、領域内なら s_k = 1、外なら 0）::
 
         滞在時間   T_in = Δt × #{ k : s_k = 1 }
         滞在割合   T_in / (Δt × 有効な点の数)
-        進入回数   N = #{ k ≥ 1 : s_{k-1} = 0 かつ s_k = 1 }
-        初進入時間 最初に s_k = 1 となるサンプルの時刻 [s]（入らなければ NaN）
+        進入回数   N = #{ k ≥ 1 : s'_{k-1} = 0 かつ s'_k = 1 }
+        初進入時刻 最初に s'_k = 1 となるサンプルの時刻 [s]（入らなければ NaN）
+
+    s' は s のぶれを取り除いたもの（min_samples ≥ 2 のとき）:
+      1. 領域内の区間にはさまれた、min_samples より短い「外」の区間を「内」とみなす
+         （境界の上で一瞬はみ出しただけの出入りを数えない）
+      2. そのうえで min_samples より短い「内」の区間を「外」とみなす
+         （境界に一瞬触れただけの進入を数えない）
+    min_samples = 1 なら s' = s。滞在時間・滞在割合は s そのもので数える。
 
     * 欠損の間は「直前と同じ状態だった」とみなして、欠損の前後で外→内と
       変わっていれば 1 回の進入と数える。
-    * 境界付近で検出が揺れると、出入りが細かく数えられてしまう。
-      min_samples を 2 以上にすると、それより短く領域内にいた区間は
-      進入回数に数えない（滞在時間はそのまま数える）。
-    * 記録の最初から領域内にいた場合、count_initial=False なら進入に数えない。
+    * 記録の最初から領域内にいた場合、count_initial=False なら進入に数えない
+      （初進入時刻は最初のサンプルの時刻になる）。
+    * 時刻は t0 + （サンプル番号）× Δt。Tracks から計算するときは
+      t0 = frame_start / fps（動画の 0 フレーム目を 0 秒）を渡す。
     """
     idx, q = _valid_points(p)
+    nan = float("nan")
     if len(q) == 0:
-        return {"time_s": np.nan, "fraction": np.nan, "entries": np.nan, "first_entry_s": np.nan}
+        return {"time_s": nan, "fraction": nan, "entries": nan, "first_entry_s": nan,
+                "first_entry_sample": nan}
     s = roi.contains(q)
     s_ent = s.copy()
     if min_samples > 1:
-        for a, b in valid_runs(s):
+        for a, b in valid_runs(~s_ent):
+            if 0 < a and b < len(s_ent) and b - a < min_samples:
+                s_ent[a:b] = True
+        for a, b in valid_runs(s_ent):
             if b - a < min_samples:
                 s_ent[a:b] = False
     entries = int(np.sum(~s_ent[:-1] & s_ent[1:]))
     if count_initial and s_ent[0]:
         entries += 1
-    first = float(idx[np.argmax(s)] * dt) if s.any() else float("nan")
+    first_sample = int(idx[np.argmax(s_ent)]) if s_ent.any() else None
     return {
         "time_s": float(s.sum() * dt),
         "fraction": float(s.mean()),
         "entries": entries,
-        "first_entry_s": first,
+        "first_entry_s": t0 + first_sample * dt if first_sample is not None else nan,
+        "first_entry_sample": first_sample if first_sample is not None else nan,
     }
 
 
@@ -470,40 +502,64 @@ def msd(p: np.ndarray, max_lag: Optional[int] = None):
     return lags, values, counts
 
 
+def msd_noise_offset(lag_s: np.ndarray, values: np.ndarray) -> float:
+    """MSD に上乗せされた検出のぶれの分 c = max(0, 2·MSD(Δt) − MSD(2Δt))。
+
+    位置の誤差（各軸の標準偏差 σ、時間的に独立）があると、どんな動きでも
+    MSD(τ) は 4σ² だけ大きくなる。MSD が τ=0 付近で直線的なら、τ = Δt, 2Δt の
+    2 点を結ぶ直線を τ = 0 まで伸ばした値がちょうど 4σ² になる。
+    直進的な動き（MSD ∝ τ²）では 2v²Δt² だけ小さめに出るので、負なら 0 とする。
+    """
+    lag_s = np.asarray(lag_s, dtype=float)
+    values = np.asarray(values, dtype=float)
+    if len(values) < 2 or not np.isfinite(values[:2]).all() or not np.isclose(lag_s[1], 2 * lag_s[0]):
+        return 0.0
+    return float(max(0.0, 2 * values[0] - values[1]))
+
+
 def fit_msd(lag_s: np.ndarray, values: np.ndarray, fit_max_s: Optional[float] = None,
             fit_min_s: float = 0.0) -> dict:
     """MSD の直線と両対数の当てはめ。
 
     * 直線: MSD = a + b τ を最小二乗で当てはめ、拡散係数 D = b / 4（2 次元）。
-      切片 a は検出の揺れの大きさを表す（位置の誤差の標準偏差が各軸 σ なら a ≈ 4σ²）。
-    * 両対数: log MSD = log K + α log τ の傾き α（MSD 指数）。
+      切片 a は検出のぶれの大きさを表す（位置の誤差の標準偏差が各軸 σ なら a ≈ 4σ²）。
+      D はランダムウォーク（α ≈ 1）のときだけ意味がある。
+    * 両対数: log(MSD − c) = log K + α log τ の傾き α（MSD 指数）。
+      c は検出のぶれの分（:func:`msd_noise_offset`）。c を引かないと、短い τ で
+      MSD が底上げされて α が小さく出る（ランダムウォークなのに「閉じこもり」に見える）。
       α ≈ 1 なら拡散的（ランダムウォーク）、α ≈ 2 なら直進的（弾道的）、
       α < 1 なら狭い範囲に閉じこもる動き。
 
     Parameters
     ----------
-    lag_s : τ [s]
+    lag_s : τ [s]（Δt, 2Δt, 3Δt, … の順。:func:`msd` の lags × Δt）
     fit_max_s, fit_min_s : 当てはめに使う τ の範囲 [s]。省略時は全範囲。
+        τ が大きいほど平均に使える組が減って MSD がばらつくので、
+        記録時間の 1 割程度までにするのがよい。
 
     Returns
     -------
-    dict : slope (b), intercept (a), D, alpha, r2（直線当てはめの決定係数）
+    dict : slope (b), intercept (a), D, alpha, noise_offset (c), r2（直線当てはめの決定係数）
     """
     lag_s = np.asarray(lag_s, dtype=float)
     values = np.asarray(values, dtype=float)
+    c = msd_noise_offset(lag_s, values)
     m = np.isfinite(values) & (lag_s > fit_min_s)
     if fit_max_s is not None:
         m &= lag_s <= fit_max_s
     if m.sum() < 2:
-        return {"slope": np.nan, "intercept": np.nan, "D": np.nan, "alpha": np.nan, "r2": np.nan}
+        return {"slope": np.nan, "intercept": np.nan, "D": np.nan, "alpha": np.nan,
+                "noise_offset": c, "r2": np.nan}
     x, y = lag_s[m], values[m]
     b, a = np.polyfit(x, y, 1)
     resid = y - (a + b * x)
     ss = np.sum((y - y.mean()) ** 2)
     r2 = float(1 - np.sum(resid ** 2) / ss) if ss > 0 else np.nan
-    pos = y > 0
-    alpha = float(np.polyfit(np.log(x[pos]), np.log(y[pos]), 1)[0]) if pos.sum() >= 2 else np.nan
-    return {"slope": float(b), "intercept": float(a), "D": float(b / 4), "alpha": alpha, "r2": r2}
+    yc = y - c
+    pos = yc > 0
+    alpha = float(np.polyfit(np.log(x[pos]), np.log(yc[pos]), 1)[0]) if pos.sum() >= 2 else np.nan
+    return {"slope": float(b), "intercept": float(a), "D": float(b / 4), "alpha": alpha,
+            "noise_offset": c, "r2": r2}
 
 
 # ---------------------------------------------------------------------------

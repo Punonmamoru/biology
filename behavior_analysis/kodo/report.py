@@ -16,15 +16,17 @@ __all__ = ["summarize", "check_tracks", "japanese_columns", "save_summary_csv", 
 
 
 def summarize(tracks: Tracks, node=None, speed_threshold: Optional[float] = None,
-              rois: Sequence = (), min_step: float = 0.0, turn_deg: float = 45.0,
+              rois: Sequence = (), min_step: Optional[float] = None, turn_deg: float = 45.0,
+              turn_min_deg: float = 5.0, turn_max_straight: int = 3,
               msd_max_lag: Optional[int] = None, msd_fit_max_s: Optional[float] = None,
-              roi_min_samples: int = 1) -> pd.DataFrame:
+              msd_alpha_range=(0.7, 1.3), roi_min_samples: int = 1) -> pd.DataFrame:
     """個体ごとの指標を 1 行ずつ並べた表（DataFrame）を返す。
 
     列（単位 u は tracks.units。mm 換算していれば mm）
 
     ==================  ===========================================================
     track               個体の名前
+    units               座標の単位（mm / px）
     n_samples           サンプル数
     valid_fraction      座標がある（欠損でない）サンプルの割合
     duration_s          解析区間の長さ [s]
@@ -36,23 +38,42 @@ def summarize(tracks: Tracks, node=None, speed_threshold: Optional[float] = None
     max_speed           瞬間の速さ v_t の最大値 [u/s]（外れ値に敏感）
     moving_fraction     v_t ≥ speed_threshold の割合（speed_threshold を与えたとき）
     stationary_fraction 1 − moving_fraction
-    n_turns             転向角の数
+    n_turns             転向角の数（min_step を与えたとき。以下 3 つも同じ）
     mean_abs_turn_deg   |θ| の平均 [°]
     left_turn_fraction  左に曲がった割合
     alternation_index   交替性指数（:func:`kodo.metrics.alternation_index`）
-    mean_nnd            最近接個体距離の平均 [u]（2 個体以上のとき）
-    msd_D               MSD の直線当てはめから求めた拡散係数 D = 傾き / 4 [u²/s]
-    msd_alpha           MSD 指数 α（両対数の傾き）
+    mean_nnd            最近接個体距離の平均 [u]（1 個体なら NaN）
+    msd_alpha           MSD 指数 α（検出のぶれの分を引いた両対数の傾き）
+    msd_D               拡散係数 D = 傾き / 4 [u²/s]。α が msd_alpha_range の外なら
+                        ランダムウォークとみなせないので NaN
     roi_<名前>_time_s   領域の滞在時間 [s]
     roi_<名前>_fraction 領域の滞在割合
     roi_<名前>_entries  領域への進入回数
-    roi_<名前>_first_s  最初に領域に入った時刻 [s]
+    roi_<名前>_first_s  最初に領域に入った時刻 [s]（動画の 0 フレーム目 = 0 秒）
+    roi_<名前>_first_frame  そのときの動画のフレーム番号
     ==================  ===========================================================
+
+    Parameters
+    ----------
+    min_step : float
+        転向角を測る最小の移動距離（tracks の単位）。体長の 1/4 程度。
+        省略すると、検出のぶれで角度がでたらめになるのを避けるため転向角の列を出さない。
+    msd_max_lag, msd_fit_max_s :
+        MSD を計算する最大のずらし幅（サンプル数）と当てはめる τ の上限 [s]。
+        省略時はどちらも記録の 1 割（τ が大きいほど MSD がばらつくため）。
     """
     dt = tracks.dt
+    t0 = tracks.time[0] if tracks.n_frames else 0.0
     p_all = tracks.points(node)
     v_all = M.speed(tracks, node)
-    nnd = M.nearest_neighbor_distance(tracks, node) if tracks.n_tracks > 1 else None
+    nnd = M.nearest_neighbor_distance(tracks, node)
+    if min_step is None:
+        warnings.warn("min_step が指定されていないので、転向角の指標は計算しませんでした。"
+                      "体長の 1/4 程度（例: min_step=1.5 [mm]）を指定してください。")
+    if msd_max_lag is None:
+        msd_max_lag = max(tracks.n_frames // 10, 2)
+    if msd_fit_max_s is None:
+        msd_fit_max_s = msd_max_lag * dt
     rows = []
     for i in range(tracks.n_tracks):
         p, v = p_all[i], v_all[i]
@@ -60,6 +81,7 @@ def summarize(tracks: Tracks, node=None, speed_threshold: Optional[float] = None
             warnings.simplefilter("ignore", RuntimeWarning)
             row = {
                 "track": tracks.track_names[i],
+                "units": tracks.units,
                 "n_samples": tracks.n_frames,
                 "valid_fraction": float(np.mean(np.all(np.isfinite(p), axis=1))),
                 "duration_s": tracks.duration,
@@ -74,24 +96,29 @@ def summarize(tracks: Tracks, node=None, speed_threshold: Optional[float] = None
             mf = M.moving_fraction(v, speed_threshold)
             row["moving_fraction"] = mf
             row["stationary_fraction"] = 1 - mf if np.isfinite(mf) else np.nan
-        theta = M.turning_angles(p, min_step=min_step, y_down=tracks.y_down)
-        ts = M.turn_summary(theta)
-        row["n_turns"] = ts["n_turns"]
-        row["mean_abs_turn_deg"] = ts["mean_abs_turn_deg"]
-        row["left_turn_fraction"] = ts["left_turn_fraction"]
-        row["alternation_index"] = M.alternation_index(theta, turn_deg=turn_deg)
-        if nnd is not None:
-            row["mean_nnd"] = M._quiet_nanmean(nnd[i])
+        if min_step is not None:
+            theta = M.turning_angles(p, min_step=min_step, y_down=tracks.y_down)
+            ts = M.turn_summary(theta)
+            row["n_turns"] = ts["n_turns"]
+            row["mean_abs_turn_deg"] = ts["mean_abs_turn_deg"]
+            row["left_turn_fraction"] = ts["left_turn_fraction"]
+            row["alternation_index"] = M.alternation_index(theta, turn_deg=turn_deg, min_deg=turn_min_deg,
+                                                           max_straight=turn_max_straight)
+        row["mean_nnd"] = M._quiet_nanmean(nnd[i])
         lags, val, _ = M.msd(p, max_lag=msd_max_lag)
         fit = M.fit_msd(lags * dt, val, fit_max_s=msd_fit_max_s)
-        row["msd_D"] = fit["D"]
         row["msd_alpha"] = fit["alpha"]
+        lo, hi = msd_alpha_range
+        row["msd_D"] = fit["D"] if np.isfinite(fit["alpha"]) and lo <= fit["alpha"] <= hi else np.nan
         for roi in rois:
-            st = M.roi_stats(p, roi, dt, min_samples=roi_min_samples)
+            st = M.roi_stats(p, roi, dt, min_samples=roi_min_samples, t0=t0)
             row[f"roi_{roi.name}_time_s"] = st["time_s"]
             row[f"roi_{roi.name}_fraction"] = st["fraction"]
             row[f"roi_{roi.name}_entries"] = st["entries"]
             row[f"roi_{roi.name}_first_s"] = st["first_entry_s"]
+            fs = st["first_entry_sample"]
+            row[f"roi_{roi.name}_first_frame"] = (tracks.frame_start + fs * tracks.frame_step
+                                                  if np.isfinite(fs) else np.nan)
         rows.append(row)
     df = pd.DataFrame(rows)
     df.attrs["units"] = tracks.units
@@ -100,9 +127,12 @@ def summarize(tracks: Tracks, node=None, speed_threshold: Optional[float] = None
 
 def japanese_columns(df: pd.DataFrame, units: Optional[str] = None) -> pd.DataFrame:
     """列名を、単位つきの日本語に置きかえた表を返す（Excel で読む人向け）。"""
+    if units is None and "units" in df.columns and df["units"].nunique() == 1:
+        units = str(df["units"].iloc[0])
     u = units or df.attrs.get("units", "px")
     base = {
         "track": "個体",
+        "units": "単位",
         "n_samples": "サンプル数",
         "valid_fraction": "有効データの割合",
         "duration_s": "解析時間[s]",
@@ -127,13 +157,11 @@ def japanese_columns(df: pd.DataFrame, units: Optional[str] = None) -> pd.DataFr
         if c in base:
             names[c] = base[c]
         elif c.startswith("roi_"):
-            stem, _, kind = c[4:].rpartition("_")
-            if kind == "s":  # time_s / first_s
-                stem, _, kind = stem.rpartition("_")
-                kind = kind + "_s"
-            label = {"time_s": "滞在時間[s]", "fraction": "滞在割合", "entries": "進入回数",
-                     "first_s": "初進入時刻[s]"}.get(kind, kind)
-            names[c] = f"領域{stem}_{label}"
+            for suffix, label in (("_time_s", "滞在時間[s]"), ("_fraction", "滞在割合"), ("_entries", "進入回数"),
+                                  ("_first_s", "初進入時刻[s]"), ("_first_frame", "初進入フレーム")):
+                if c.endswith(suffix):
+                    names[c] = f"領域{c[4:-len(suffix)]}_{label}"
+                    break
     return df.rename(columns=names)
 
 
