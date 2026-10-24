@@ -12,9 +12,14 @@ import { B10 } from './b10.js';
 import { A1 } from './a1.js';
 import { A2 } from './a2.js';
 import { A3 } from './a3.js';
+import { A4 } from './a4.js';
+import { A5 } from './a5.js';
+import { A6 } from './a6.js';
+import { A7 } from './a7.js';
+import { A8 } from './a8.js';
 import { generate } from './common.js';
 
-export const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3];
+export const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8];
 
 export function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;

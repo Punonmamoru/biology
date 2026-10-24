@@ -322,6 +322,12 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 .codon-table td { vertical-align: top; font-size: 0.78rem; line-height: 1.45; white-space: nowrap; }
 .codon-table td div.used { font-weight: 700; color: var(--c1); }
 .codon-table td div.used::before { content: "▶"; font-size: 0.7em; margin-right: 2px; }
+.legend .swatch { display: inline-block; width: 22px; height: 12px; margin-right: 6px; border: 1px solid var(--fg); vertical-align: -1px; }
+.legend .swatch.oval { border-radius: 50%; }
+.legend .swatch.dot { width: 12px; border-radius: 50%; }
+.legend .swatch.rep { clip-path: polygon(0 0, 100% 0, 100% 60%, 70% 60%, 70% 100%, 30% 100%, 30% 60%, 0 60%); border: 0; }
+.legend .swatch.wave { height: 4px; border: 0; vertical-align: 3px; }
+table.data tr.hl td { background: var(--accent-soft); font-weight: 700; }
 
 </style>
 </head>
@@ -500,6 +506,11 @@ function redrawAllCharts() {
     if (!c.canvas.isConnected) live.delete(c);
     else c.redraw();
   }
+}
+
+// 自作の Canvas 図（模式図など）を、テーマ切替のときに描き直す対象に加える
+function keepRedrawn(canvas, redraw) {
+  live.add({ canvas, redraw });
 }
 
 // きりのよい目盛り間隔
@@ -993,7 +1004,7 @@ function legendFromSpec(spec) {
   }
   return legend(items);
 }
-return { DASHES, tokenColor, redrawAllCharts, niceStep, HATCHES, drawSpec, createChart, legend, legendFromSpec };
+return { DASHES, tokenColor, redrawAllCharts, keepRedrawn, niceStep, HATCHES, drawSpec, createChart, legend, legendFromSpec };
 })();
 
 // ---- lib/theme.js ----
@@ -1068,6 +1079,11 @@ const STAGES = [
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
+  { id: 'a4', code: 'A4', course: 'advanced', title: '興奮の伝導', unit: '生物の環境応答', lead: '活動電位の波形、閾値と全か無かの法則。2点刺激で伝導速度を計算する。' },
+  { id: 'a5', code: 'A5', course: 'advanced', title: '光合成の限定要因', unit: '生命現象と物質', lead: '光の強さ・CO₂濃度・温度のうち、最も不足している要因が光合成速度を決める。' },
+  { id: 'a6', code: 'A6', course: 'advanced', title: '集団遺伝', unit: '生物の進化', lead: 'ハーディー・ワインベルグの法則の計算と、集団の大きさによる遺伝的浮動のちがい。' },
+  { id: 'a7', code: 'A7', course: 'advanced', title: '遺伝子発現の調節', unit: '遺伝情報の発現と発生', lead: 'ラクトースオペロン。リプレッサーの結合で転写のオン・オフが切りかわる。' },
+  { id: 'a8', code: 'A8', course: 'advanced', title: '生存曲線', unit: '生態と環境', lead: '早死型・平均型・晩死型の比較と、生命表からの死亡率の計算。' },
 ];
 
 function stageById(id) {
@@ -2776,9 +2792,47 @@ dojo.tasks[3].check = (s) => s.sub === 'protein';
 return { dojo };
 })();
 
+// ---- lib/interp.js ----
+__m["lib/interp.js"] = (function () {
+// 単調3次補間（フリッチュ・カールソン法）。目安の点を、行き過ぎ（オーバーシュート）のない
+// なめらかな曲線（1階微分まで連続）でつなぐ。DOM に依存しない純粋関数。
+// knots：x の昇順に並んだ [x, y] の配列。範囲外は端の値で一定にする。
+function monotoneCubic(knots) {
+  const n = knots.length;
+  const h = [];
+  const d = [];
+  for (let i = 0; i < n - 1; i++) {
+    h.push(knots[i + 1][0] - knots[i][0]);
+    d.push((knots[i + 1][1] - knots[i][1]) / h[i]);
+  }
+  const m = [d[0]];
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) m.push(0);
+    else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      m.push((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]));
+    }
+  }
+  m.push(d[n - 2]);
+  return (x) => {
+    if (x <= knots[0][0]) return knots[0][1];
+    if (x >= knots[n - 1][0]) return knots[n - 1][1];
+    let i = 0;
+    while (i < n - 2 && x > knots[i + 1][0]) i++;
+    const t = (x - knots[i][0]) / h[i];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * knots[i][1] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * knots[i + 1][1] + (t3 - t2) * h[i] * m[i + 1];
+  };
+}
+return { monotoneCubic };
+})();
+
 // ---- models/biome.js ----
 __m["models/biome.js"] = (function () {
 // B8 バイオーム（年平均気温と年降水量による模式的な区分）
+const { monotoneCubic } = __m["lib/interp.js"];
 // 境界は教科書の図の目安を直線でつないだ模式。点がどの多角形に入るかで判定する（図と判定が必ず一致する）。
 const T_MIN = -15;
 const T_MAX = 30;
@@ -2805,33 +2859,6 @@ const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂漠
 // 段差も折れ曲がりもない曲線を 0.5℃ ごとの点（GRASS_CURVE）にして、判定と図の両方がこの点列を使う（図と判定が必ず一致する）。
 // 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
 const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
-function monotoneCubic(knots) {
-  const n = knots.length;
-  const h = [];
-  const d = [];
-  for (let i = 0; i < n - 1; i++) {
-    h.push(knots[i + 1][0] - knots[i][0]);
-    d.push((knots[i + 1][1] - knots[i][1]) / h[i]);
-  }
-  const m = [d[0]];
-  for (let i = 1; i < n - 1; i++) {
-    if (d[i - 1] * d[i] <= 0) m.push(0);
-    else {
-      const w1 = 2 * h[i] + h[i - 1];
-      const w2 = h[i] + 2 * h[i - 1];
-      m.push((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]));
-    }
-  }
-  m.push(d[n - 2]);
-  return (T) => {
-    let i = 0;
-    while (i < n - 2 && T > knots[i + 1][0]) i++;
-    const t = (T - knots[i][0]) / h[i];
-    const t2 = t * t;
-    const t3 = t2 * t;
-    return (2 * t3 - 3 * t2 + 1) * knots[i][1] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * knots[i + 1][1] + (t3 - t2) * h[i] * m[i + 1];
-  };
-}
 const grassSmooth = monotoneCubic(GRASS_KNOTS);
 const GRASS_STEP = 0.5;
 const GRASS_CURVE = [];
@@ -4250,6 +4277,1253 @@ dojo.tasks[3].check = (s) => s.tab === 'lv' && s.view === 'phase';
 return { dojo };
 })();
 
+// ---- models/nerve.js ----
+__m["models/nerve.js"] = (function () {
+// A4 興奮の伝導
+// 活動電位の波形は、教科書の図の目安（静止電位 約−70 mV、ピーク 約＋40 mV、1〜2ミリ秒で静止電位にもどる）を
+// 単調3次補間でなめらかにつないだ模式。単位：膜電位［mV］（細胞外を基準にした細胞内の電位）、時間［ミリ秒］。
+const { monotoneCubic } = __m["lib/interp.js"];
+
+const REST = -70; // 静止電位
+const PEAK = 40; // 活動電位のピーク
+const THRESHOLD = -55; // 閾値に達したときの膜電位
+const UNDERSHOOT = -80; // 再分極のあと、一時的に静止電位より低くなる（過分極）
+const T_STIM = 1; // 刺激を与える時刻［ms］
+const T_END = 6; // 表示する時間［ms］
+const THRESHOLD_STIM = 10; // 1本の神経繊維が興奮する最小の刺激の強さ（相対値）
+
+// 閾値以上のときの波形の目安の点［時刻 ms, 膜電位 mV］
+const SPIKE_KNOTS = [
+  [0, REST],
+  [T_STIM, REST],
+  [T_STIM + 0.25, THRESHOLD], // 刺激で閾値まで脱分極
+  [T_STIM + 0.6, PEAK], // ナトリウムチャネルが開き、Na⁺ が流入して急に脱分極（内側が正に逆転）
+  [T_STIM + 1.4, REST], // カリウムチャネルが開き、K⁺ が流出して再分極
+  [T_STIM + 1.9, UNDERSHOOT], // 一時的に静止電位より低くなる
+  [T_STIM + 4, REST],
+  [T_END, REST],
+];
+const spikeCurve = monotoneCubic(SPIKE_KNOTS);
+
+// 区間の目印（図の色分け・問題用）
+const PHASES = {
+  rest: { name: '静止電位', from: 0, to: T_STIM },
+  depol: { name: '脱分極', from: T_STIM, to: T_STIM + 0.6 },
+  repol: { name: '再分極', from: T_STIM + 0.6, to: T_STIM + 1.4 },
+  after: { name: '過分極（一時的に静止電位より低くなる）', from: T_STIM + 1.4, to: T_STIM + 4 },
+};
+const PEAK_TIME = T_STIM + 0.6;
+
+// 1本の神経繊維の膜電位。stim：刺激の強さ（相対値）、threshold：その繊維が興奮する最小の刺激の強さ
+// 閾値未満：刺激の強さに応じた小さな脱分極（閾値の膜電位には届かず、すぐもとにもどる）
+// 閾値以上：刺激の強さに関係なく、同じ大きさの活動電位（全か無かの法則）
+function membrane(t, stim, threshold = THRESHOLD_STIM) {
+  if (stim >= threshold) return spikeCurve(t);
+  if (t <= T_STIM || stim <= 0) return REST;
+  const amp = (THRESHOLD - REST) * 0.9 * (stim / threshold); // 閾値の膜電位の手前まで
+  const tau = 0.35;
+  const x = (t - T_STIM) / tau;
+  return REST + amp * x * Math.exp(1 - x);
+}
+
+function fires(stim, threshold = THRESHOLD_STIM) {
+  return stim >= threshold;
+}
+
+// 活動電位の大きさ（静止電位からピークまで）
+function amplitude(rest = REST, peak = PEAK) {
+  return peak - rest;
+}
+
+// 神経（多数の神経繊維の束）：繊維ごとに閾値が違う。興奮した繊維の数の割合［0〜1］
+// 閾値は THRESHOLD_STIM 〜 THRESHOLD_STIM×NERVE_SPREAD の範囲にほぼ均等に分布するとする
+const NERVE_SPREAD = 3;
+const NERVE_FIBERS = 20;
+function nerveFiberThresholds(n = NERVE_FIBERS) {
+  return Array.from({ length: n }, (_, i) => THRESHOLD_STIM * (1 + ((NERVE_SPREAD - 1) * i) / (n - 1)));
+}
+function nerveResponse(stim, n = NERVE_FIBERS) {
+  return nerveFiberThresholds(n).filter((th) => stim >= th).length / n;
+}
+
+// 伝導速度：2点で刺激して、筋肉が収縮しはじめるまでの時間の差から求める
+//   速度［m/s］＝ 2点間の距離［mm］÷ 時間の差［ms］（1 mm/ms ＝ 1 m/s）
+function velocity(d1mm, t1ms, d2mm, t2ms) {
+  return Math.abs(d1mm - d2mm) / Math.abs(t1ms - t2ms);
+}
+// 刺激してから筋肉が収縮しはじめるまでの時間［ms］＝ 伝導の時間 ＋ 神経筋接合部での伝達と筋肉の収縮開始までの時間
+function latency(dmm, vms, tRest) {
+  return dmm / vms + tRest;
+}
+return { REST, PEAK, THRESHOLD, UNDERSHOOT, T_STIM, T_END, THRESHOLD_STIM, PHASES, PEAK_TIME, membrane, fires, amplitude, NERVE_SPREAD, NERVE_FIBERS, nerveFiberThresholds, nerveResponse, velocity, latency };
+})();
+
+// ---- dojo/a4.js ----
+__m["dojo/a4.js"] = (function () {
+// A4 興奮の伝導 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { membrane, fires, nerveResponse, velocity, latency, REST, PEAK, THRESHOLD, THRESHOLD_STIM, NERVE_SPREAD, PHASES, PEAK_TIME, T_END } = __m["models/nerve.js"];
+const { sample } = __m["lib/series.js"];
+
+const STIM_MAX = 40;
+// 神経の種類：伝導速度［m/s］と、神経筋接合部での伝達・筋肉の収縮開始までの時間［ms］
+const FIBERS = {
+  myelin: { label: '有髄神経繊維（カエルの座骨神経）', v: 30, rest: 2.5 },
+  plain: { label: '無髄神経繊維', v: 2, rest: 2.5 },
+};
+
+const dojo = {
+  tasks: [
+    { id: 'sub', text: '①で、刺激の強さを閾値より小さくすると、活動電位が生じない（膜電位が少し変化するだけ）ことを確かめよう。', short: '閾値未満では興奮しない' },
+    { id: 'allornone', text: '①で、閾値以上の刺激の強さを大きく変えても（差を10以上）、活動電位の大きさが変わらないことを確かめよう。', short: '全か無かの法則' },
+    { id: 'bundle', text: '①の下の図で、神経（神経繊維の束）では、刺激を強くするほど興奮の大きさが段階的に大きくなる範囲に刺激の強さを合わせよう。', short: '神経は段階的に大きくなる' },
+    { id: 'velocity', text: '②で、刺激する2点の位置を変えても、計算で求めた伝導速度が変わらないことを確かめよう（位置を2回以上変える）。', short: '伝導速度は一定' },
+    { id: 'plain', text: '②で、無髄神経繊維に切り替えて、有髄神経繊維より伝導速度がずっと小さいことを確かめよう。', short: '有髄と無髄' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'ap', stim: 12, fiber: 'myelin', dA: 60, dB: 20 };
+    const seen = { stims: new Set(), moves: 0 };
+
+    const tabs = segmented({ label: 'グラフ', options: [{ value: 'ap', label: '①活動電位と閾値' }, { value: 'cv', label: '②伝導速度の測定' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '膜電位の変化のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+    const sub = h('div');
+    top.append(sub);
+    const chart2 = createChart(sub, { label: '刺激の強さと興奮の大きさのグラフ', aspect: 0.56 });
+    const leg2 = h('div');
+    const note2 = h('p', { class: 'small muted' });
+    sub.append(leg2, note2);
+
+    const sStim = slider({ label: '刺激の強さ（相対値）', min: 0, max: STIM_MAX, step: 1, value: st.stim, format: (v) => String(v), onInput: (v) => { st.stim = v; update(); } });
+    const ctlAp = h('div', null, sStim.el);
+
+    const segF = segmented({ label: '神経の種類', options: Object.entries(FIBERS).map(([value, f]) => ({ value, label: f.label })), value: st.fiber, onChange: (v) => { st.fiber = v; update(); } });
+    const sA = slider({ label: '刺激する点A（筋肉からの距離）', min: 40, max: 90, step: 5, value: st.dA, format: (v) => `${v} mm`, onInput: (v) => { st.dA = v; seen.moves++; update(); } });
+    const sB = slider({ label: '刺激する点B（筋肉からの距離）', min: 5, max: 30, step: 5, value: st.dB, format: (v) => `${v} mm`, onInput: (v) => { st.dB = v; seen.moves++; update(); } });
+    const result = h('div', { class: 'explain', 'aria-live': 'polite' });
+    const ctlCv = h('div', null, segF.el, sA.el, sB.el, result);
+
+    const exp = explainBox();
+    root.append(panel('操作', ctlAp, ctlCv), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlAp.hidden = st.tab !== 'ap';
+      ctlCv.hidden = st.tab !== 'cv';
+      update();
+    }
+
+    function drawAp() {
+      const { stim } = st;
+      const on = fires(stim);
+      title.replaceChildren('1本の神経繊維の膜電位 ', modelNote());
+      const regions = on
+        ? [
+          { x0: PHASES.depol.from, x1: PHASES.depol.to, fill: 'region-2' },
+          { x0: PHASES.repol.from, x1: PHASES.repol.to, fill: 'region' },
+        ]
+        : [];
+      chart.draw({
+        alt: `刺激の強さ ${stim}。${on ? '活動電位が生じる' : '活動電位は生じない'}`,
+        x: { min: 0, max: T_END, label: '時間（ミリ秒）', step: 1 },
+        y: { min: -100, max: 60, label: '膜電位（mV）', step: 20 },
+        regions,
+        series: [{ points: sample((t) => membrane(t, stim), 0, T_END, 360), color: 'c1', width: 3 }],
+        hlines: [
+          { y: REST, color: 'c3', dash: 'dot', label: `静止電位 ${REST} mV`, align: 'right' },
+          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値 ${THRESHOLD} mV` },
+        ],
+        vlines: [{ x: 1, color: 'c4', dash: 'dot' }],
+        markers: on ? [{ x: PEAK_TIME, y: PEAK, color: 'c1' }] : [],
+        texts: [{ x: 0.95, y: -88, text: '刺激 ↑', color: 'c4', align: 'right' }, ...(on ? [{ x: 2.6, y: 28, text: `← ピーク ＋${PEAK} mV`, color: 'c1', align: 'left' }, { x: 1.2, y: 0, text: '脱分極 →', color: 'c2', align: 'right' }, { x: 2.15, y: 0, text: '← 再分極', color: 'c1', align: 'left' }] : [])],
+      });
+      leg.replaceChildren(legend([{ label: '膜電位（細胞外を基準にした細胞内の電位）', color: 'c1' }, { label: '静止電位', color: 'c3', dash: 'dot' }, { label: '閾値に相当する膜電位', color: 'c2', dash: 'dash' }]));
+      note.textContent = '静止電位 約−70 mV、ピーク 約＋40 mV、1〜2ミリ秒で静止電位にもどる（教科書の図の目安による模式）。';
+
+      const nerveLine = sample((s) => nerveResponse(s) * 100, 0, STIM_MAX, 400);
+      const fiberLine = sample((s) => (fires(s) ? 100 : 0), 0, STIM_MAX, 400);
+      chart2.draw({
+        alt: '刺激の強さと興奮の大きさ',
+        x: { min: 0, max: STIM_MAX, label: '刺激の強さ（相対値）', step: 5 },
+        y: { min: 0, max: 115, label: '興奮の大きさ（%）', step: 20 },
+        series: [
+          { points: fiberLine, color: 'c1', width: 3, label: '1本の神経繊維' },
+          { points: nerveLine, color: 'c2', dash: 'dash', width: 3, label: '神経（繊維の束）', labelAt: THRESHOLD_STIM * NERVE_SPREAD + 5 },
+        ],
+        vlines: [{ x: stim, color: 'c4', dash: 'dot' }],
+        markers: [
+          { x: stim, y: fires(stim) ? 100 : 0, color: 'c1' },
+          { x: stim, y: nerveResponse(stim) * 100, color: 'c2', shape: 'square' },
+        ],
+      });
+      leg2.replaceChildren(legend([{ label: '1本の神経繊維（全か無か）', color: 'c1' }, { label: '神経（閾値の異なる多数の神経繊維の束）', color: 'c2', dash: 'dash' }, { label: `いまの刺激の強さ（${stim}）`, color: 'c4', dash: 'dot' }]));
+      note2.textContent = `神経は閾値が ${THRESHOLD_STIM}〜${THRESHOLD_STIM * NERVE_SPREAD} の神経繊維が20本集まったものとした模式。`;
+
+      const lines = [];
+      if (stim === 0) {
+        lines.push('刺激がないので、膜電位は静止電位（約−70 mV）のまま。静止状態では、ナトリウムポンプによって細胞内に K⁺ が多く、細胞外に Na⁺ が多い。常に開いているカリウムチャネルから K⁺ が細胞外へ流出するので、細胞内は細胞外に対して負になっている。');
+      } else if (!on) {
+        lines.push(`刺激の強さ ${stim} は閾値（${THRESHOLD_STIM}）より小さいので、膜電位が少し上がるだけで、すぐにもとにもどる。活動電位は生じない。`);
+      } else {
+        lines.push(`刺激の強さ ${stim} は閾値（${THRESHOLD_STIM}）以上なので、活動電位が生じる。電位依存性のナトリウムチャネルが開いて Na⁺ が細胞内に流入し、膜電位が急に上がって内側が正になる（脱分極）。`);
+        lines.push('すぐにナトリウムチャネルは閉じ、電位依存性のカリウムチャネルが開いて K⁺ が流出するので、膜電位は下がって静止電位にもどる（再分極）。一時的に静止電位より低くなってからもとにもどる。');
+        lines.push(`閾値以上なら、刺激をどれだけ強くしても活動電位の大きさ（${PEAK - REST} mV）は変わらない（全か無かの法則）。刺激の強さの情報は、活動電位の大きさではなく、発生する頻度で伝えられる。`);
+      }
+      const nr = nerveResponse(stim);
+      lines.push(nr > 0 && nr < 1
+        ? `下の図：神経は閾値の異なる多数の神経繊維の束なので、刺激を強くすると興奮する神経繊維の数が増え、神経全体の興奮は段階的に大きくなる（いまは ${fmt(nr * 100, 0)}% の神経繊維が興奮）。1本1本の神経繊維は全か無かの法則にしたがっている。`
+        : nr >= 1
+          ? '下の図：すべての神経繊維が興奮しているので、これ以上刺激を強くしても神経全体の興奮は大きくならない。'
+          : '下の図：どの神経繊維の閾値にも達していないので、神経は興奮しない。');
+      exp.set(lines);
+    }
+
+    function drawCv() {
+      const f = FIBERS[st.fiber];
+      const tA = latency(st.dA, f.v, f.rest);
+      const tB = latency(st.dB, f.v, f.rest);
+      const v = velocity(st.dA, tA, st.dB, tB);
+      title.replaceChildren('刺激してから筋肉が収縮しはじめるまで ', modelNote());
+      const tMax = Math.ceil((tA * 1.35) / 5) * 5;
+      const twitch = (t0) => (t) => (t < t0 ? 0 : 100 * (1 - Math.exp(-(t - t0) / (tMax / 12))));
+      chart.draw({
+        alt: `点A ${st.dA} mm で ${fmt(tA, 2)} ミリ秒、点B ${st.dB} mm で ${fmt(tB, 2)} ミリ秒`,
+        x: { min: 0, max: tMax, label: '刺激してからの時間（ミリ秒）', step: tMax <= 10 ? 1 : tMax <= 50 ? 5 : 10 },
+        y: { min: 0, max: 120, label: '筋肉の張力（相対値）', step: 20 },
+        series: [
+          { points: sample(twitch(tB), 0, tMax, 400), color: 'c1', width: 3, label: '点Bを刺激' },
+          { points: sample(twitch(tA), 0, tMax, 400), color: 'c2', dash: 'dash', width: 3, label: '点Aを刺激' },
+        ],
+        vlines: [
+          { x: tB, color: 'c1', dash: 'dot', label: `B：${fmt(tB, 2)} ms` },
+          { x: tA, color: 'c2', dash: 'dot', label: `A：${fmt(tA, 2)} ms`, dy: 18 },
+        ],
+      });
+      leg.replaceChildren(legend([{ label: `点B（筋肉から ${st.dB} mm）を刺激`, color: 'c1' }, { label: `点A（筋肉から ${st.dA} mm）を刺激`, color: 'c2', dash: 'dash' }]));
+      note.textContent = '座骨神経と腓腹筋（ふくらはぎの筋肉）の標本で、神経上の2点A・Bを刺激し、筋肉が収縮しはじめるまでの時間をはかる実験の模式。';
+      chart2.draw({
+        alt: '神経と筋肉と刺激点の位置',
+        x: { min: -20, max: 100, label: '筋肉からの距離（mm）', ticks: [0, 20, 40, 60, 80, 100] },
+        y: { min: 0, max: 1, ticks: [] },
+        polygons: [{ points: [[-18, 0.25], [0, 0.35], [0, 0.65], [-18, 0.75]], fill: 'region-2', stroke: 'c2', label: '筋肉', at: [-9, 0.5] }],
+        series: [{ points: [[0, 0.5], [100, 0.5]], color: 'fg', width: 3 }],
+        markers: [
+          { x: st.dB, y: 0.5, color: 'c1', label: `B（${st.dB} mm）` },
+          { x: st.dA, y: 0.5, color: 'c2', shape: 'square', label: `A（${st.dA} mm）` },
+        ],
+        texts: [{ x: 70, y: 0.2, text: '神経（座骨神経）', color: 'muted' }],
+      });
+      leg2.replaceChildren();
+      note2.textContent = '';
+      const tRest = tA - st.dA / v;
+      result.replaceChildren(
+        h('p', null, `測定結果：点A → ${fmt(tA, 2)} ミリ秒、点B → ${fmt(tB, 2)} ミリ秒`),
+        h('p', null, `伝導速度 ＝ 2点間の距離 ÷ 時間の差 ＝ (${st.dA} − ${st.dB}) mm ÷ (${fmt(tA, 2)} − ${fmt(tB, 2)}) ms ＝ ${fmt(v, 1)} mm/ms ＝ ${fmt(v, 1)} m/s`),
+        h('p', null, `神経の末端に興奮が届いてから筋肉が収縮しはじめるまでの時間 ＝ ${fmt(tA, 2)} − ${st.dA} ÷ ${fmt(v, 1)} ＝ ${fmt(tRest, 2)} ミリ秒`),
+      );
+      exp.set([
+        '刺激してから筋肉が収縮しはじめるまでの時間には、興奮が神経を伝わる時間のほかに、神経筋接合部で興奮が伝達され、筋肉が収縮しはじめるまでの時間が含まれる。1点の測定だけでは伝導速度は求められない。',
+        '2点で刺激すると、伝達と収縮開始にかかる時間はどちらも同じなので、時間の差は「2点間を興奮が伝わるのにかかった時間」になる。だから 伝導速度 ＝ 2点間の距離 ÷ 時間の差 で求められる。',
+        st.fiber === 'myelin'
+          ? '有髄神経繊維では、電気を通しにくい髄鞘のすき間（ランビエ絞輪）からランビエ絞輪へと興奮がとびとびに伝わる（跳躍伝導）ので、伝導速度が大きい。'
+          : '無髄神経繊維は髄鞘がなく、興奮が隣の部分へ順に伝わるので、跳躍伝導をする有髄神経繊維に比べて伝導速度がずっと小さい。',
+      ]);
+      return v;
+    }
+
+    function update() {
+      let v = null;
+      if (st.tab === 'ap') {
+        drawAp();
+        seen.stims.add(st.stim);
+      } else v = drawCv();
+      ctx.update({ ...st, stims: [...seen.stims], moves: seen.moves, v });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'ap' && s.stim > 0 && s.stim < THRESHOLD_STIM;
+dojo.tasks[1].check = (s) => {
+  const on = s.stims.filter((x) => x >= THRESHOLD_STIM);
+  return s.tab === 'ap' && on.length >= 2 && Math.max(...on) - Math.min(...on) >= 10;
+};
+dojo.tasks[2].check = (s) => s.tab === 'ap' && nerveResponse(s.stim) > 0.2 && nerveResponse(s.stim) < 0.8;
+dojo.tasks[3].check = (s) => s.tab === 'cv' && s.moves >= 2;
+dojo.tasks[4].check = (s) => s.tab === 'cv' && s.fiber === 'plain';
+return { dojo };
+})();
+
+// ---- models/limiting.js ----
+__m["models/limiting.js"] = (function () {
+// A5 光合成の限定要因
+// 3つの環境要因それぞれについて「その要因だけで決まる光合成速度の上限」を考え、
+// 実際の光合成速度は、その中で最も小さい上限（＝最も不足している要因）でほぼ決まる（限定要因の考え方）。
+//   光の強さによる上限   ：L(I) ＝ ALPHA × I（弱い光では光の強さに比例する）
+//   CO₂濃度による上限    ：C(c) ＝ C_MAX × c ／ (C_HALF ＋ c)（CO₂濃度が高いほど大きいが、しだいに頭打ち）
+//   温度による上限       ：T(t) ＝ T_MAX × f(t)（酵素反応なので最適温度で最大。高温では酵素が失活して急に下がる）
+// 実際の速度 P ＝ (L⁻ⁿ ＋ C⁻ⁿ ＋ T⁻ⁿ)^(−1/n)（n ＝ 4）。最小の上限にほぼ等しく、曲線はなめらかに頭打ちになる。
+// 光合成速度は総光合成速度（呼吸は差し引かない）の相対値。数値は模式。
+const ALPHA = 4; // 光の強さ 1 キロルクスあたり
+const C_MAX = 180;
+const C_HALF = 0.05; // %
+const T_MAX = 150;
+const T_OPT = 30; // 最適温度（模式）
+const N_SMOOTH = 4;
+const CO2_AIR = 0.04; // 大気のCO₂濃度［%］
+
+const FACTORS = {
+  light: { name: '光の強さ', short: '光' },
+  co2: { name: 'CO₂濃度', short: 'CO₂' },
+  temp: { name: '温度', short: '温度' },
+};
+
+function lightCap(I) {
+  return ALPHA * Math.max(0, I);
+}
+function co2Cap(c) {
+  return c <= 0 ? 0 : (C_MAX * c) / (C_HALF + c);
+}
+// 温度による上限：最適温度より低い側はゆるやかに、高い側は急に下がる
+function tempFactor(t) {
+  const w = t <= T_OPT ? 14 : 7;
+  return Math.exp(-Math.pow((t - T_OPT) / w, 2));
+}
+function tempCap(t) {
+  return T_MAX * tempFactor(t);
+}
+
+function caps(I, c, t) {
+  return { light: lightCap(I), co2: co2Cap(c), temp: tempCap(t) };
+}
+
+function rate(I, c, t) {
+  const k = caps(I, c, t);
+  const vals = [k.light, k.co2, k.temp];
+  if (vals.some((v) => v <= 0)) return 0;
+  return Math.pow(vals.reduce((a, v) => a + Math.pow(v, -N_SMOOTH), 0), -1 / N_SMOOTH);
+}
+
+// 限定要因：上限が最も小さい要因。2番目との差が CLOSE 未満なら「ほぼ同じ」とする
+const CLOSE = 0.1;
+function limitingFactor(I, c, t) {
+  const k = caps(I, c, t);
+  const order = Object.keys(k).sort((a, b) => k[a] - k[b]);
+  const [first, second] = order;
+  const close = k[second] > 0 ? (k[second] - k[first]) / k[second] < CLOSE : false;
+  return { factor: first, second, close, caps: k };
+}
+
+// 光の強さを上げても速度がほとんど増えなくなる光の強さ（光の上限が、他の要因の上限と等しくなる点）
+function lightSaturationOf(c, t) {
+  return Math.min(co2Cap(c), tempCap(t)) / ALPHA;
+}
+return { ALPHA, C_MAX, C_HALF, T_MAX, T_OPT, N_SMOOTH, CO2_AIR, FACTORS, lightCap, co2Cap, tempFactor, tempCap, caps, rate, CLOSE, limitingFactor, lightSaturationOf };
+})();
+
+// ---- dojo/a5.js ----
+__m["dojo/a5.js"] = (function () {
+// A5 光合成の限定要因 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { rate, caps, limitingFactor, lightCap, FACTORS, ALPHA, CO2_AIR, T_OPT } = __m["models/limiting.js"];
+const { sample } = __m["lib/series.js"];
+
+const I_MAX = 50;
+const Y_MAX = 160;
+const COMPARE_CO2 = [0.02, 0.04, 0.12];
+const COMPARE_T = [15, 25, 35];
+const DASH = ['dot', 'dash', 'long'];
+const COLORS = ['c3', 'c4', 'c5'];
+
+const dojo = {
+  tasks: [
+    { id: 'light', text: '光の強さが限定要因になる条件にしよう。', short: '光の強さが限定要因' },
+    { id: 'co2', text: 'CO₂濃度が限定要因になる条件にしよう（光を強くしてみよう）。', short: 'CO₂濃度が限定要因' },
+    { id: 'temp', text: '温度が限定要因になる条件にしよう。', short: '温度が限定要因' },
+    { id: 'dark', text: '光の強さが限定要因のとき、温度やCO₂濃度を変えても光合成速度がほとんど変わらないことを確かめよう。', short: '限定要因以外を変えても変わらない' },
+    { id: 'compare', text: '「比較の曲線」でCO₂濃度の違う曲線を表示し、弱い光では3本が重なり、強い光で差がつくことを確かめよう。', short: '教科書の図を再現' },
+  ],
+  mount(root, ctx) {
+    const st = { I: 10, c: CO2_AIR, T: 25, compare: 'none' };
+    const track = { changedWhileLight: 0, touched: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '光の強さと光合成速度 ', modelNote()));
+    const chart = createChart(top, { label: '光の強さと光合成速度のグラフ', aspect: 0.7 });
+    const leg = h('div');
+    top.append(leg);
+    top.append(h('h3', { style: { marginTop: '10px' } }, '3つの要因それぞれが許す光合成速度の上限'));
+    const chart2 = createChart(top, { label: '3つの要因の上限の棒グラフ', aspect: 0.5 });
+    const leg2 = h('div');
+    top.append(leg2, h('p', { class: 'small muted' }, '光合成速度は呼吸を差し引かない値（相対値）。各要因の「上限」は、ほかの2つの要因が十分なときの光合成速度を表す模式。'));
+
+    const sI = slider({ label: '光の強さ', min: 0, max: I_MAX, step: 1, value: st.I, format: (v) => `${v} キロルクス`, onInput: (v) => { st.I = v; track.touched++; update(); } });
+    const sC = slider({ label: 'CO₂濃度', min: 0.01, max: 0.15, step: 0.01, value: st.c, format: (v) => `${fmt(v, 2)} %${Math.abs(v - CO2_AIR) < 1e-9 ? '（大気と同じ）' : ''}`, onInput: (v) => { st.c = v; changed(); update(); } });
+    const sT = slider({ label: '温度', min: 0, max: 45, step: 1, value: st.T, format: (v) => `${v} ℃`, onInput: (v) => { st.T = v; changed(); update(); } });
+    const segCmp = segmented({ label: '比較の曲線', options: [{ value: 'none', label: 'なし' }, { value: 'co2', label: 'CO₂濃度を変えた曲線' }, { value: 'temp', label: '温度を変えた曲線' }], value: st.compare, onChange: (v) => { st.compare = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', sI.el, sC.el, sT.el, segCmp.el), panel('いま何が起きているか', exp.el));
+
+    function changed() {
+      track.touched++;
+      if (limitingFactor(st.I, st.c, st.T).factor === 'light') track.changedWhileLight++;
+    }
+
+    function update() {
+      const { I, c, T } = st;
+      const P = rate(I, c, T);
+      const lim = limitingFactor(I, c, T);
+      const k = caps(I, c, T);
+      const series = [];
+      if (st.compare === 'co2') {
+        COMPARE_CO2.forEach((cc, i) => series.push({ points: sample((x) => rate(x, cc, T), 0, I_MAX, 200), color: COLORS[i], dash: DASH[i], width: 2, label: `CO₂ ${cc}%`, legendLabel: `CO₂濃度 ${cc}%（${T}℃）` }));
+      } else if (st.compare === 'temp') {
+        COMPARE_T.forEach((tt, i) => series.push({ points: sample((x) => rate(x, c, tt), 0, I_MAX, 200), color: COLORS[i], dash: DASH[i], width: 2, label: `${tt}℃`, legendLabel: `温度 ${tt}℃（CO₂ ${fmt(c, 2)}%）` }));
+      }
+      const caps_ = st.compare === 'none'; // 比較の曲線を出すときは、図が混みあうので上限の線を省く
+      if (caps_) series.push({ points: sample((x) => Math.min(lightCap(x), Y_MAX * 2), 0, I_MAX, 50), color: 'c2', dash: 'dash', width: 1.5, legendLabel: '光の強さによる上限' });
+      series.push({ points: sample((x) => rate(x, c, T), 0, I_MAX, 240), color: 'c1', width: 3.5, legendLabel: `いまの条件（CO₂ ${fmt(c, 2)}%・${T}℃）` });
+      const spec = {
+        alt: `光の強さ ${I} キロルクス、CO₂ ${fmt(c, 2)}%、${T}℃ で光合成速度 ${fmt(P, 0)}。限定要因は${FACTORS[lim.factor].name}`,
+        x: { min: 0, max: I_MAX, label: '光の強さ（キロルクス）', step: 10 },
+        y: { min: 0, max: Y_MAX, label: '光合成速度（相対値）', step: 20 },
+        series,
+        hlines: caps_ ? [
+          { y: k.co2, color: 'c3', dash: 'dot', label: `CO₂濃度による上限 ${fmt(k.co2, 0)}`, align: 'right' },
+          { y: k.temp, color: 'c4', dash: 'dashdot', label: `温度による上限 ${fmt(k.temp, 0)}`, align: 'right' },
+        ] : [],
+        vlines: [{ x: I, color: 'muted', dash: 'dot' }],
+        markers: [{ x: I, y: P, color: 'c1', label: `${fmt(P, 0)}` }],
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec), caps_ ? legend([{ label: 'CO₂濃度による上限', color: 'c3', dash: 'dot' }, { label: '温度による上限', color: 'c4', dash: 'dashdot' }]) : '');
+
+      const names = ['light', 'co2', 'temp'];
+      const spec2 = {
+        alt: `光 ${fmt(k.light, 0)}、CO₂ ${fmt(k.co2, 0)}、温度 ${fmt(k.temp, 0)}`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: Y_MAX + 40, label: '上限（相対値）', step: 40 },
+        bars: {
+          categories: names.map((n) => FACTORS[n].name + (n === lim.factor ? '（限定要因）' : '')),
+          groups: [{ values: names.map((n) => Math.min(k[n], Y_MAX + 40)), color: 'c1', label: 'その要因だけで決まる上限' }],
+        },
+        hlines: [{ y: P, color: 'c2', dash: 'dash', width: 2, label: `実際の光合成速度 ${fmt(P, 0)}`, align: 'right' }],
+      };
+      chart2.draw(spec2);
+      leg2.replaceChildren(legendFromSpec(spec2), legend([{ label: '実際の光合成速度', color: 'c2', dash: 'dash' }]));
+
+      const lines = [];
+      const fname = FACTORS[lim.factor].name;
+      lines.push(`いまの限定要因は「${fname}」。光合成速度は、最も不足している要因（上限が最も小さい要因）でほぼ決まり、実際の速度 ${fmt(P, 0)} はその上限 ${fmt(k[lim.factor], 0)} を少し下回る値になっている。`);
+      if (lim.close) lines.push(`${FACTORS[lim.second].name}の上限も ${fmt(k[lim.second], 0)} とほぼ同じなので、${fname}と${FACTORS[lim.second].name}の両方を増やさないと、速度はあまり上がらない。`);
+      if (lim.factor === 'light') {
+        lines.push(`光が弱いので、光の強さを強くすると速度は光の強さにほぼ比例して増える（1キロルクスあたり約${ALPHA}）。一方、CO₂濃度や温度を変えても速度はほとんど変わらない。光が弱いと、光エネルギーを使う反応でつくられる ATP や NADPH が不足し、カルビン回路がそれ以上速く進めないからである。`);
+      } else if (lim.factor === 'co2') {
+        lines.push('光は十分に強いので、光をさらに強くしても速度はほとんど増えない（光飽和）。CO₂濃度を高くすると速度が上がる。CO₂を取り込む反応（カルビン回路）の材料が不足しているからである。');
+      } else {
+        lines.push(T > T_OPT
+          ? `温度が最適温度（約${T_OPT}℃）より高く、光合成にはたらく酵素が失活しはじめているので、速度が下がっている。光を強くしてもCO₂濃度を高くしても速度は上がらない。`
+          : `温度が低く、光合成にはたらく酵素の反応（カルビン回路）がおそいので、光を強くしてもCO₂濃度を高くしても速度は上がらない。温度を最適温度（約${T_OPT}℃）に近づけると速度が上がる。`);
+      }
+      if (st.compare === 'co2') lines.push('比較の曲線：弱い光では、どのCO₂濃度でも曲線が重なる（光が限定要因）。光が強くなると、CO₂濃度の高いほうが高い位置で頭打ちになる（CO₂濃度が限定要因）。');
+      if (st.compare === 'temp') lines.push('比較の曲線：弱い光では温度による差がほとんどない（光が限定要因）。光が強くなると、温度によって頭打ちになる高さが違ってくる。');
+      exp.set(lines);
+      ctx.update({ ...st, factor: lim.factor, close: lim.close, changedWhileLight: track.changedWhileLight, touched: track.touched });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.touched > 0 && s.factor === 'light' && !s.close;
+dojo.tasks[1].check = (s) => s.touched > 0 && s.factor === 'co2' && !s.close;
+dojo.tasks[2].check = (s) => s.touched > 0 && s.factor === 'temp' && !s.close;
+dojo.tasks[3].check = (s) => s.factor === 'light' && s.changedWhileLight >= 3;
+dojo.tasks[4].check = (s) => s.compare === 'co2';
+return { dojo };
+})();
+
+// ---- models/popgen.js ----
+__m["models/popgen.js"] = (function () {
+// A6 集団遺伝（ハーディー・ワインベルグの法則と遺伝的浮動）
+// 対立遺伝子 A の遺伝子頻度を p、a の遺伝子頻度を q（p ＋ q ＝ 1）とすると、自由交配のとき
+// 次の世代の遺伝子型頻度は AA : Aa : aa ＝ p² : 2pq : q²（ハーディー・ワインベルグの法則）。
+function genotypeFreq(p) {
+  const q = 1 - p;
+  return { AA: p * p, Aa: 2 * p * q, aa: q * q };
+}
+
+// 遺伝子型の個体数から遺伝子頻度を求める：p ＝ (2×AA ＋ Aa) ÷ (2 × 個体数)
+function alleleFreqFromCounts(nAA, nAa, naa) {
+  const n = nAA + nAa + naa;
+  return (2 * nAA + nAa) / (2 * n);
+}
+function alleleFreqFromGenotypeFreq(fAA, fAa) {
+  return fAA + fAa / 2;
+}
+
+// 潜性形質（aa）の個体の割合から q を求める（ハーディー・ワインベルグの法則が成り立つとき）
+function qFromRecessive(fraction) {
+  return Math.sqrt(fraction);
+}
+
+// 遺伝的浮動のシミュレーション（ライト・フィッシャー型）
+// 個体数 N の集団の 2N 個の遺伝子から、次の世代の 2N 個を無作為に選び直す。
+// 自然選択・突然変異・移入・移出はないとする（遺伝子頻度の変化は偶然だけで起こる）。
+function binomial(n, p, rng) {
+  if (p <= 0) return 0;
+  if (p >= 1) return n;
+  if (n <= 200) {
+    let k = 0;
+    for (let i = 0; i < n; i++) if (rng.next() < p) k++;
+    return k;
+  }
+  // 大きい n は正規近似（集団が大きいときは変動が小さいことを表すのに十分）
+  const u1 = Math.max(rng.next(), 1e-12);
+  const u2 = rng.next();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const k = Math.round(n * p + z * Math.sqrt(n * p * (1 - p)));
+  return Math.min(n, Math.max(0, k));
+}
+
+function drift(N, p0, generations, rng) {
+  const out = [p0];
+  let p = p0;
+  for (let g = 0; g < generations; g++) {
+    p = binomial(2 * N, p, rng) / (2 * N);
+    out.push(p);
+  }
+  return out;
+}
+
+function driftLines(N, p0, generations, lines, rng) {
+  return Array.from({ length: lines }, () => drift(N, p0, generations, rng));
+}
+
+// 固定（p＝1）・消失（p＝0）した集団の数
+function fixationSummary(runs) {
+  const last = runs.map((r) => r[r.length - 1]);
+  return { fixed: last.filter((p) => p === 1).length, lost: last.filter((p) => p === 0).length };
+}
+return { genotypeFreq, alleleFreqFromCounts, alleleFreqFromGenotypeFreq, qFromRecessive, drift, driftLines, fixationSummary };
+})();
+
+// ---- dojo/a6.js ----
+__m["dojo/a6.js"] = (function () {
+// A6 集団遺伝 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { makeRng, randomSeed } = __m["lib/rng.js"];
+const { createChart, legend, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { genotypeFreq, driftLines, fixationSummary } = __m["models/popgen.js"];
+const { sample } = __m["lib/series.js"];
+
+const GENS = 100;
+const LINES = 8;
+const LINE_STYLE = [['c1', 'solid'], ['c2', 'dash'], ['c3', 'solid'], ['c4', 'dash'], ['c5', 'solid'], ['c1', 'dot'], ['c2', 'dashdot'], ['c3', 'long']];
+
+const dojo = {
+  tasks: [
+    { id: 'half', text: '①で、p を 0.5 にすると、ヘテロ接合体 Aa の頻度が最大（0.5）になることを確かめよう。', short: 'Aa が最大' },
+    { id: 'rare', text: '①で、q を 0.1 以下にして、aa はとても少ないのに Aa はその何倍も多いことを確かめよう。', short: '潜性の遺伝子はヘテロ接合体にかくれる' },
+    { id: 'small', text: '②で、集団の大きさを20以下にして、遺伝子頻度が0か1になる（消失・固定する）集団が現れることを確かめよう。', short: '小さな集団で固定・消失' },
+    { id: 'large', text: '②で、集団の大きさを10000以上にして、遺伝子頻度がほとんど変わらないことを確かめよう。', short: '大きな集団では変わりにくい' },
+    { id: 'again', text: '②で「もう一度」を2回以上押し、遺伝的浮動では毎回ちがう結果になることを確かめよう。', short: '偶然による変化' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'hw', p: 0.7, logN: Math.log10(50), p0: 0.5, seed: randomSeed(), rerolls: 0 };
+    const nOf = () => Math.round(Math.pow(10, st.logN));
+
+    const tabs = segmented({ label: 'シミュレーション', options: [{ value: 'hw', label: '①ハーディー・ワインベルグの法則' }, { value: 'drift', label: '②遺伝的浮動' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '遺伝子頻度のグラフ', aspect: 0.68 });
+    const leg = h('div');
+    const table = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, table, note);
+
+    const sP = slider({ label: '対立遺伝子 A の遺伝子頻度 p', min: 0, max: 1, step: 0.01, value: st.p, format: (v) => `p ＝ ${fmt(v, 2)}（q ＝ ${fmt(1 - v, 2)}）`, onInput: (v) => { st.p = v; update(); } });
+    const ctlHw = h('div', null, sP.el);
+    const sN = slider({ label: '集団の大きさ N（個体数）', min: Math.log10(5), max: 5, step: 0.01, value: st.logN, format: (v) => `${Math.round(Math.pow(10, v)).toLocaleString('ja-JP')} 個体（遺伝子 ${(2 * Math.round(Math.pow(10, v))).toLocaleString('ja-JP')} 個）`, onInput: (v) => { st.logN = v; update(); } });
+    const sP0 = slider({ label: 'はじめの遺伝子頻度 p', min: 0.1, max: 0.9, step: 0.05, value: st.p0, format: (v) => fmt(v, 2), onInput: (v) => { st.p0 = v; update(); } });
+    const again = h('button', { type: 'button', class: 'btn primary', onclick: () => { st.seed = randomSeed(); st.rerolls += 1; update(); } }, '🎲 もう一度');
+    const ctlDrift = h('div', null, sN.el, sP0.el, h('div', { class: 'row' }, again));
+    const exp = explainBox();
+    root.append(panel('操作', ctlHw, ctlDrift), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlHw.hidden = st.tab !== 'hw';
+      ctlDrift.hidden = st.tab !== 'drift';
+      update();
+    }
+
+    function drawHw() {
+      const { p } = st;
+      const q = 1 - p;
+      const g = genotypeFreq(p);
+      title.replaceChildren('遺伝子頻度と遺伝子型頻度 ', modelNote('ハーディー・ワインベルグの法則による計算'));
+      const spec = {
+        alt: `p ${fmt(p, 2)} のとき AA ${fmt(g.AA, 3)}、Aa ${fmt(g.Aa, 3)}、aa ${fmt(g.aa, 3)}`,
+        x: { min: 0, max: 1, label: 'A の遺伝子頻度 p', step: 0.1, digits: 1 },
+        y: { min: 0, max: 1.05, label: '遺伝子型頻度', step: 0.2, digits: 1 },
+        series: [
+          { points: sample((x) => x * x, 0, 1, 100), color: 'c1', width: 3, label: 'AA ＝ p²', labelAt: 0.9 },
+          { points: sample((x) => 2 * x * (1 - x), 0, 1, 100), color: 'c3', dash: 'dash', width: 3, label: 'Aa ＝ 2pq', labelAt: 0.5 },
+          { points: sample((x) => (1 - x) * (1 - x), 0, 1, 100), color: 'c2', dash: 'dot', width: 3, label: 'aa ＝ q²', labelAt: 0.1 },
+        ],
+        vlines: [{ x: p, color: 'muted', dash: 'dot', label: `p ＝ ${fmt(p, 2)}` }],
+        markers: [
+          { x: p, y: g.AA, color: 'c1' },
+          { x: p, y: g.Aa, color: 'c3', shape: 'square' },
+          { x: p, y: g.aa, color: 'c2', shape: 'diamond' },
+        ],
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+      const n = 1000;
+      table.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '遺伝子型'), h('th', null, '頻度'), h('th', null, '1000個体あたり'))),
+          h('tbody', null,
+            h('tr', null, h('td', null, 'AA（p²）'), h('td', null, fmt(g.AA, 4)), h('td', null, fmt(g.AA * n, 1))),
+            h('tr', null, h('td', null, 'Aa（2pq）'), h('td', null, fmt(g.Aa, 4)), h('td', null, fmt(g.Aa * n, 1))),
+            h('tr', null, h('td', null, 'aa（q²）'), h('td', null, fmt(g.aa, 4)), h('td', null, fmt(g.aa * n, 1))),
+          ),
+        ),
+      );
+      note.textContent = 'A が a に対して顕性のとき、表現型 [A] は AA と Aa、[a] は aa だけ。';
+      const lines = [
+        `精子・卵の遺伝子のうち A が p ＝ ${fmt(p, 2)}、a が q ＝ ${fmt(q, 2)} の割合で含まれ、これらが無作為に受精するので、AA ＝ p² ＝ ${fmt(g.AA, 4)}、Aa ＝ 2pq ＝ ${fmt(g.Aa, 4)}、aa ＝ q² ＝ ${fmt(g.aa, 4)} になる（合計 1）。`,
+        `次の世代の A の遺伝子頻度は p² ＋ pq ＝ p(p ＋ q) ＝ ${fmt(p, 2)} で、前の世代と変わらない。集団が十分に大きく、自由に交配し、突然変異・自然選択・移入や移出がなければ、遺伝子頻度は世代をこえて一定に保たれる（ハーディー・ワインベルグの法則）。`,
+      ];
+      if (q > 0 && q <= 0.1) lines.push(`q が小さいと、aa（${fmt(g.aa * n, 1)}個体／1000）よりも Aa（${fmt(g.Aa * n, 1)}個体／1000）のほうがずっと多い（約${fmt(g.Aa / g.aa, 0)}倍）。潜性の遺伝子の多くは、表現型に現れないヘテロ接合体の中にかくれている。`);
+      else lines.push('逆に、潜性形質 [a] の個体の割合 q² がわかれば、q ＝ √(q²) として遺伝子頻度を求められる（ハーディー・ワインベルグの法則が成り立つとき）。');
+      exp.set(lines);
+      return null;
+    }
+
+    function drawDrift() {
+      const N = nOf();
+      const runs = driftLines(N, st.p0, GENS, LINES, makeRng(st.seed));
+      const sum = fixationSummary(runs);
+      title.replaceChildren(`集団の大きさ ${N.toLocaleString('ja-JP')} 個体での遺伝子頻度の変化 `, modelNote('乱数によるシミュレーション'));
+      const spec = {
+        alt: `${LINES}つの集団のうち、固定 ${sum.fixed}、消失 ${sum.lost}`,
+        x: { min: 0, max: GENS, label: '世代', step: 10 },
+        y: { min: 0, max: 1, label: 'A の遺伝子頻度', step: 0.2, digits: 1 },
+        series: runs.map((r, i) => ({ points: r.map((v, gi) => [gi, v]), color: LINE_STYLE[i][0], dash: LINE_STYLE[i][1], width: 2 })),
+        hlines: [{ y: st.p0, color: 'muted', dash: 'dot', label: `はじめ p ＝ ${fmt(st.p0, 2)}`, align: 'right' }],
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legend([{ label: `同じ条件の集団 ${LINES}つ（線1本が1つの集団）`, color: 'c1' }]));
+      const spread = Math.max(...runs.map((r) => Math.max(...r.map((v) => Math.abs(v - st.p0)))));
+      table.replaceChildren(h('p', null, `${GENS}世代後：A が固定（p＝1）した集団 ${sum.fixed}、A が消失（p＝0）した集団 ${sum.lost}、残りの集団 ${LINES - sum.fixed - sum.lost}。はじめの値からのずれは最大 ${fmt(spread, 2)}。`));
+      note.textContent = '自然選択・突然変異・移入・移出はなく、毎世代、親の遺伝子から無作為に次の世代の遺伝子が選ばれる模式（ライト・フィッシャー型）。';
+      const lines = [];
+      lines.push('どの遺伝子が次の世代に伝わるかは偶然に左右されるので、自然選択がはたらかなくても遺伝子頻度は世代ごとに変化する。これを遺伝的浮動という。');
+      lines.push(N <= 50
+        ? `集団が小さい（${N}個体）と、偶然による変化が大きく、遺伝子頻度が0（消失）や1（固定）になりやすい。一度消失・固定すると、突然変異や移入がない限りもとにはもどらない。`
+        : N >= 10000
+          ? `集団が大きい（${N.toLocaleString('ja-JP')}個体）と、偶然のかたよりが打ち消し合うので、遺伝子頻度はほとんど変化しない。ハーディー・ワインベルグの法則の「集団が十分に大きい」という条件は、このことを表している。`
+          : '集団の大きさを変えて、変化の大きさを比べてみよう。集団が小さいほど遺伝的浮動の影響が大きい。');
+      lines.push('個体数が急に減った集団（びん首効果）や、少数の個体が新しい場所に移って生じた集団（創始者効果）では、遺伝的浮動によって遺伝子頻度が大きく変わることがある。');
+      exp.set(lines);
+      return { N, fixedLost: sum.fixed + sum.lost, spread };
+    }
+
+    function update() {
+      const d = st.tab === 'hw' ? drawHw() : drawDrift();
+      ctx.update({ ...st, drift: d });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'hw' && Math.abs(s.p - 0.5) < 1e-9;
+dojo.tasks[1].check = (s) => s.tab === 'hw' && 1 - s.p <= 0.1 + 1e-9 && 1 - s.p > 0;
+dojo.tasks[2].check = (s) => s.tab === 'drift' && s.drift && s.drift.N <= 20 && s.drift.fixedLost > 0;
+dojo.tasks[3].check = (s) => s.tab === 'drift' && s.drift && s.drift.N >= 10000 && s.drift.spread < 0.15;
+dojo.tasks[4].check = (s) => s.tab === 'drift' && s.rerolls >= 2;
+return { dojo };
+})();
+
+// ---- models/operon.js ----
+__m["models/operon.js"] = (function () {
+// A7 遺伝子発現の調節（大腸菌のラクトースオペロン）
+// 調節遺伝子 → リプレッサー（調節タンパク質）。リプレッサーがオペレーターに結合すると、
+// RNAポリメラーゼがプロモーターから転写を進められず、構造遺伝子（β-ガラクトシダーゼなどの遺伝子）は転写されない。
+// ラクトースがあると、ラクトースからできる物質がリプレッサーに結合し、リプレッサーはオペレーターに結合できなくなる → 転写が起こる。
+// （発展）グルコースがあると、ラクトースがあっても転写はわずかしか起こらない
+//   （グルコースがないときに転写を促進するタンパク質（CRP・CAP）がはたらかないため）。
+const MUTANTS = {
+  none: { name: '野生型（変異なし）', short: '野生型' },
+  noRepressor: { name: '調節遺伝子の変異（リプレッサーがつくられない）', short: '調節遺伝子の変異' },
+  operator: { name: 'オペレーターの変異（リプレッサーが結合できない）', short: 'オペレーターの変異' },
+  noInducer: { name: 'リプレッサーの変異（ラクトースからできる物質と結合できない）', short: 'リプレッサーの変異' },
+};
+
+const LEVEL = { off: 0, low: 0.1, high: 1 };
+const LEVEL_NAME = { off: '転写されない（オフ）', low: '転写はわずか', high: 'さかんに転写される（オン）' };
+
+function operonState({ lactose, glucose, mutant = 'none' }) {
+  const repressorMade = mutant !== 'noRepressor';
+  // ラクトースからできる物質がリプレッサーに結合しているか
+  const inducerBound = repressorMade && lactose && mutant !== 'noInducer';
+  const repressorBound = repressorMade && !inducerBound && mutant !== 'operator';
+  const activatorBound = !glucose; // グルコースがないとき転写を促進するタンパク質が結合する（発展）
+  let level;
+  if (repressorBound) level = 'off';
+  else level = activatorBound ? 'high' : 'low';
+  return { repressorMade, inducerBound, repressorBound, activatorBound, level, value: LEVEL[level] };
+}
+
+// グルコースとラクトースを両方含む培地での培養（二段階の増殖）
+// 菌はまずグルコースを使って増える。グルコースがなくなるとラクトースオペロンの転写が始まり、
+// β-ガラクトシダーゼがつくられるまでの間、増殖がいったん止まる。その後ラクトースを使って再び増える。
+const DIAUXIE = { N0: 1, G0: 40, L0: 160, muG: 0.9, muL: 0.6, K: 2, tau: 0.5, delay: 0.6, T: 12 };
+
+// β-ガラクトシダーゼの量 E（相対値。さかんに転写されている状態が続いたときを 1 とする）。
+// 転写がオンになってから酵素がたまりはじめるまで少し時間がかかる（delay）。
+// 転写がオフのときは新たにつくられず、増殖で菌が増えた分だけうすまる（増殖しなければ量は変わらない）。
+function diauxie(p = DIAUXIE, dt = 0.005, every = 10) {
+  let N = p.N0;
+  let G = p.G0;
+  let L = p.L0;
+  let E = 0;
+  let onSince = null;
+  const out = [];
+  const steps = Math.round(p.T / dt);
+  for (let i = 0; i <= steps; i++) {
+    const t = i * dt;
+    const s = operonState({ lactose: L > 0.5, glucose: G > 0.5, mutant: 'none' });
+    if (s.level === 'high') onSince = onSince == null ? t : onSince;
+    else onSince = null;
+    if (i % every === 0) out.push({ t, N, G, L, E, level: s.level });
+    const gG = (p.muG * G) / (p.K + G);
+    const gL = (p.muL * E * L) / (p.K + L);
+    const mu = gG + gL;
+    G = Math.max(0, G - gG * N * dt);
+    L = Math.max(0, L - gL * N * dt);
+    N += mu * N * dt;
+    const making = onSince != null && t - onSince >= p.delay;
+    E += (making ? (1 - E) / p.tau : -mu * E) * dt;
+  }
+  return out;
+}
+
+// グルコースがなくなる時刻（G が初めて 0.5 未満になる時刻）
+function glucoseOutTime(run) {
+  const r = run.find((q) => q.G < 0.5);
+  return r ? r.t : null;
+}
+
+// 1分子のmRNAにふくまれる、翻訳される領域の塩基数（アミノ酸1個＝3塩基、終止コドン3塩基を加える）
+function codingBases(aminoAcids) {
+  return (aminoAcids + 1) * 3;
+}
+return { MUTANTS, LEVEL, LEVEL_NAME, operonState, DIAUXIE, diauxie, glucoseOutTime, codingBases };
+})();
+
+// ---- dojo/a7.js ----
+__m["dojo/a7.js"] = (function () {
+// A7 遺伝子発現の調節（ラクトースオペロン）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legendFromSpec, tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { operonState, MUTANTS, LEVEL_NAME, diauxie, glucoseOutTime, DIAUXIE } = __m["models/operon.js"];
+
+// オペロンの模式図（Canvas）。色はテーマのトークンから読むので、ダークモードでも見える
+function drawOperon(canvas, s, mutant) {
+  const W = Math.max(300, canvas.parentElement ? canvas.parentElement.clientWidth : 340);
+  const H = 250;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const muted = tokenColor('muted');
+  const bg = tokenColor('surface');
+  const bg2 = tokenColor('surface-2');
+  const c1 = tokenColor('c1');
+  const c2 = tokenColor('c2');
+  const c3 = tokenColor('c3');
+  const c4 = tokenColor('c4');
+  const c5 = tokenColor('c5');
+  const ng = tokenColor('ng');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const font = getComputedStyle(document.body).fontFamily;
+  const fs = W < 380 ? 11 : 12.5;
+  const text = (t, x, y, color = fg, align = 'center', bold = false) => {
+    g.font = `${bold ? 'bold ' : ''}${fs}px ${font}`;
+    g.textAlign = align;
+    g.textBaseline = 'middle';
+    g.lineJoin = 'round';
+    g.lineWidth = 4;
+    g.strokeStyle = bg;
+    g.strokeText(t, x, y);
+    g.fillStyle = color;
+    g.fillText(t, x, y);
+  };
+  const X = (f) => 6 + f * (W - 12);
+  const bandY = 138;
+  const bandH = 20;
+  const seg = (f0, f1, fill, label, color = fg) => {
+    g.fillStyle = fill;
+    g.fillRect(X(f0), bandY, X(f1) - X(f0), bandH);
+    g.strokeStyle = fg;
+    g.lineWidth = 1.2;
+    g.strokeRect(X(f0), bandY, X(f1) - X(f0), bandH);
+    if (label) text(label, (X(f0) + X(f1)) / 2, bandY + bandH / 2, color, 'center', true);
+  };
+  // DNA
+  g.strokeStyle = muted;
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(X(0), bandY + bandH / 2);
+  g.lineTo(X(1), bandY + bandH / 2);
+  g.stroke();
+  const P = { reg: [0.02, 0.17], pro: [0.27, 0.38], op: [0.38, 0.47], z: [0.47, 0.72], y: [0.72, 0.86], a: [0.86, 0.98] };
+  seg(...P.reg, bg2, mutant === 'noRepressor' ? '× 変異' : '');
+  seg(...P.pro, bg2, '');
+  seg(...P.op, mutant === 'operator' ? tokenColor('ng-soft') : bg2, mutant === 'operator' ? '×' : '');
+  seg(...P.z, bg2, 'Z');
+  seg(...P.y, bg2, 'Y');
+  seg(...P.a, bg2, 'A');
+  const mid = (k) => (X(P[k][0]) + X(P[k][1])) / 2;
+  text('調節遺伝子', mid('reg'), bandY + bandH + 14, fg);
+  text('プロモーター', mid('pro'), bandY + bandH + 14, fg);
+  text('オペレーター', mid('op') + 6, bandY + bandH + 32, fg);
+  text('構造遺伝子', (X(P.z[0]) + X(P.a[1])) / 2 + 10, bandY + bandH + 50, fg);
+  g.strokeStyle = muted;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(mid('op'), bandY + bandH);
+  g.lineTo(mid('op') + 6, bandY + bandH + 24);
+  g.stroke();
+
+  // 調節遺伝子 → リプレッサー
+  const repFree = { x: mid('reg') + 30, y: 52 };
+  const repOn = { x: mid('op'), y: bandY - 16 };
+  if (s.repressorMade) {
+    g.strokeStyle = muted;
+    g.lineWidth = 1.5;
+    g.setLineDash([4, 3]);
+    g.beginPath();
+    g.moveTo(mid('reg'), bandY - 2);
+    g.lineTo(mid('reg'), repFree.y + 16);
+    g.stroke();
+    g.setLineDash([]);
+    text('転写・翻訳', mid('reg') + 4, 100, muted, 'left');
+  }
+  const repressor = (x, y) => {
+    g.fillStyle = c2;
+    g.strokeStyle = fg;
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(x - 24, y - 12);
+    g.lineTo(x + 24, y - 12);
+    g.lineTo(x + 24, y + 4);
+    g.lineTo(x + 10, y + 4);
+    g.lineTo(x + 10, y + 13);
+    g.lineTo(x - 10, y + 13);
+    g.lineTo(x - 10, y + 4);
+    g.lineTo(x - 24, y + 4);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  };
+  if (s.repressorMade) {
+    if (s.repressorBound) {
+      repressor(repOn.x, repOn.y);
+      text('リプレッサーが結合', repOn.x + 28, repOn.y - 14, c2, 'left', true);
+    } else {
+      repressor(repFree.x, repFree.y);
+      text('リプレッサー', repFree.x, repFree.y - 22, c2, 'center', true);
+      if (s.inducerBound) {
+        g.fillStyle = c5;
+        g.strokeStyle = fg;
+        g.beginPath();
+        g.arc(repFree.x + 30, repFree.y + 2, 8, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+        text('← ラクトースからできる物質が結合', repFree.x + 42, repFree.y, fg, 'left');
+      } else if (mutant === 'operator') {
+        text('オペレーターに結合できない', repFree.x + 30, repFree.y, fg, 'left');
+      }
+    }
+  } else {
+    text('リプレッサーがつくられない', mid('reg') + 4, 96, ng, 'left', true);
+  }
+
+  // 転写を促進するタンパク質（グルコースがないとき。発展）
+  if (s.activatorBound) {
+    g.fillStyle = c4;
+    g.strokeStyle = fg;
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.ellipse(X(P.pro[0]) - 10, bandY - 9, 13, 9, 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+
+  // RNAポリメラーゼ
+  const polX = mid('pro');
+  g.fillStyle = c1;
+  g.strokeStyle = fg;
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.ellipse(polX, bandY - 2, 20, 13, 0, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+
+  // 転写（mRNA）
+  if (s.level !== 'off') {
+    const y = 92;
+    const x0 = X(P.z[0]);
+    const x1 = X(P.a[1]);
+    g.strokeStyle = c3;
+    g.lineWidth = s.level === 'high' ? 3 : 1.5;
+    g.setLineDash(s.level === 'high' ? [] : [5, 4]);
+    g.beginPath();
+    for (let x = x0; x <= x1; x += 2) {
+      const yy = y + Math.sin((x - x0) / 6) * 4;
+      if (x === x0) g.moveTo(x, yy);
+      else g.lineTo(x, yy);
+    }
+    g.stroke();
+    g.setLineDash([]);
+    text(s.level === 'high' ? 'mRNA（さかんに転写）' : 'mRNA（わずか）', (x0 + x1) / 2, y - 18, c3, 'center', true);
+    text(s.level === 'high' ? '→ 酵素が多量につくられる' : '→ 酵素はわずか', (x0 + x1) / 2, y + 22, c3, 'center');
+  } else {
+    text('転写されない', (X(P.z[0]) + X(P.a[1])) / 2, 92, muted, 'center', true);
+  }
+}
+
+const T = DIAUXIE.T;
+
+const dojo = {
+  tasks: [
+    { id: 'off', text: 'ラクトースを「なし」にして、リプレッサーがオペレーターに結合し、構造遺伝子が転写されないことを確かめよう。', short: 'ラクトースなし → オフ' },
+    { id: 'on', text: 'ラクトースあり・グルコースなしにして、転写がオンになることを確かめよう。', short: 'ラクトースあり → オン' },
+    { id: 'glc', text: '（発展）ラクトースとグルコースが両方あるとき、転写がわずかしか起こらないことを確かめよう。', short: 'グルコースがあるとき' },
+    { id: 'mut', text: '「変異」を切り替えて、ラクトースがなくても転写される変異を見つけよう。', short: 'つねに転写される変異' },
+    { id: 'diauxie', text: '②で時刻を動かし、グルコースがなくなったあとで転写がオンになり、酵素が増えることを確かめよう。', short: '二段階の増殖' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'switch', lactose: false, glucose: false, mutant: 'none', t: 2, touched: 0 };
+    const run = diauxie();
+    const tG = glucoseOutTime(run);
+
+    const tabs = segmented({ label: '表示', options: [{ value: 'switch', label: '①スイッチの切替' }, { value: 'culture', label: '②培養の時間変化' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    top.append(h('h2', null, 'ラクトースオペロン（大腸菌） ', modelNote()));
+    const canvas = h('canvas', { role: 'img', 'aria-label': 'ラクトースオペロンの模式図' });
+    const wrap = h('div', { class: 'chart-wrap' }, canvas);
+    const status = h('p', { class: 'small', 'aria-live': 'polite' });
+    const key = (color, shape, label) => h('li', null, h('span', { class: 'swatch ' + shape, style: { background: `var(--${color})` }, 'aria-hidden': 'true' }), label);
+    top.append(wrap, h('ul', { class: 'legend' }, key('c2', 'rep', 'リプレッサー（凸形）'), key('c1', 'oval', 'RNAポリメラーゼ（楕円）'), key('c5', 'dot', 'ラクトースからできる物質（円）'), key('c4', 'oval', '転写を促進するタンパク質（小さな楕円・発展）'), key('c3', 'wave', 'mRNA（波線）')), status, h('p', { class: 'small muted' }, 'Z・Y・A は、ラクトースの分解と取り込みにはたらく酵素などの構造遺伝子（Z：β-ガラクトシダーゼ）。転写を促進するタンパク質（CRP）のはたらきは発展的な内容。'));
+    const sub = h('div');
+    top.append(sub);
+    const chart = createChart(sub, { label: '菌の数と酵素の量の時間変化', aspect: 0.66 });
+    const leg = h('div');
+    sub.append(leg);
+
+    const segL = segmented({ label: 'ラクトース', options: [{ value: false, label: 'ラクトースなし' }, { value: true, label: 'ラクトースあり' }], value: st.lactose, onChange: (v) => { st.lactose = v; st.touched++; update(); } });
+    const segG = segmented({ label: 'グルコース', options: [{ value: false, label: 'グルコースなし' }, { value: true, label: 'グルコースあり' }], value: st.glucose, onChange: (v) => { st.glucose = v; st.touched++; update(); } });
+    const segM = segmented({ label: '変異', options: Object.entries(MUTANTS).map(([value, m]) => ({ value, label: m.short })), value: st.mutant, onChange: (v) => { st.mutant = v; st.touched++; update(); } });
+    const ctlSwitch = h('div', null, segL.el, segG.el, segM.el);
+    const sT = slider({ label: '培養をはじめてからの時間', min: 0, max: T, step: 0.1, value: st.t, format: (v) => `${fmt(v, 1)} 時間`, onInput: (v) => { st.t = v; update(); } });
+    const ctlCulture = h('div', null, h('p', { class: 'small' }, 'グルコースとラクトースを両方含む培地で、野生型の大腸菌を培養する。'), sT.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlSwitch, ctlCulture), panel('いま何が起きているか', exp.el));
+
+    let last = null;
+    const redraw = () => last && drawOperon(canvas, last.s, last.mutant);
+    keepRedrawn(canvas, redraw);
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => {
+        if (wrap.clientWidth && wrap.clientWidth !== lastW) {
+          lastW = wrap.clientWidth;
+          redraw();
+        }
+      }).observe(wrap);
+    }
+
+    function layout() {
+      ctlSwitch.hidden = st.tab !== 'switch';
+      ctlCulture.hidden = st.tab !== 'culture';
+      sub.hidden = st.tab !== 'culture';
+      update();
+    }
+
+    function cultureState() {
+      const i = Math.min(run.length - 1, Math.round(st.t / (run[1].t - run[0].t)));
+      return run[i];
+    }
+
+    function update() {
+      let cond;
+      let q = null;
+      if (st.tab === 'switch') cond = { lactose: st.lactose, glucose: st.glucose, mutant: st.mutant };
+      else {
+        q = cultureState();
+        cond = { lactose: q.L > 0.5, glucose: q.G > 0.5, mutant: 'none' };
+      }
+      const s = operonState(cond);
+      last = { s, mutant: cond.mutant };
+      redraw();
+      canvas.setAttribute('aria-label', `ラクトース${cond.lactose ? 'あり' : 'なし'}、グルコース${cond.glucose ? 'あり' : 'なし'}：${LEVEL_NAME[s.level]}`);
+      status.textContent = `ラクトース ${cond.lactose ? 'あり' : 'なし'}・グルコース ${cond.glucose ? 'あり' : 'なし'}${cond.mutant !== 'none' ? '・' + MUTANTS[cond.mutant].name : ''} → ${LEVEL_NAME[s.level]}`;
+
+      const lines = [];
+      if (!s.repressorMade) {
+        lines.push('調節遺伝子に変異があってリプレッサーがつくられないので、オペレーターに結合するものがない。RNAポリメラーゼはいつでも転写を進められるので、ラクトースがなくても構造遺伝子が転写される。');
+      } else if (s.repressorBound) {
+        lines.push(cond.mutant === 'noInducer' && cond.lactose
+          ? 'リプレッサーが、ラクトースからできる物質と結合できない変異をもつので、ラクトースがあってもリプレッサーはオペレーターに結合したまま。構造遺伝子は転写されない。'
+          : '調節遺伝子からつくられたリプレッサー（調節タンパク質）がオペレーターに結合している。そのため、RNAポリメラーゼがプロモーターに結合しても転写を進められず、構造遺伝子は転写されない。');
+        lines.push('ラクトースがないときに、ラクトースを分解する酵素をつくらないことで、むだなエネルギーや材料を使わずにすむ。');
+      } else if (cond.mutant === 'operator') {
+        lines.push('オペレーターの塩基配列が変わってリプレッサーが結合できないので、ラクトースの有無に関係なく転写を止められない。');
+      } else {
+        lines.push('ラクトースがあると、ラクトースからできる物質がリプレッサーに結合する。するとリプレッサーの形が変わってオペレーターに結合できなくなり、RNAポリメラーゼが構造遺伝子を転写する。');
+      }
+      if (s.level !== 'off') {
+        lines.push(s.level === 'high'
+          ? '構造遺伝子 Z・Y・A は1本のmRNAとしてまとめて転写され、β-ガラクトシダーゼ（ラクトースを分解する酵素）などがつくられる。このように、まとめて転写調節を受ける遺伝子群をオペロンという。'
+          : '（発展）グルコースがあると、転写を促進するタンパク質（CRP）がはたらかないので、リプレッサーが外れていても転写はわずかしか起こらない。大腸菌は利用しやすいグルコースを先に使う。');
+      }
+      if (q) {
+        lines.push(q.G > 0.5
+          ? `培養 ${fmt(st.t, 1)} 時間：グルコースが残っているので、大腸菌はグルコースを使って増えている。ラクトースオペロンはほとんど転写されず、β-ガラクトシダーゼはほとんどない。`
+          : q.L > 0.5
+            ? `培養 ${fmt(st.t, 1)} 時間：グルコースは約 ${fmt(tG, 1)} 時間でなくなった。そのあと転写がオンになり、β-ガラクトシダーゼがつくられるまで増殖がいったん止まる。酵素がそろうと、ラクトースを使って再び増える（二段階の増殖）。`
+            : `培養 ${fmt(st.t, 1)} 時間：ラクトースも使い切ったので、増殖は止まった。ラクトースがなくなるとリプレッサーが再びオペレーターに結合し、転写はオフにもどる。`);
+        drawCulture();
+      }
+      exp.set(lines);
+      ctx.update({ ...st, level: s.level, repressorBound: s.repressorBound, q, tG });
+    }
+
+    function drawCulture() {
+      const spec = {
+        alt: '菌の数とβ-ガラクトシダーゼの量の時間変化',
+        x: { min: 0, max: T, label: '時間（時間）', step: 2 },
+        y: { min: 1, max: 1000, log: true, label: '菌の数（相対値・対数目盛り）' },
+        y2: { min: 0, max: 1.2, label: '量（相対値）', step: 0.2, digits: 1 },
+        regions: [{ x0: 0, x1: tG, fill: 'region', label: 'グルコースを利用' }, { x0: tG, x1: T, fill: 'region-4', label: 'ラクトースを利用' }],
+        series: [
+          { points: run.map((r) => [r.t, r.N]), color: 'c1', width: 3, legendLabel: '菌の数（左の目盛り）' },
+          { points: run.map((r) => [r.t, r.E]), color: 'c2', dash: 'dash', width: 3, axis: 'y2', legendLabel: 'β-ガラクトシダーゼの量（右の目盛り）' },
+          { points: run.map((r) => [r.t, r.G / DIAUXIE.G0]), color: 'c3', dash: 'dot', width: 2, axis: 'y2', legendLabel: 'グルコースの残り（はじめ＝1、右の目盛り）' },
+          { points: run.map((r) => [r.t, r.L / DIAUXIE.L0]), color: 'c4', dash: 'dashdot', width: 2, axis: 'y2', legendLabel: 'ラクトースの残り（はじめ＝1、右の目盛り）' },
+        ],
+        vlines: [{ x: st.t, color: 'fg', dash: 'dot', label: `${fmt(st.t, 1)} 時間`, dy: 22 }],
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+    }
+
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'switch' && s.touched > 0 && !s.lactose && s.mutant === 'none' && s.repressorBound;
+dojo.tasks[1].check = (s) => s.tab === 'switch' && s.lactose && !s.glucose && s.mutant === 'none' && s.level === 'high';
+dojo.tasks[2].check = (s) => s.tab === 'switch' && s.lactose && s.glucose && s.mutant === 'none' && s.level === 'low';
+dojo.tasks[3].check = (s) => s.tab === 'switch' && !s.lactose && s.level !== 'off';
+dojo.tasks[4].check = (s) => s.tab === 'culture' && s.q && s.t > s.tG + 1 && s.q.L > 0.5 && s.level === 'high';
+return { dojo };
+})();
+
+// ---- models/survival.js ----
+__m["models/survival.js"] = (function () {
+// A8 生存曲線と生命表
+// 出生（ふ化）した 1000 個体のうち、各年齢まで生き残っている個体数（生存数）を、
+// 縦軸を対数目盛りにして表したものが生存曲線。ここでは寿命を 100（相対値）としたワイブル型の模式：
+//   生存数 l(x) ＝ 1000 × exp(−(x/λ)^k)、λ は「寿命 100 で生存数 1」になるように決める。
+//   k ＞ 1：晩死型（若いうちの死亡が少なく、老齢で多く死ぬ）
+//   k ＝ 1：平均型（死亡率が年齢によらず一定。対数目盛りで直線）
+//   k ＜ 1：早死型（生まれてすぐの死亡が非常に多い）
+const L0 = 1000;
+const LIFESPAN = 100;
+const TYPES = {
+  late: { name: '晩死型', k: 6, examples: 'ヒトやゾウなどの大形の哺乳類', care: '産む子の数が少なく、親が子を保護する' },
+  mid: { name: '平均型', k: 1, examples: '鳥類（シジュウカラなど）・ヒドラ', care: 'どの年齢でも死亡率がほぼ一定' },
+  early: { name: '早死型', k: 0.25, examples: '魚類（マイワシなど）・カキなどの貝類', care: '多数の卵を産むが、親が保護しない' },
+};
+
+function lambdaOf(k) {
+  return LIFESPAN / Math.pow(Math.log(L0), 1 / k);
+}
+
+// 年齢 x（0〜100）の生存数
+function survivors(x, k) {
+  if (x <= 0) return L0;
+  return L0 * Math.exp(-Math.pow(x / lambdaOf(k), k));
+}
+
+// 生命表：年齢の区分ごとの はじめの生存数・死亡数・死亡率
+// 死亡率 ＝ その区分の死亡数 ÷ その区分のはじめの生存数
+function lifeTable(lx) {
+  return lx.slice(0, -1).map((l, i) => {
+    const d = l - lx[i + 1];
+    return { start: l, deaths: d, mortality: l > 0 ? d / l : 0 };
+  });
+}
+
+// 曲線から、区分の境目の生存数（整数）を読む
+function lxFromCurve(k, classes = 10) {
+  return Array.from({ length: classes + 1 }, (_, i) => Math.round(survivors((LIFESPAN * i) / classes, k)));
+}
+
+// 死亡率がほぼ一定か（平均型の目安）
+function typeOfTable(lx) {
+  const m = lifeTable(lx).filter((r) => r.start > 0).map((r) => r.mortality);
+  const first = m[0];
+  const last = m[m.length - 1];
+  if (Math.max(...m) - Math.min(...m) < 0.05) return 'mid';
+  return first > last ? 'early' : 'late';
+}
+return { L0, LIFESPAN, TYPES, lambdaOf, survivors, lifeTable, lxFromCurve, typeOfTable };
+})();
+
+// ---- dojo/a8.js ----
+__m["dojo/a8.js"] = (function () {
+// A8 生存曲線と生命表 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { TYPES, survivors, lxFromCurve, lifeTable, L0, LIFESPAN } = __m["models/survival.js"];
+const { sample } = __m["lib/series.js"];
+
+const CLASSES = 10;
+const REF = [['late', 'c1', 'solid'], ['mid', 'c3', 'dash'], ['early', 'c2', 'dot']];
+
+const dojo = {
+  tasks: [
+    { id: 'three', text: '晩死型・平均型・早死型の3つをすべて選んで、曲線の形を比べよう。', short: '3つの型を比べる' },
+    { id: 'straight', text: '平均型を選び、縦軸が対数目盛りのとき直線になることを確かめよう。', short: '平均型は対数目盛りで直線' },
+    { id: 'linear', text: '縦軸を「ふつうの目盛り」に切り替えて、平均型の曲線が直線にならないことを確かめよう。', short: 'ふつうの目盛りでは曲線' },
+    { id: 'early', text: '早死型で、生命表の最初の区分の死亡率がとても高いことを確かめよう（区分1を選ぶ）。', short: '早死型の死亡率' },
+    { id: 'calc', text: '生命表の区分を3回以上変えて、死亡率 ＝ 死亡数 ÷ はじめの生存数 の計算を確かめよう。', short: '死亡率の計算' },
+  ],
+  mount(root, ctx) {
+    const st = { type: 'late', k: TYPES.late.k, log: true, cls: 1 };
+    const seen = { types: new Set(['late']), clsMoves: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '生存曲線 ', modelNote()));
+    const chart = createChart(top, { label: '生存曲線', aspect: 0.72 });
+    const leg = h('div');
+    top.append(leg, h('p', { class: 'small muted' }, `出生（ふ化）した ${L0} 個体が、年齢とともに何個体生き残っているかを表す。横軸は寿命を ${LIFESPAN} とした相対的な年齢。`));
+
+    const segT = segmented({ label: '型', options: [...Object.entries(TYPES).map(([value, t]) => ({ value, label: t.name })), { value: 'custom', label: '自分で調整' }], value: st.type, onChange: (v) => { st.type = v; if (v !== 'custom') { st.k = TYPES[v].k; sK.set(Math.log10(st.k), true); seen.types.add(v); } update(); } });
+    const sK = slider({ label: '曲線の形（左：若いうちに多く死ぬ ↔ 右：老齢で多く死ぬ）', min: Math.log10(0.2), max: Math.log10(8), step: 0.01, value: Math.log10(st.k), format: (v) => `k ＝ ${fmt(Math.pow(10, v), 2)}`, onInput: (v) => { st.k = Math.pow(10, v); st.type = 'custom'; segT.set('custom', true); update(); } });
+    const segY = segmented({ label: '縦軸', options: [{ value: true, label: '対数目盛り' }, { value: false, label: 'ふつうの目盛り' }], value: st.log, onChange: (v) => { st.log = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segT.el, sK.el, segY.el), panel('いま何が起きているか', exp.el));
+
+    const tablePanel = panel('生命表');
+    const tableBox = h('div');
+    const chart2Box = h('div');
+    const calc = h('div', { class: 'explain', 'aria-live': 'polite' });
+    const sC = slider({ label: '計算する年齢の区分', min: 1, max: CLASSES, step: 1, value: st.cls, format: (v) => `区分${v}（年齢 ${(v - 1) * 10}〜${v * 10}）`, onInput: (v) => { st.cls = v; seen.clsMoves++; update(); } });
+    tablePanel.append(h('p', { class: 'small muted' }, 'いまの曲線から読みとった生存数（整数に丸めた値）で作った生命表。生存数が少なくなると、1個体の差で死亡率が大きく変わる。'), tableBox, sC.el, calc, chart2Box);
+    root.append(tablePanel);
+    const chart2 = createChart(chart2Box, { label: '年齢の区分ごとの死亡率', aspect: 0.5 });
+    const leg2 = h('div');
+    chart2Box.append(leg2);
+
+    function update() {
+      const { k, log } = st;
+      const series = REF.map(([id, color, dash]) => ({ points: sample((x) => survivors(x, TYPES[id].k), 0, LIFESPAN, 200), color, dash, width: 1.8, legendLabel: `${TYPES[id].name}（${TYPES[id].examples}）` }));
+      series.push({ points: sample((x) => survivors(x, k), 0, LIFESPAN, 300), color: 'c4', width: 4, legendLabel: st.type === 'custom' ? 'いまの曲線' : `いまの曲線（${TYPES[st.type].name}）` });
+      const spec = {
+        alt: `生存曲線 k ${fmt(k, 2)}`,
+        x: { min: 0, max: LIFESPAN, label: '相対年齢', step: 10 },
+        y: log ? { min: 1, max: 1000, log: true, label: '生存数（対数目盛り）' } : { min: 0, max: 1000, label: '生存数', step: 200 },
+        series,
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+
+      const lx = lxFromCurve(k, CLASSES);
+      const rows = lifeTable(lx);
+      tableBox.replaceChildren(
+        h('div', { class: 'table-scroll' },
+          h('table', { class: 'data' },
+            h('thead', null, h('tr', null, h('th', null, '区分'), h('th', null, '年齢'), h('th', null, 'はじめの生存数'), h('th', null, '死亡数'), h('th', null, '死亡率'))),
+            h('tbody', null, ...rows.map((r, i) => h('tr', { class: i + 1 === st.cls ? 'hl' : null }, h('td', null, String(i + 1)), h('td', null, `${i * 10}〜${(i + 1) * 10}`), h('td', null, String(r.start)), h('td', null, String(r.deaths)), h('td', null, r.start > 0 ? fmt(r.mortality, 3) : '—')))),
+          ),
+        ),
+      );
+      const r = rows[st.cls - 1];
+      calc.replaceChildren(
+        h('p', null, `区分${st.cls}：死亡数 ＝ ${r.start} − ${lx[st.cls]} ＝ ${r.deaths}`),
+        h('p', null, r.start > 0 ? `死亡率 ＝ 死亡数 ÷ はじめの生存数 ＝ ${r.deaths} ÷ ${r.start} ＝ ${fmt(r.mortality, 3)}（${fmt(r.mortality * 100, 1)}%）` : 'はじめの生存数が0なので、死亡率は求められない。'),
+      );
+      const spec2 = {
+        alt: '区分ごとの死亡率',
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 1, label: '死亡率', step: 0.2, digits: 1 },
+        bars: { categories: rows.map((_, i) => String(i + 1)), groups: [{ values: rows.map((q) => (q.start > 0 ? q.mortality : 0)), color: 'c4', label: '年齢の区分ごとの死亡率（横軸は区分の番号）' }] },
+      };
+      chart2.draw(spec2);
+      leg2.replaceChildren(legendFromSpec(spec2));
+
+      const lines = [];
+      if (k < 0.7) lines.push('早死型：生まれてすぐの時期に大部分が死に、生き残った少数の個体はその後比較的長く生きる。魚類や貝類など、多数の卵を産むが親が卵や子を保護しない動物に見られる。初期の死亡率が高いので、多くの卵を産むことで子孫を残している。');
+      else if (k <= 1.5) lines.push('平均型：どの年齢でも死亡率がほぼ一定なので、縦軸を対数目盛りにすると、生存曲線はほぼ直線になる。鳥類などに見られる。');
+      else lines.push('晩死型：若いうちの死亡は少なく、ある年齢をこえると多くの個体が死ぬ。ヒトや大形の哺乳類のように、産む子の数は少ないが、親が子を保護し、子が生き残りやすい動物に見られる。');
+      lines.push(log
+        ? '縦軸が対数目盛りなので、同じ「割合」で減ると同じ傾きで下がる。傾きが急なところほど死亡率が高い。'
+        : 'ふつうの目盛りでは、死亡率が一定でも、生存数が多いうちは死亡数が多く、少なくなると死亡数も少なくなるので、平均型でも曲線になる。死亡率の比較には対数目盛りが便利である。');
+      lines.push('生存数・死亡数・死亡率を年齢の区分ごとにまとめた表を生命表という。死亡率は「その区分のはじめに生きていた個体のうち、区分の間に死んだ個体の割合」である。');
+      exp.set(lines);
+      ctx.update({ ...st, types: [...seen.types], clsMoves: seen.clsMoves });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => ['late', 'mid', 'early'].every((t) => s.types.includes(t));
+dojo.tasks[1].check = (s) => s.type === 'mid' && s.log;
+dojo.tasks[2].check = (s) => s.type === 'mid' && !s.log;
+dojo.tasks[3].check = (s) => s.type === 'early' && s.cls === 1;
+dojo.tasks[4].check = (s) => s.clsMoves >= 3;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -4266,8 +5540,13 @@ const { dojo: b10 } = __m["dojo/b10.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
+const { dojo: a4 } = __m["dojo/a4.js"];
+const { dojo: a5 } = __m["dojo/a5.js"];
+const { dojo: a6 } = __m["dojo/a6.js"];
+const { dojo: a7 } = __m["dojo/a7.js"];
+const { dojo: a8 } = __m["dojo/a8.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3, a4, a5, a6, a7, a8 };
 return { DOJOS };
 })();
 
@@ -7605,6 +8884,1112 @@ const A3 = [
 return { A3 };
 })();
 
+// ---- questions/a4.js ----
+__m["questions/a4.js"] = (function () {
+// A4 興奮の伝導 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { membrane, nerveResponse, THRESHOLD_STIM, PHASES, T_END, T_STIM } = __m["models/nerve.js"];
+const { sample } = __m["lib/series.js"];
+const { monotoneCubic } = __m["lib/interp.js"];
+
+// 静止電位・ピークを変えた活動電位の波形（問題の図用）
+function spike(rest, peak) {
+  const f = monotoneCubic([[0, rest], [T_STIM, rest], [T_STIM + 0.25, rest + 15], [T_STIM + 0.6, peak], [T_STIM + 1.4, rest], [T_STIM + 1.9, rest - 10], [T_STIM + 4, rest], [T_END, rest]]);
+  return sample(f, 0, T_END, 240);
+}
+
+const A4 = [
+  {
+    id: 'a4-phase-ion',
+    stage: 'a4',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const ask = rng.pick(['depol', 'repol']);
+      const labels = { rest: KATA[0], depol: KATA[1], repol: KATA[2] };
+      const at = { rest: 0.5, depol: T_STIM + 0.45, repol: T_STIM + 1.0 };
+      return {
+        text: `図は、1本の神経繊維の1か所の膜電位の変化を表している。ア〜ウのうち、${ask === 'depol' ? 'Na⁺ が細胞内に急に流入している' : 'K⁺ が細胞外に流出して膜電位がもとにもどりつつある'}時期はどれか。その時期の名称とともに選べ。`,
+        chart: {
+          x: { min: 0, max: T_END, label: '時間（ミリ秒）', step: 1 },
+          y: { min: -100, max: 60, label: '膜電位（mV）', step: 20 },
+          series: [{ points: sample((t) => membrane(t, 20), 0, T_END, 300), color: 'c1', width: 3 }],
+          texts: Object.keys(labels).map((k) => ({ x: at[k] + (k === 'rest' ? 0 : 0.35), y: membrane(at[k], 20) + (k === 'rest' ? 12 : 0), text: labels[k], color: 'c2' })),
+          markers: Object.keys(labels).filter((k) => k !== 'rest').map((k) => ({ x: at[k], y: membrane(at[k], 20), color: 'c2' })),
+          alt: '活動電位の波形とア〜ウの時期',
+        },
+        correct: `${labels[ask]}：${PHASES[ask].name}`,
+        wrong: [`${labels.rest}：静止電位`, `${labels[ask === 'depol' ? 'repol' : 'depol']}：${PHASES[ask === 'depol' ? 'repol' : 'depol'].name}`, `${labels[ask]}：${PHASES[ask === 'depol' ? 'repol' : 'depol'].name}`, `${labels[ask === 'depol' ? 'repol' : 'depol']}：${PHASES[ask].name}`, `${labels.rest}：${PHASES[ask].name}`],
+        explanation: ask === 'depol'
+          ? 'イの時期は脱分極で、電位依存性のナトリウムチャネルが開いて Na⁺ が細胞内に流入するので、膜電位が急に上がって細胞内が正になる。'
+          + 'Na⁺ は細胞外に多く細胞内に少ないから、チャネルが開くと濃度の差にしたがって流入する。'
+          : 'ウの時期は再分極で、ナトリウムチャネルが閉じ、電位依存性のカリウムチャネルが開いて K⁺ が流出するので、膜電位が下がって静止電位にもどっていく。'
+          + 'K⁺ は細胞内に多いから、チャネルが開くと細胞外へ出ていく。',
+      };
+    },
+  },
+  {
+    id: 'a4-amplitude',
+    stage: 'a4',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const rest = -rng.pick([60, 65, 70, 75, 80, 90]);
+      const peak = rng.pick([20, 30, 35, 40, 50]);
+      const ans = peak - rest;
+      const d = distinctNumbers(ans, [peak, -rest, peak + rest < 0 ? -(peak + rest) : peak + rest, ans + 10, ans - 20, ans * 2], ' mV', 0);
+      return {
+        text: `図は、ある神経繊維に閾値以上の刺激を与えたときの膜電位の変化である。静止電位は −${-rest} mV、膜電位の最大値は ＋${peak} mV であった。活動電位の大きさ（静止電位から最大値までの電位の変化の大きさ）は何 mV か。`,
+        chart: {
+          x: { min: 0, max: T_END, label: '時間（ミリ秒）', step: 1 },
+          y: { min: -100, max: 60, label: '膜電位（mV）', step: 20 },
+          series: [{ points: spike(rest, peak), color: 'c1', width: 3 }],
+          hlines: [{ y: rest, color: 'c3', dash: 'dot', label: `−${-rest} mV`, align: 'right' }, { y: peak, color: 'c2', dash: 'dot', label: `＋${peak} mV`, align: 'right' }],
+          alt: '活動電位の波形',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `活動電位の大きさは ${peak} − (−${-rest}) ＝ ${peak} ＋ ${-rest} ＝ ${ans} mV である。静止電位は負の値なので、引き算では符号に注意して、最大値との差を求めなければならないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a4-all-or-none',
+    stage: 'a4',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const th = rng.pick([4, 5, 6, 8]);
+      const strong = th * rng.pick([2, 3]);
+      return {
+        text: `ある1本の神経繊維は、強さ ${th} 以上の刺激で興奮する。この神経繊維に強さ ${th} の刺激と強さ ${strong} の刺激をそれぞれ与えたとき、生じる活動電位の大きさについて正しいものはどれか。`,
+        correct: '両方とも同じ大きさの活動電位が生じる',
+        wrong: [`強さ ${strong} のほうが大きな活動電位が生じる`, `強さ ${th} では活動電位が生じない`, `強さ ${strong} のほうが小さな活動電位が生じる`, '刺激の強さに比例した大きさの活動電位が生じる'],
+        ordered: true,
+        explanation: '1本の神経繊維では、閾値以上の刺激なら刺激の強さに関係なく同じ大きさの活動電位が生じ、閾値未満では生じない（全か無かの法則）。活動電位は、閾値をこえると電位依存性のナトリウムチャネルが次々に開いて一定の大きさまで脱分極するしくみで生じるからである。',
+      };
+    },
+  },
+  {
+    id: 'a4-nerve-graph',
+    stage: 'a4',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const fiberIsA = rng.chance(0.5);
+      const lab = fiberIsA ? { fiber: KATA[0], nerve: KATA[1] } : { fiber: KATA[1], nerve: KATA[0] };
+      return {
+        text: '図のア・イは、1本の神経繊維と、多数の神経繊維が束になった神経のどちらかについて、刺激の強さと興奮の大きさ（最大を100%とする）の関係を表したものである。神経を表すのはどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: 0, max: 40, label: '刺激の強さ（相対値）', step: 10 },
+          y: { min: 0, max: 115, label: '興奮の大きさ（%）', step: 20 },
+          series: [
+            { points: sample((s) => (s >= THRESHOLD_STIM ? 100 : 0), 0, 40, 400), color: 'c1', width: 3, label: lab.fiber, labelAt: 6, dash: fiberIsA ? 'solid' : 'dash' },
+            { points: sample((s) => nerveResponse(s) * 100, 0, 40, 400), color: 'c2', width: 3, label: lab.nerve, labelAt: 22, dash: fiberIsA ? 'dash' : 'solid' },
+          ],
+          alt: '刺激の強さと興奮の大きさの2本のグラフ',
+        },
+        correct: `${lab.nerve}：閾値の異なる神経繊維が多数あり、刺激が強いほど興奮する神経繊維の数が増えるから`,
+        wrong: [
+          `${lab.fiber}：閾値以上で興奮の大きさが一定になるから`,
+          `${lab.nerve}：1本1本の神経繊維の活動電位が、刺激が強いほど大きくなるから`,
+          `${lab.fiber}：神経では全か無かの法則が成り立つから`,
+          `${lab.nerve}：刺激が強いほど伝導速度が大きくなるから`,
+        ],
+        explanation: `神経を表すのは${lab.nerve}で、刺激を強くすると興奮の大きさが段階的に大きくなり、やがて一定になる。神経は閾値の異なる多数の神経繊維の束なので、刺激が強いほど閾値をこえる神経繊維の数が増えるからであり、1本1本の神経繊維は全か無かの法則にしたがっている。`,
+      };
+    },
+  },
+  {
+    id: 'a4-velocity',
+    stage: 'a4',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([20, 25, 30, 40, 50, 60]); // m/s ＝ mm/ms
+      const tRest = rng.pick([1.5, 2, 2.5, 3]);
+      const dB = rng.pick([10, 15, 20, 25, 30]);
+      const gap = rng.pick([30, 40, 50, 60]);
+      const dA = dB + gap;
+      const tA = dA / v + tRest;
+      const tB = dB / v + tRest;
+      if (!Number.isInteger(Math.round(tA * 100)) || Math.abs(tA * 100 - Math.round(tA * 100)) > 1e-6 || Math.abs(tB * 100 - Math.round(tB * 100)) > 1e-6) return this.make(rng);
+      const d = distinctNumbers(v, [v / 10, v * 10, dA / tA, dB / tB, (dA + dB) / (tA + tB), v / 2], ' m/s', 1);
+      return {
+        text: `カエルの座骨神経と腓腹筋の標本で、筋肉から ${dA / 10} cm 離れた点Aを刺激すると ${fmt(tA, 2)} ミリ秒後に、${dB / 10} cm 離れた点Bを刺激すると ${fmt(tB, 2)} ミリ秒後に筋肉が収縮しはじめた。この神経の伝導速度は何 m/s か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `伝導速度 ＝ (${dA / 10} − ${dB / 10}) cm ÷ (${fmt(tA, 2)} − ${fmt(tB, 2)}) ミリ秒 ＝ ${gap} mm ÷ ${fmt(tA - tB, 2)} ms ＝ ${fmt(v, 1)} m/s となる（1 mm/ms ＝ 1 m/s）。どちらの点を刺激しても、神経筋接合部での伝達と筋肉の収縮開始にかかる時間は同じなので、時間の差がA・B間を興奮が伝わる時間になるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a4-transmission-time',
+    stage: 'a4',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([20, 25, 40, 50]);
+      const tRest = rng.pick([1.5, 2, 2.5, 3, 3.5]);
+      const dB = rng.pick([10, 20, 30]);
+      const dA = dB + rng.pick([40, 50, 60]);
+      const tA = dA / v + tRest;
+      const tB = dB / v + tRest;
+      if (Math.abs(tA * 100 - Math.round(tA * 100)) > 1e-6 || Math.abs(tB * 100 - Math.round(tB * 100)) > 1e-6) return this.make(rng);
+      const d = distinctNumbers(tRest, [tB, tA - tB, tA, dB / v, tRest + 1, tRest / 2], ' ミリ秒', 2);
+      return {
+        text: `座骨神経と腓腹筋の標本で、筋肉から ${dA} mm の点Aを刺激すると ${fmt(tA, 2)} ミリ秒後、${dB} mm の点Bを刺激すると ${fmt(tB, 2)} ミリ秒後に筋肉が収縮しはじめた。興奮が神経の末端に達してから筋肉が収縮しはじめるまでの時間は何ミリ秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `伝導速度は (${dA} − ${dB}) ÷ (${fmt(tA, 2)} − ${fmt(tB, 2)}) ＝ ${v} mm/ms で、点Bから筋肉までの伝導に ${dB} ÷ ${v} ＝ ${fmt(dB / v, 2)} ミリ秒かかる。したがって、残りの ${fmt(tB, 2)} − ${fmt(dB / v, 2)} ＝ ${fmt(tRest, 2)} ミリ秒が、神経筋接合部での伝達と筋肉の収縮開始にかかった時間である。`,
+      };
+    },
+  },
+  {
+    id: 'a4-resting',
+    stage: 'a4',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '静止状態のニューロンで、細胞内が細胞外に対して負の電位（静止電位）になっている主な理由として正しいものはどれか。',
+        correct: 'ナトリウムポンプで K⁺ が細胞内に多く保たれ、常に開いているカリウムチャネルから K⁺ が細胞外へ流出するから',
+        wrong: [
+          'ナトリウムチャネルが常に開いていて、Na⁺ が細胞内へ流入し続けているから',
+          'ナトリウムポンプが K⁺ を細胞外へ、Na⁺ を細胞内へ運んでいるから',
+          '細胞膜が Na⁺ も K⁺ もまったく通さないから',
+        ],
+        explanation: 'ナトリウムポンプが Na⁺ を細胞外へ、K⁺ を細胞内へ能動輸送するので、細胞内は K⁺ が多く Na⁺ が少ない。静止状態でも一部のカリウムチャネルは開いていて、K⁺ が濃度の差にしたがって細胞外へ流出するから、細胞内が負になる。',
+      };
+    },
+  },
+  {
+    id: 'a4-saltatory',
+    stage: 'a4',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '有髄神経繊維の伝導速度が、同じくらいの太さの無髄神経繊維に比べて大きい理由として正しいものはどれか。',
+          correct: '興奮がランビエ絞輪からランビエ絞輪へととびとびに伝わる（跳躍伝導）から',
+          wrong: ['髄鞘の部分で活動電位が大きくなるから', '髄鞘から神経伝達物質が放出されるから', '有髄神経繊維では全か無かの法則が成り立たないから'],
+          explanation: '髄鞘は電気を通しにくいので、興奮は髄鞘のすき間（ランビエ絞輪）でだけ生じ、ランビエ絞輪からランビエ絞輪へとびとびに伝わる。これを跳躍伝導といい、興奮が隣の部分へ順に伝わる無髄神経繊維よりも速く伝わるからである。',
+        };
+      }
+      return {
+        text: '軸索の途中の1か所を電気で刺激したとき、興奮の伝わり方として正しいものはどれか。',
+        correct: '刺激した部位から両方向へ伝わる',
+        wrong: ['細胞体のほうへだけ伝わる', '軸索の末端のほうへだけ伝わる', '刺激した部位から先へは伝わらない'],
+        explanation: '興奮した部位と隣の静止部位との間に流れる電流（活動電流）が隣を次々に興奮させるので、軸索の途中を刺激すると興奮は両方向へ伝わる。ただし興奮した直後の部位は不応期になるので、いったん進みはじめた興奮は逆もどりしない。',
+      };
+    },
+  },
+  {
+    id: 'a4-terms',
+    stage: 'a4',
+    level: 1,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['ア', 'イ', 'ウ'], ['閾値', '不応期', '跳躍伝導']);
+      return {
+        text: '次のア〜ウにあてはまる語の組合せとして正しいものはどれか。　ア：活動電位を生じさせるのに必要な最小の刺激の強さ　イ：興奮した直後、刺激を与えても興奮しない短い期間　ウ：有髄神経繊維で、興奮がランビエ絞輪からランビエ絞輪へと伝わること',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: 'アは閾値、イは不応期、ウは跳躍伝導である。不応期があるので、興奮は直前に興奮した部位へは逆もどりせず、一方向へ進んでいくからである。',
+      };
+    },
+  },
+  {
+    id: 'a4-time-calc',
+    stage: 'a4',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([1, 2, 10, 20, 50, 100]);
+      const L = rng.pick([0.5, 1, 1.2, 1.5, 2]);
+      const ans = (L / v) * 1000; // ms
+      const d = distinctNumbers(ans, [ans / 1000, ans * 10, ans / 10, L * v * 1000, (v / L) * 1000], ' ミリ秒', 2);
+      return {
+        text: `伝導速度が ${v} m/s の神経繊維で、興奮が ${L} m 伝わるのにかかる時間は何ミリ秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `時間 ＝ 距離 ÷ 速度 ＝ ${L} ÷ ${v} ＝ ${fmt(L / v, 4)} 秒 ＝ ${fmt(ans, 2)} ミリ秒である。1秒は1000ミリ秒なので、秒で求めた値を1000倍しなければならないからである。`,
+      };
+    },
+  },
+];
+return { A4 };
+})();
+
+// ---- questions/a5.js ----
+__m["questions/a5.js"] = (function () {
+// A5 光合成の限定要因 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers, assignmentText } = __m["questions/common.js"];
+const { rate, limitingFactor, FACTORS, T_OPT } = __m["models/limiting.js"];
+const { sample } = __m["lib/series.js"];
+
+const FNAME = { light: '光の強さ', co2: 'CO₂濃度', temp: '温度' };
+
+const A5 = [
+  {
+    id: 'a5-define',
+    stage: 'a5',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '光合成速度に影響する環境要因のうち、最も不足していて光合成速度を決めている要因を何というか。',
+        correct: '限定要因',
+        wrong: ['光飽和点', '補償点', '環境収容力', '最適温度'],
+        explanation: 'これを限定要因という。光合成速度は、光の強さ・CO₂濃度・温度のうち最も不足している要因によっておさえられ、それ以外の要因を増やしても速度はほとんど変わらないからである。',
+      };
+    },
+  },
+  {
+    id: 'a5-two-points',
+    stage: 'a5',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const T = 25;
+      const lo = 0.02;
+      const hi = rng.pick([0.08, 0.12]);
+      const xA = rng.pick([3, 4, 5]);
+      const xB = rng.pick([35, 40, 45]);
+      return {
+        text: `図は、温度 ${T}℃ で、CO₂濃度を ${lo}% と ${hi}% にして光の強さと光合成速度の関係を調べた結果である。点ア（CO₂ ${lo}%、弱い光）と点イ（CO₂ ${lo}%、強い光）の限定要因の組合せとして正しいものはどれか。`,
+        chart: {
+          x: { min: 0, max: 50, label: '光の強さ（キロルクス）', step: 10 },
+          y: { min: 0, max: 140, label: '光合成速度（相対値）', step: 20 },
+          series: [
+            { points: sample((x) => rate(x, hi, T), 0, 50, 200), color: 'c1', width: 3, label: `CO₂ ${hi}%` },
+            { points: sample((x) => rate(x, lo, T), 0, 50, 200), color: 'c2', dash: 'dash', width: 3, label: `CO₂ ${lo}%` },
+          ],
+          markers: [
+            { x: xA, y: rate(xA, lo, T), color: 'fg', label: KATA[0] },
+            { x: xB, y: rate(xB, lo, T), color: 'fg', shape: 'square', label: KATA[1] },
+          ],
+          alt: 'CO₂濃度の異なる2本の光―光合成曲線',
+        },
+        correct: assignmentText(['ア', 'イ'], ['光の強さ', 'CO₂濃度']),
+        wrong: [assignmentText(['ア', 'イ'], ['CO₂濃度', '光の強さ']), assignmentText(['ア', 'イ'], ['光の強さ', '光の強さ']), assignmentText(['ア', 'イ'], ['CO₂濃度', 'CO₂濃度']), assignmentText(['ア', 'イ'], ['温度', 'CO₂濃度'])],
+        explanation: 'アでは2本の曲線が重なっていて、CO₂濃度を高くしても速度が変わらず、光を強くすると速度が上がるので、限定要因は光の強さである。イでは光を強くしても速度が増えないが、CO₂濃度の高い曲線のほうが速度が大きいから、限定要因はCO₂濃度である。',
+      };
+    },
+  },
+  {
+    id: 'a5-what-to-raise',
+    stage: 'a5',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const case_ = rng.pick(['co2', 'temp']);
+      const c = case_ === 'co2' ? 0.03 : 0.12;
+      const T = case_ === 'co2' ? 30 : rng.pick([12, 15]);
+      const I = 40;
+      if (limitingFactor(I, c, T).factor !== case_) throw new Error('a5-what-to-raise: 想定と違う限定要因');
+      return {
+        text: `図の曲線は、CO₂濃度 ${c}%、温度 ${T}℃ で光の強さを変えたときの光合成速度である。光の強さ ${I} キロルクス（●）で光合成速度をさらに大きくするには、どの条件を変えるのが最も効果的か。`,
+        chart: {
+          x: { min: 0, max: 50, label: '光の強さ（キロルクス）', step: 10 },
+          y: { min: 0, max: 160, label: '光合成速度（相対値）', step: 20 },
+          series: [{ points: sample((x) => rate(x, c, T), 0, 50, 200), color: 'c1', width: 3 }],
+          markers: [{ x: I, y: rate(I, c, T), color: 'c2' }],
+          alt: '光の強さと光合成速度の曲線',
+        },
+        correct: case_ === 'co2' ? 'CO₂濃度を高くする' : `温度を最適温度（約${T_OPT}℃）に近づける`,
+        wrong: ['光をさらに強くする', case_ === 'co2' ? `温度を ${T + 10}℃ に上げる` : 'CO₂濃度をさらに高くする', '光を弱くする', case_ === 'co2' ? 'CO₂濃度を低くする' : '温度を下げる'],
+        ordered: true,
+        explanation: case_ === 'co2'
+          ? `●では光を強くしても速度が増えない（光飽和）ので、光の強さは限定要因ではない。温度は最適温度に近い ${T}℃ なので、CO₂濃度が限定要因であり、CO₂濃度を高くすると速度が上がる。`
+          : `●では光を強くしても速度が増えず、CO₂濃度も ${c}% と十分に高い。温度が ${T}℃ と低く、カルビン回路の酵素反応がおそいことが限定要因になっているから、温度を最適温度に近づけると速度が上がる。`,
+      };
+    },
+  },
+  {
+    id: 'a5-low-light-temp',
+    stage: 'a5',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '弱い光のもとでは、温度を10℃上げても光合成速度はほとんど変わらないが、強い光のもとでは大きく増加した。この理由として最も適当なものはどれか。',
+        correct: '弱い光では光の強さが限定要因になっていて、温度の影響を受けやすい酵素反応の速さは光合成速度を決めていないから',
+        wrong: [
+          '弱い光では、温度が上がると酵素が失活するから',
+          '強い光では、光の強さが限定要因になっているから',
+          '温度は光合成速度にまったく影響しないから',
+        ],
+        explanation: '弱い光では、光エネルギーを使う反応でつくられる ATP や NADPH の量が光合成速度を決めている（光の強さが限定要因）。温度は主にカルビン回路の酵素反応の速さに影響するので、光が十分に強く、酵素反応が限定要因になったときにはじめて温度の効果が現れるからである。',
+      };
+    },
+  },
+  {
+    id: 'a5-proportional',
+    stage: 'a5',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const I1 = rng.pick([2, 4, 5]);
+      const k = rng.pick([3, 4, 5, 6]);
+      const plateau = rng.pick([40, 50, 60, 80]);
+      const I2 = rng.pick([6, 8, 10, 15, 20, 25]);
+      const ans = Math.min(k * I2, plateau);
+      if (k * I1 >= plateau) return this.make(rng);
+      const d = distinctNumbers(ans, [k * I2, plateau, k * I1, k * I2 + plateau, plateau / 2, k * I2 / 2, k * I2 * 2, plateau * 2, k * (I2 - I1), plateau + k * I1], '', 0);
+      return {
+        text: `ある植物で、CO₂濃度と温度を一定にして光合成速度（相対値）を調べた。光が弱い範囲では光合成速度は光の強さに比例し、光の強さ ${I1} キロルクスのとき ${k * I1} であった。また、この条件の光合成速度の最大値は ${plateau} であった。光の強さ ${I2} キロルクスのときの光合成速度はいくらと考えられるか（比例する範囲をこえると、すぐに最大値で一定になるものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: k * I2 > plateau
+          ? `比例する範囲なら ${I2} キロルクスで ${k} × ${I2} ＝ ${k * I2} になるが、これは最大値 ${plateau} より大きいので、速度は最大値の ${plateau} でおさえられる。光が強くなると、光の強さではなくCO₂濃度や温度が限定要因になり、それ以上は速度が増えないからである。`
+          : `${k * I2} は最大値 ${plateau} より小さいので、${I2} キロルクスはまだ光の強さが限定要因の範囲であり、速度は ${k} × ${I2} ＝ ${k * I2} である。この範囲では光が強いほど光合成に使えるエネルギーが増えるので、速度は光の強さに比例するからである。`,
+      };
+    },
+  },
+  {
+    id: 'a5-table',
+    stage: 'a5',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      // 2×2 の条件（光の強さ 弱・強 × CO₂濃度 低・高）。限定要因の考え方で値を決める
+      const k = rng.pick([4, 5, 6]);
+      const weak = rng.pick([3, 4, 5]);
+      const strong = rng.pick([30, 40]);
+      const cLow = rng.pick([40, 50, 60]);
+      const cHigh = cLow * 2;
+      const v = (I, cap) => Math.min(k * I, cap);
+      const vals = { wl: v(weak, cLow), wh: v(weak, cHigh), sl: v(strong, cLow), sh: v(strong, cHigh) };
+      const ask = rng.pick(['sh-sl', 'sh-wh']);
+      const ans = ask === 'sh-sl' ? vals.sh / vals.sl : vals.sh / vals.wh;
+      const d = distinctNumbers(ans, [vals.wh / vals.wl, vals.sl / vals.wl, cHigh / cLow, strong / weak, ans * 2, ans / 2, 1], ' 倍', 2);
+      return {
+        text: `ある植物の光合成速度（相対値）を、光の強さ（${weak} キロルクス・${strong} キロルクス）とCO₂濃度（低・高）を組み合わせて測定したところ、弱光・低CO₂ ${vals.wl}、弱光・高CO₂ ${vals.wh}、強光・低CO₂ ${vals.sl}、強光・高CO₂ ${vals.sh} であった。${ask === 'sh-sl' ? '強光のもとでCO₂濃度を低から高にすると、光合成速度は何倍になったか' : '高CO₂のもとで光を弱光から強光にすると、光合成速度は何倍になったか'}。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'sh-sl'
+          ? `${vals.sh} ÷ ${vals.sl} ＝ ${fmt(ans, 2)}倍である。弱光ではCO₂濃度を変えても ${vals.wl} のまま変わらない（光の強さが限定要因）が、強光ではCO₂濃度が限定要因になっているから、CO₂濃度を高くすると速度が上がる。`
+          : `${vals.sh} ÷ ${vals.wh} ＝ ${fmt(ans, 2)}倍である。弱光では光の強さが限定要因なので、高CO₂でも速度は ${vals.wh} にとどまり、光を強くすると大きく上がるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a5-temp-curve',
+    stage: 'a5',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const c = rng.pick([0.08, 0.12]);
+      return {
+        text: '図は、強い光のもとで温度を変えて光合成速度を測定した結果である。最適温度より高い温度で光合成速度が急に低下する理由として最も適当なものはどれか。',
+        chart: {
+          x: { min: 0, max: 45, label: '温度（℃）', step: 5 },
+          y: { min: 0, max: 160, label: '光合成速度（相対値）', step: 20 },
+          series: [{ points: sample((t) => rate(40, c, t), 0, 45, 200), color: 'c1', width: 3 }],
+          alt: '温度と光合成速度の山形のグラフ',
+        },
+        correct: '光合成にはたらく酵素（タンパク質）が高温で変性し、失活するから',
+        wrong: ['高温では光が弱くなるから', '高温ではCO₂濃度が限定要因になるから', '高温では葉緑体のクロロフィルが光を吸収しなくなるから'],
+        explanation: '光合成の反応、特にカルビン回路には多くの酵素がはたらいている。酵素はタンパク質でできているので、最適温度をこえると立体構造が変化して（変性）はたらきを失い、光合成速度が急に低下するからである。',
+      };
+    },
+  },
+  {
+    id: 'a5-greenhouse',
+    stage: 'a5',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '晴れた日の日中、閉め切った温室の中でCO₂を発生させる装置（CO₂の施用）を使うと、作物の光合成速度が大きくなる。この理由として最も適当なものはどれか。',
+        correct: '光が十分に強いとき、CO₂濃度が限定要因になりやすいから',
+        wrong: ['光が弱いとき、CO₂濃度が限定要因になりやすいから', 'CO₂濃度を高くすると、光の強さが強くなるから', 'CO₂は光合成速度ではなく呼吸速度を小さくするから'],
+        explanation: '晴れた日の日中は光が強いので、光の強さは限定要因になりにくい。閉め切った温室では光合成でCO₂が使われて濃度が下がり、CO₂濃度が限定要因になりやすいから、CO₂を補うと光合成速度が上がる。',
+      };
+    },
+  },
+  {
+    id: 'a5-model-read',
+    stage: 'a5',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const cases = [
+        { I: rng.pick([4, 6, 8]), c: rng.pick([0.04, 0.08, 0.12]), T: rng.pick([20, 25, 30]) },
+        { I: rng.pick([35, 40, 45]), c: rng.pick([0.02, 0.03, 0.04]), T: rng.pick([25, 30]) },
+        { I: rng.pick([40, 45]), c: rng.pick([0.1, 0.12, 0.15]), T: rng.pick([10, 12, 40]) },
+      ];
+      const cs = rng.pick(cases);
+      const lim = limitingFactor(cs.I, cs.c, cs.T);
+      if (lim.close) return this.make(rng);
+      const k = lim.caps;
+      const names = ['light', 'co2', 'temp'];
+      return {
+        text: `図は、光の強さ ${cs.I} キロルクス、CO₂濃度 ${cs.c}%、温度 ${cs.T}℃ のとき、3つの要因それぞれについて「その要因だけで決まる光合成速度の上限」を棒で表したものである（ほかの2つの要因は十分にあるとしたときの値）。この条件で光合成速度を上げるために最も効果的な操作はどれか。`,
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 200, label: '上限（相対値）', step: 40 },
+          bars: { categories: names.map((n) => FACTORS[n].name), groups: [{ values: names.map((n) => Math.min(k[n], 200)), color: 'c1', label: '上限' }] },
+          alt: '3つの要因の上限の棒グラフ',
+        },
+        correct: { light: '光を強くする', co2: 'CO₂濃度を高くする', temp: `温度を最適温度（約${T_OPT}℃）に近づける` }[lim.factor],
+        wrong: ['光を強くする', 'CO₂濃度を高くする', `温度を最適温度（約${T_OPT}℃）に近づける`, '3つの要因のうち、上限が最も大きい要因をさらに増やす'],
+        explanation: `上限が最も小さいのは${FNAME[lim.factor]}（約${fmt(k[lim.factor], 0)}）なので、これが限定要因である。光合成速度は最も不足している要因でおさえられるから、${FNAME[lim.factor]}を改善しないかぎり、ほかの要因を増やしても速度はほとんど上がらない。`,
+      };
+    },
+  },
+];
+return { A5 };
+})();
+
+// ---- questions/a6.js ----
+__m["questions/a6.js"] = (function () {
+// A6 集団遺伝 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { genotypeFreq, alleleFreqFromCounts, driftLines } = __m["models/popgen.js"];
+
+const A6 = [
+  {
+    id: 'a6-genotype',
+    stage: 'a6',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const p = rng.pick([0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9]);
+      const q = Number((1 - p).toFixed(2));
+      const ask = rng.pick(['AA', 'Aa', 'aa']);
+      const g = genotypeFreq(p);
+      const ans = g[ask];
+      const d = distinctNumbers(ans, [p * q, ask === 'Aa' ? p * p : 2 * p * q, ask === 'aa' ? q : p, ask === 'aa' ? p * p : q * q, p, q, 2 * ans], '', 2);
+      const formula = { AA: 'p²', Aa: '2pq', aa: 'q²' }[ask];
+      return {
+        text: `ハーディー・ワインベルグの法則が成り立つ集団で、対立遺伝子 A の遺伝子頻度が ${p}、a の遺伝子頻度が ${q} である。この集団で遺伝子型 ${ask} の個体の頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `遺伝子型 ${ask} の頻度は ${formula} ＝ ${ask === 'AA' ? `${p}²` : ask === 'aa' ? `${q}²` : `2 × ${p} × ${q}`} ＝ ${fmt(ans, 2)} である。自由交配では、A をもつ配偶子と a をもつ配偶子がそれぞれの遺伝子頻度の割合で無作為に受精するから、遺伝子型頻度は (pA ＋ qa)² を展開した p²AA ＋ 2pqAa ＋ q²aa になる。`,
+      };
+    },
+  },
+  {
+    id: 'a6-from-recessive',
+    stage: 'a6',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const q = rng.pick([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+      const aa = Number((q * q).toFixed(4));
+      const ask = rng.pick(['p', 'q']);
+      const p = Number((1 - q).toFixed(2));
+      const ans = ask === 'q' ? q : p;
+      const d = distinctNumbers(ans, [aa, 1 - aa, ask === 'q' ? p : q, aa / 2, Math.sqrt(1 - aa), ans / 2], '', 2);
+      return {
+        text: `ある植物の集団では、潜性形質 [a] を示す個体（遺伝子型 aa）が全体の ${fmt(aa * 100, 2)}% を占めていた。この集団でハーディー・ワインベルグの法則が成り立つとすると、対立遺伝子 ${ask === 'q' ? 'a' : 'A'} の遺伝子頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: false,
+        explanation: `aa の頻度 q² ＝ ${aa} だから、q ＝ √${aa} ＝ ${q}${ask === 'p' ? `、p ＝ 1 − ${q} ＝ ${p}` : ''} となる。顕性形質の個体には AA と Aa が混ざっていて見分けられないので、遺伝子型がわかる潜性ホモ接合体 aa の頻度から計算するのである。`,
+      };
+    },
+  },
+  {
+    id: 'a6-carrier',
+    stage: 'a6',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const n = rng.pick([10, 20, 50, 100]);
+      const q = 1 / n;
+      const p = 1 - q;
+      const ans = 2 * p * q;
+      const d = distinctNumbers(ans * 100, [q * q * 100, q * 100, 2 * q * 100 * 2, p * p * 100, (1 - q * q) * 100, ans * 50], ' %', 2);
+      return {
+        text: `ある潜性の遺伝形質は、${(n * n).toLocaleString('ja-JP')} 人に 1 人の割合で現れる。ハーディー・ワインベルグの法則が成り立つとすると、この形質の遺伝子をヘテロ接合でもつ人（Aa）の割合はおよそ何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `q² ＝ 1/${(n * n).toLocaleString('ja-JP')} より q ＝ 1/${n} ＝ ${fmt(q, 3)}、p ＝ ${fmt(p, 3)} なので、Aa の割合は 2pq ＝ 2 × ${fmt(p, 3)} × ${fmt(q, 3)} ≒ ${fmt(ans * 100, 2)}% となる。形質が現れる人（aa）よりずっと多いのは、潜性の遺伝子の多くが表現型に現れないヘテロ接合体の中にあるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a6-counts',
+    stage: 'a6',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const N = rng.pick([100, 200, 400, 500]);
+      const fAA = rng.pick([0.2, 0.3, 0.36, 0.4, 0.49, 0.5]);
+      const fAa = rng.pick([0.2, 0.3, 0.4, 0.42]);
+      if (fAA + fAa >= 1) return this.make(rng);
+      const nAA = Math.round(N * fAA);
+      const nAa = Math.round(N * fAa);
+      const naa = N - nAA - nAa;
+      const p = alleleFreqFromCounts(nAA, nAa, naa);
+      const d = distinctNumbers(p, [(nAA + nAa) / N, nAA / N, (nAA + nAa) / (2 * N), (2 * nAA + nAa) / N / 4, 1 - p, (2 * naa + nAa) / (2 * N) + 0.1], '', 3);
+      return {
+        text: `ある集団 ${N} 個体の遺伝子型を調べたところ、AA が ${nAA} 個体、Aa が ${nAa} 個体、aa が ${naa} 個体であった。この集団の対立遺伝子 A の遺伝子頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${N} 個体がもつ遺伝子は全部で ${2 * N} 個で、そのうち A は AA から ${2 * nAA} 個、Aa から ${nAa} 個なので、${2 * nAA + nAa} ÷ ${2 * N} ＝ ${fmt(p, 3)} となる。1個体は対立遺伝子を2個ずつもつから、個体数ではなく遺伝子の数で割合を求めなければならない。`,
+      };
+    },
+  },
+  {
+    id: 'a6-next-gen',
+    stage: 'a6',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const fAA = rng.pick([0.5, 0.6, 0.4, 0.3]);
+      const fAa = rng.pick([0.2, 0.4]);
+      const faa = Number((1 - fAA - fAa).toFixed(2));
+      if (faa <= 0) return this.make(rng);
+      const q = Number((faa + fAa / 2).toFixed(2));
+      const ans = q * q;
+      const d = distinctNumbers(ans, [faa, q, faa * faa, (faa + fAa) * (faa + fAa), 2 * q * (1 - q), fAa / 4 + faa], '', 4);
+      return {
+        text: `ある集団の遺伝子型頻度は AA ${fAA}、Aa ${fAa}、aa ${faa} であった。この集団で自由交配が行われ、ハーディー・ワインベルグの法則が成り立つ条件がそろっているとき、次の世代の aa の頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `a の遺伝子頻度は q ＝ ${faa} ＋ ${fAa} ÷ 2 ＝ ${q} で、次の世代の aa の頻度は q² ＝ ${fmt(ans, 4)} となる。いまの集団の遺伝子型頻度がつり合っていなくても、自由交配をすると配偶子の遺伝子頻度だけで次の世代の遺伝子型頻度が決まるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a6-conditions',
+    stage: 'a6',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const wrong = rng.pick([
+        '特定の遺伝子型の個体が生存や繁殖に有利である',
+        '集団の個体数が少ない',
+        '他の集団との間で個体の移入や移出がある',
+        '突然変異がひんぱんに起こる',
+      ]);
+      return {
+        text: 'ハーディー・ワインベルグの法則が成り立つための条件として誤っているものはどれか。',
+        correct: wrong,
+        wrong: ['集団が十分に大きい', '交配が自由に（無作為に）行われる', '突然変異が起こらない', '自然選択がはたらかない', '他の集団との間で個体の移入や移出がない'],
+        explanation: `「${wrong}」は条件にあてはまらない。法則が成り立つには、集団が十分に大きく、自由交配で、突然変異・自然選択・移入や移出がないことが必要であり、どれかが欠けると遺伝子頻度が変化する（進化が起こる）からである。`,
+      };
+    },
+  },
+  {
+    id: 'a6-drift-graph',
+    stage: 'a6',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      let small = driftLines(10, 0.5, 60, 4, rng);
+      // 0 か 1 になった集団が少なくとも1つある結果を使う（正答の文と図を一致させる）
+      while (!small.some((r) => r[r.length - 1] === 0 || r[r.length - 1] === 1)) small = driftLines(10, 0.5, 60, 4, rng);
+      const large = driftLines(5000, 0.5, 60, 4, rng);
+      const smallIsA = rng.chance(0.5);
+      const lab = smallIsA ? { small: KATA[0], large: KATA[1] } : { small: KATA[1], large: KATA[0] };
+      // アは実線、イは破線で描く
+      const style = (isA) => (isA ? { color: 'c1', dash: 'solid' } : { color: 'c2', dash: 'dash' });
+      const mk = (runs, isA) => runs.map((r) => ({ points: r.map((v, g) => [g, v]), ...style(isA), width: 2 }));
+      return {
+        text: '図は、個体数 10 の集団と個体数 5000 の集団について、対立遺伝子 A の遺伝子頻度の変化をそれぞれ4回ずつシミュレーションした結果で、一方をア（実線）、もう一方をイ（破線）で示した（自然選択・突然変異・移入や移出はない）。個体数 10 の集団の結果はどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: 0, max: 60, label: '世代', step: 10 },
+          y: { min: 0, max: 1, label: 'A の遺伝子頻度', step: 0.2, digits: 1 },
+          series: [...mk(smallIsA ? small : large, true), ...mk(smallIsA ? large : small, false)],
+          alt: '遺伝子頻度の変化（ア：実線、イ：破線）',
+        },
+        correct: `${lab.small}：遺伝子頻度が大きく変動し、0や1になる集団があるから`,
+        wrong: [
+          `${lab.large}：遺伝子頻度が大きく変動し、0や1になる集団があるから`,
+          `${lab.large}：遺伝子頻度がほとんど変化しないから`,
+          `${lab.small}：遺伝子頻度がほとんど変化しないから`,
+          `${lab.large}：自然選択によって遺伝子頻度が一定に保たれるから`,
+        ],
+        explanation: `個体数 10 の集団は${lab.small}である。集団が小さいと、どの遺伝子が次の世代に伝わるかの偶然のかたよりの影響が大きいので、遺伝子頻度が大きく変動し、消失（0）や固定（1）が起こりやすいからである。`,
+      };
+    },
+  },
+  {
+    id: 'a6-drift-term',
+    stage: 'a6',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['drift', 'bottleneck', 'founder']);
+      const Q = {
+        drift: { text: '自然選択とは関係なく、偶然によって集団の遺伝子頻度が変化することを何というか。', correct: '遺伝的浮動', explanation: 'これは遺伝的浮動である。どの配偶子が受精して次の世代に遺伝子を伝えるかには偶然が関わるので、有利・不利に関係なく遺伝子頻度が変化し、その影響は小さな集団ほど大きいからである。' },
+        bottleneck: { text: '病気や災害などで集団の個体数が急激に減少し、遺伝子頻度がもとの集団と大きく変わってしまうことを何というか。', correct: 'びん首効果', explanation: 'これはびん首効果である。個体数が急に減ると、生き残った少数の個体がもつ遺伝子だけが次の世代に伝わるので、偶然によって遺伝子頻度が大きく変わり、遺伝的な多様性も小さくなるからである。' },
+        founder: { text: 'もとの集団から少数の個体が離れて新しい集団をつくったとき、新しい集団の遺伝子頻度がもとの集団と異なるものになることを何というか。', correct: '創始者効果', explanation: 'これは創始者効果である。新しい集団の遺伝子頻度は、移り住んだ少数の個体が偶然もっていた遺伝子で決まるので、もとの集団と異なりやすいからである。' },
+      }[which];
+      return { text: Q.text, correct: Q.correct, wrong: ['遺伝的浮動', 'びん首効果', '創始者効果', '自然選択', '中立進化', '隔離'], explanation: Q.explanation };
+    },
+  },
+  {
+    id: 'a6-dominant-phenotype',
+    stage: 'a6',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const q = rng.pick([0.2, 0.3, 0.4, 0.5, 0.6, 0.7]);
+      const p = Number((1 - q).toFixed(2));
+      const ans = 1 - q * q;
+      const d = distinctNumbers(ans * 100, [p * 100, p * p * 100, q * q * 100, 2 * p * q * 100, q * 100, (1 - p * p) * 100, (ans * 100) / 2, (p * p + q * q) * 100], ' %', 0);
+      return {
+        text: `ハーディー・ワインベルグの法則が成り立つ集団で、顕性の対立遺伝子 A の遺伝子頻度が ${p}、潜性の対立遺伝子 a の遺伝子頻度が ${q} である。顕性形質 [A] を示す個体は全体の何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `顕性形質 [A] を示すのは AA と Aa の個体なので、p² ＋ 2pq ＝ 1 − q² ＝ 1 − ${fmt(q * q, 2)} ＝ ${fmt(ans, 2)}、つまり ${fmt(ans * 100, 0)}% である。A が a に対して顕性なので、Aa の個体も [A] になるからである。`,
+      };
+    },
+  },
+];
+return { A6 };
+})();
+
+// ---- questions/a7.js ----
+__m["questions/a7.js"] = (function () {
+// A7 遺伝子発現の調節（ラクトースオペロン）の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { operonState, diauxie, glucoseOutTime, DIAUXIE, codingBases } = __m["models/operon.js"];
+
+const RUN = diauxie();
+const T_GLC = glucoseOutTime(RUN);
+
+const A7 = [
+  {
+    id: 'a7-parts',
+    stage: 'a7',
+    level: 1,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['ア', 'イ', 'ウ'], ['プロモーター', 'オペレーター', '調節遺伝子']);
+      return {
+        text: 'ラクトースオペロンについて、次のア〜ウにあてはまる語の組合せとして正しいものはどれか。　ア：RNAポリメラーゼが結合して転写を始める領域　イ：リプレッサーが結合する領域　ウ：リプレッサーをつくる遺伝子',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: 'アはプロモーター、イはオペレーター、ウは調節遺伝子である。オペレーターはプロモーターと構造遺伝子の間にあるので、リプレッサーが結合するとRNAポリメラーゼが転写を進められなくなるからである。',
+      };
+    },
+  },
+  {
+    id: 'a7-no-lactose',
+    stage: 'a7',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'グルコースがなく、ラクトースもない培地で大腸菌を培養したとき、ラクトースオペロンの構造遺伝子が転写されない理由として正しいものはどれか。',
+        correct: 'リプレッサーがオペレーターに結合し、RNAポリメラーゼによる転写が妨げられるから',
+        wrong: [
+          'リプレッサーがRNAポリメラーゼを分解するから',
+          'ラクトースがオペレーターに結合し、転写が妨げられるから',
+          '調節遺伝子が転写されず、リプレッサーがつくられないから',
+        ],
+        explanation: 'ラクトースがないとき、調節遺伝子からつくられたリプレッサーはオペレーターに結合する。そのためRNAポリメラーゼが構造遺伝子を転写できず、不要な酵素をつくらずにすむからである。',
+      };
+    },
+  },
+  {
+    id: 'a7-inducer',
+    stage: 'a7',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '培地にラクトースを加えると、ラクトースオペロンの構造遺伝子の転写が始まる。このしくみとして正しいものはどれか（グルコースはないものとする）。',
+        correct: 'ラクトースからできる物質がリプレッサーに結合し、リプレッサーがオペレーターに結合できなくなる',
+        wrong: [
+          'ラクトースからできる物質がオペレーターに結合し、リプレッサーを押しのける',
+          'ラクトースが調節遺伝子に結合し、リプレッサーの合成を止める',
+          'ラクトースがRNAポリメラーゼに結合し、転写を始めさせる',
+        ],
+        explanation: 'ラクトースからできる物質がリプレッサーに結合すると、リプレッサーの立体構造が変わってオペレーターに結合できなくなる。オペレーターが空くので、RNAポリメラーゼが構造遺伝子を転写できるようになるからである。',
+      };
+    },
+  },
+  {
+    id: 'a7-mutant',
+    stage: 'a7',
+    level: 3,
+    kind: 'term',
+    make(rng) {
+      const m = rng.pick(['noRepressor', 'operator', 'noInducer']);
+      const lacOff = operonState({ lactose: false, glucose: false, mutant: m }).level !== 'off';
+      const lacOn = operonState({ lactose: true, glucose: false, mutant: m }).level !== 'off';
+      const desc = {
+        noRepressor: '調節遺伝子に変異が起こり、リプレッサーがつくられなくなった',
+        operator: 'オペレーターの塩基配列に変異が起こり、リプレッサーが結合できなくなった',
+        noInducer: 'リプレッサーに変異が起こり、ラクトースからできる物質と結合できなくなった（オペレーターには結合できる）',
+      }[m];
+      const opts = {
+        both: 'ラクトースの有無にかかわらず転写される',
+        none: 'ラクトースの有無にかかわらず転写されない',
+        normal: 'ラクトースがあるときだけ転写される',
+        reverse: 'ラクトースがないときだけ転写される',
+      };
+      const key = lacOff && lacOn ? 'both' : !lacOff && !lacOn ? 'none' : lacOn ? 'normal' : 'reverse';
+      return {
+        text: `大腸菌のある変異株では、${desc}。グルコースのない培地で、この変異株のラクトースオペロンの構造遺伝子はどうなるか。`,
+        correct: opts[key],
+        wrong: Object.values(opts),
+        ordered: false,
+        explanation: key === 'both'
+          ? `${m === 'noRepressor' ? 'リプレッサーがないので' : 'リプレッサーがオペレーターに結合できないので'}、ラクトースがなくても転写を止めるものがない。そのため、ラクトースの有無にかかわらず構造遺伝子が転写される。`
+          : 'リプレッサーはラクトースからできる物質と結合できないので、ラクトースがあってもオペレーターに結合したままになる。そのため、ラクトースの有無にかかわらず構造遺伝子は転写されない。',
+      };
+    },
+  },
+  {
+    id: 'a7-glucose',
+    stage: 'a7',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '（発展）グルコースとラクトースの両方を含む培地で大腸菌を培養すると、ラクトースがあるにもかかわらず、ラクトースオペロンの転写はわずかしか起こらない。この理由として最も適当なものはどれか。',
+        correct: 'グルコースがあると、転写を促進するタンパク質がはたらかないから',
+        wrong: [
+          'グルコースがリプレッサーに結合して、オペレーターへの結合を強めるから',
+          'グルコースがあると、調節遺伝子が転写されなくなるから',
+          'グルコースがオペレーターに結合して、RNAポリメラーゼを妨げるから',
+        ],
+        explanation: 'ラクトースがあるのでリプレッサーはオペレーターから外れているが、ラクトースオペロンが十分に転写されるには、グルコースがないときにプロモーター付近に結合して転写を促進するタンパク質（CRP）が必要である。グルコースがあるとこのタンパク質がはたらかないので、大腸菌は利用しやすいグルコースを先に使うのである。',
+      };
+    },
+  },
+  {
+    id: 'a7-diauxie',
+    stage: 'a7',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const ask = rng.pick(['enzyme', 'lag']);
+      return {
+        text: ask === 'enzyme'
+          ? '図は、グルコースとラクトースを両方含む培地で大腸菌を培養したときの、菌の数（実線・対数目盛り）とβ-ガラクトシダーゼ（ラクトースを分解する酵素）の量（破線）の変化である。β-ガラクトシダーゼが増えはじめる時期について正しいものはどれか。'
+          : '図は、グルコースとラクトースを両方含む培地で大腸菌を培養したときの、菌の数（実線・対数目盛り）とβ-ガラクトシダーゼの量（破線）の変化である。途中で菌の数がしばらく増えなくなる理由として最も適当なものはどれか。',
+        chart: {
+          x: { min: 0, max: DIAUXIE.T, label: '時間（時間）', step: 2 },
+          y: { min: 1, max: 1000, log: true, label: '菌の数（相対値）' },
+          y2: { min: 0, max: 1.2, label: '酵素の量（相対値）', step: 0.2, digits: 1 },
+          series: [
+            { points: RUN.map((r) => [r.t, r.N]), color: 'c1', width: 3, label: '菌の数', labelAt: 2 },
+            { points: RUN.map((r) => [r.t, r.E]), color: 'c2', dash: 'dash', width: 3, axis: 'y2', label: '酵素の量', labelAt: 10 },
+          ],
+          alt: '二段階の増殖曲線と酵素の量',
+        },
+        correct: ask === 'enzyme'
+          ? 'グルコースを使い切ったあとで増えはじめる'
+          : 'グルコースを使い切ったあと、ラクトースを分解する酵素がつくられるまで時間がかかるから',
+        wrong: ask === 'enzyme'
+          ? ['培養を始めた直後から増えはじめる', 'ラクトースを使い切ったあとで増えはじめる', 'グルコースとラクトースを両方使い切ったあとで増えはじめる']
+          : ['ラクトースを使い切ったから', 'グルコースがリプレッサーとしてはたらくから', '菌の数が環境収容力に達したから'],
+        explanation: ask === 'enzyme'
+          ? `グルコースがある間はラクトースオペロンがほとんど転写されず、酵素はほとんどない。約${fmt(T_GLC, 0)}時間でグルコースがなくなると転写がオンになり、β-ガラクトシダーゼが増えはじめるから、その後ラクトースを使って再び増殖できる。`
+          : `約${fmt(T_GLC, 0)}時間でグルコースを使い切ると、ラクトースオペロンの転写が始まるが、β-ガラクトシダーゼなどの酵素がそろうまでには時間がかかる。その間はラクトースを利用できないので増殖が止まり、酵素がそろうと再び増える（二段階の増殖）。`,
+      };
+    },
+  },
+  {
+    id: 'a7-mrna-length',
+    stage: 'a7',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const z = rng.pick([1020, 1021, 1023, 1024]);
+      const y = rng.pick([417, 400, 420]);
+      const ask = rng.pick(['z', 'zy']);
+      const ans = ask === 'z' ? codingBases(z) : codingBases(z) + codingBases(y);
+      const base = ask === 'z' ? z : z + y;
+      const d = distinctNumbers(ans, [base * 3, ask === 'z' ? z : z + y, base * 3 - 3, ans * 2, ask === 'z' ? z * 2 : (z + y) * 2, base * 3 + 6], ' 塩基', 0);
+      return {
+        text: ask === 'z'
+          ? `β-ガラクトシダーゼは ${z.toLocaleString('ja-JP')} 個のアミノ酸からなるポリペプチドとしてつくられるものとする。この遺伝子のmRNAのうち、開始コドンから終止コドンまで（終止コドンを含む）の塩基数はいくらか。`
+          : `ラクトースオペロンでは、構造遺伝子が1本のmRNAとしてまとめて転写される。最初の2つの遺伝子がそれぞれ ${z.toLocaleString('ja-JP')} 個・${y} 個のアミノ酸からなるポリペプチドを指定するとき、この2つの遺伝子の、開始コドンから終止コドンまで（終止コドンを含む）の塩基数の合計はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'z'
+          ? `アミノ酸1個は3塩基（コドン1つ）で指定され、最後に終止コドンが1つあるので、(${z} ＋ 1) × 3 ＝ ${ans} 塩基である。終止コドンはアミノ酸を指定しないから、アミノ酸の数とは別に3塩基を加えなければならない。`
+          : `それぞれの遺伝子に終止コドンがあるので、(${z} ＋ 1) × 3 ＋ (${y} ＋ 1) × 3 ＝ ${ans} 塩基である。1本のmRNAに複数の遺伝子が並んでいても、遺伝子ごとに開始コドンから終止コドンまでが翻訳されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a7-induction-ratio',
+    stage: 'a7',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const off = rng.pick([1, 2, 5]);
+      const low = off * rng.pick([10, 20, 25]);
+      const high = off * rng.pick([500, 800, 1000, 1200]);
+      const ask = rng.pick(['high-off', 'high-low']);
+      const ans = ask === 'high-off' ? high / off : high / low;
+      const d = distinctNumbers(ans, [high / low, high / off, low / off, high - off, high - low, ans / 10], ' 倍', 0);
+      return {
+        text: `大腸菌を3種類の培地で培養し、β-ガラクトシダーゼの活性（相対値）を測定したところ、グルコースのみ ${off}、グルコースとラクトース ${low}、ラクトースのみ ${high} であった。ラクトースのみの培地での活性は、${ask === 'high-off' ? 'グルコースのみの培地' : 'グルコースとラクトースを両方含む培地'}の何倍か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${high} ÷ ${ask === 'high-off' ? off : low} ＝ ${fmt(ans, 0)}倍である。${ask === 'high-off' ? 'ラクトースがないとリプレッサーがオペレーターに結合して転写がほとんど起こらないが、ラクトースだけがあると転写がさかんになるからである' : 'グルコースがあると転写を促進するタンパク質がはたらかず、ラクトースがあっても転写はわずかしか起こらないからである'}。`,
+      };
+    },
+  },
+  {
+    id: 'a7-operon-def',
+    stage: 'a7',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '原核生物で、関連するはたらきをもつ複数の遺伝子が隣り合って並び、まとめて1本のmRNAとして転写調節を受ける単位を何というか。',
+          correct: 'オペロン',
+          wrong: ['オペレーター', 'プロモーター', 'イントロン', 'リプレッサー'],
+          explanation: 'これをオペロンという。ラクトースオペロンでは、ラクトースの分解と取り込みにはたらく複数の構造遺伝子が1つのプロモーターから続けて転写されるので、必要なときにまとめて発現させられるからである。',
+        };
+      }
+      return {
+        text: '遺伝子の転写を調節するタンパク質で、ラクトースオペロンではオペレーターに結合して転写を抑制するものを何というか。',
+        correct: 'リプレッサー',
+        wrong: ['RNAポリメラーゼ', 'オペレーター', 'β-ガラクトシダーゼ', '基本転写因子'],
+        explanation: 'これはリプレッサー（抑制因子）で、調節遺伝子からつくられる調節タンパク質の一種である。オペレーターに結合するとRNAポリメラーゼが転写を進められなくなるので、転写が抑制されるからである。',
+      };
+    },
+  },
+];
+return { A7 };
+})();
+
+// ---- questions/a8.js ----
+__m["questions/a8.js"] = (function () {
+// A8 生存曲線と生命表 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { TYPES, survivors, LIFESPAN } = __m["models/survival.js"];
+const { sample } = __m["lib/series.js"];
+
+const TYPE_IDS = ['late', 'mid', 'early'];
+
+function curveChart(order) {
+  const styles = [['c1', 'solid'], ['c3', 'dash'], ['c2', 'dot']];
+  return {
+    x: { min: 0, max: LIFESPAN, label: '相対年齢', step: 20 },
+    y: { min: 1, max: 1000, log: true, label: '生存数（対数目盛り）' },
+    series: order.map((id, i) => ({ points: sample((x) => survivors(x, TYPES[id].k), 0, LIFESPAN, 200), color: styles[i][0], dash: styles[i][1], width: 3, label: KATA[i], labelAt: id === 'early' ? 6 : id === 'mid' ? 45 : 80 })),
+    alt: '3本の生存曲線ア〜ウ',
+  };
+}
+
+// 生命表（区分ごとの はじめの生存数）を作る：死亡率の列を指定して整数で作る
+function tableFrom(start, rates) {
+  const lx = [start];
+  for (const r of rates) lx.push(Math.round(lx[lx.length - 1] * (1 - r)));
+  return lx;
+}
+
+const A8 = [
+  {
+    id: 'a8-type-graph',
+    stage: 'a8',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(TYPE_IDS);
+      const ask = rng.pick(TYPE_IDS);
+      const idx = order.indexOf(ask);
+      const desc = {
+        late: '若いうちの死亡が少なく、老齢になってから多くが死ぬ（ヒトなど）',
+        mid: 'どの年齢でも死亡率がほぼ一定である（鳥類など）',
+        early: '生まれてすぐの時期に大部分が死ぬ（魚類など）',
+      }[ask];
+      return {
+        text: `図のア〜ウは、3種類の動物の生存曲線である（縦軸は対数目盛り）。${desc}動物の生存曲線はどれか。`,
+        chart: curveChart(order),
+        correct: `${KATA[idx]}（${TYPES[ask].name}）`,
+        // 誤答：ほかの曲線を同じ型とするもの、正しい曲線を別の型とするもの
+        wrong: [0, 1, 2].flatMap((i) => TYPE_IDS.filter((t) => (i === idx) !== (t === ask)).map((t) => `${KATA[i]}（${TYPES[t].name}）`)),
+        explanation: `${TYPES[ask].name}は${KATA[idx]}である。${ask === 'late' ? '若いうちは曲線がほぼ水平で、老齢で急に下がるのは、若い時期の死亡率が低く、老齢で死亡率が高くなるからである' : ask === 'mid' ? '対数目盛りで直線になるのは、どの年齢でも一定の割合で死ぬ（死亡率が一定）からである' : '生まれてすぐに曲線が急に下がるのは、卵や幼生の時期の死亡率がきわめて高いからである'}。`,
+      };
+    },
+  },
+  {
+    id: 'a8-type-species',
+    stage: 'a8',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const t = rng.pick(TYPE_IDS);
+      const animals = { late: 'ヒト・ゾウなどの大形の哺乳類', mid: 'シジュウカラなどの鳥類', early: 'マイワシなどの魚類・カキなどの貝類' };
+      return {
+        text: `一般に、${animals[t]}の生存曲線はどの型に近いか。`,
+        correct: TYPES[t].name,
+        wrong: TYPE_IDS.filter((x) => x !== t).map((x) => TYPES[x].name).concat(['どの型にもあてはまらない']),
+        explanation: t === 'late'
+          ? '晩死型である。産む子の数は少ないが、親が子を保護するので若いうちの死亡率が低く、多くが老齢まで生きるからである。'
+          : t === 'mid'
+            ? '平均型に近い。鳥類では、ひなの時期から成鳥まで、どの年齢でも死亡率がほぼ一定であるからである。'
+            : '早死型である。多数の卵を産むが、親が卵や子を保護しないので、生まれてすぐの時期の死亡率がきわめて高いからである。',
+      };
+    },
+  },
+  {
+    id: 'a8-mortality',
+    stage: 'a8',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const start = rng.pick([1000, 500, 800]);
+      const rates = [rng.pick([0.1, 0.2, 0.3]), rng.pick([0.2, 0.25, 0.4]), rng.pick([0.25, 0.5, 0.6]), rng.pick([0.5, 0.75, 0.8])];
+      const lx = tableFrom(start, rates);
+      const i = rng.int(1, 3);
+      const deaths = lx[i] - lx[i + 1];
+      const ans = deaths / lx[i];
+      const d = distinctNumbers(ans * 100, [(deaths / start) * 100, (lx[i + 1] / lx[i]) * 100, (deaths / lx[i + 1]) * 100, ((lx[i - 1] - lx[i]) / lx[i - 1]) * 100, (1 - lx[i + 1] / start) * 100], ' %', 1);
+      const ages = ['0〜1歳', '1〜2歳', '2〜3歳', '3〜4歳'];
+      return {
+        text: `ある動物の生命表で、各年齢の区分のはじめに生きている個体数（生存数）は、0歳 ${lx[0]}、1歳 ${lx[1]}、2歳 ${lx[2]}、3歳 ${lx[3]}、4歳 ${lx[4]} であった。${ages[i]}の区分の死亡率は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${ages[i]}の死亡数は ${lx[i]} − ${lx[i + 1]} ＝ ${deaths} で、死亡率 ＝ 死亡数 ÷ その区分のはじめの生存数 ＝ ${deaths} ÷ ${lx[i]} ≒ ${fmt(ans * 100, 1)}% となる。死亡率は「その区分のはじめに生きていた個体のうち何割が死んだか」を表すので、最初の個体数（${start}）ではなく、その区分のはじめの生存数で割るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a8-deaths',
+    stage: 'a8',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const start = rng.pick([1000, 2000, 500]);
+      const r = rng.pick([0.1, 0.2, 0.3, 0.4, 0.5]);
+      const r2 = rng.pick([0.2, 0.4, 0.5, 0.6]);
+      const l1 = Math.round(start * (1 - r));
+      const ans = Math.round(l1 * r2);
+      if (r === r2) return this.make(rng); // 同じ割合だと誤答が重なりやすい
+      const d = distinctNumbers(ans, [Math.round(start * r2), l1 - ans, start - l1, Math.round(start * r * r2), l1, ans * 2, Math.round(ans / 2), Math.round((start - l1) * r2), start - ans, Math.round(start * (1 - r2))], ' 個体', 0);
+      return {
+        text: `ある動物の ${start} 個体が生まれ、1歳になるまでに ${start - l1} 個体が死んだ。1〜2歳の区分の死亡率が ${r2 * 100}% のとき、1〜2歳の間に死んだ個体数はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1歳のはじめの生存数は ${start} − ${start - l1} ＝ ${l1} なので、1〜2歳の死亡数は ${l1} × ${r2} ＝ ${ans} 個体となる。死亡率はその区分のはじめの生存数に対する割合なので、生まれた数（${start}）ではなく ${l1} にかけるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a8-type-from-table',
+    stage: 'a8',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const t = rng.pick(TYPE_IDS);
+      const rates = {
+        late: [0.02, 0.03, 0.1, 0.5, 0.9],
+        mid: rng.pick([[0.5, 0.5, 0.5, 0.5, 0.5], [0.4, 0.4, 0.4, 0.4, 0.4]]),
+        early: [0.9, 0.5, 0.2, 0.2, 0.2],
+      }[t];
+      const lx = tableFrom(1000, rates);
+      return {
+        text: `ある動物の生命表で、各区分のはじめの生存数は ${lx.map((l, i) => `区分${i + 1} ${l}`).join('、')} であった（区分の長さはすべて同じ）。各区分の死亡率を計算すると、この動物の生存曲線はどの型か。`,
+        correct: TYPES[t].name,
+        wrong: TYPE_IDS.filter((x) => x !== t).map((x) => TYPES[x].name).concat(['どの型にもあてはまらない']),
+        explanation: `死亡率（死亡数 ÷ はじめの生存数）は、区分1から順に ${rates.slice(0, 4).map((r) => fmt(r, 2)).join('、')} となる。${t === 'mid' ? '死亡率が年齢によらず一定なので平均型であり、対数目盛りの生存曲線は直線になる' : t === 'late' ? '若いうちの死亡率が低く、年齢が進むと急に高くなるので晩死型である' : '最初の区分の死亡率がきわめて高く、その後は低いので早死型である'}。`,
+      };
+    },
+  },
+  {
+    id: 'a8-why-many-eggs',
+    stage: 'a8',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '早死型の生存曲線を示す動物の多くが、一度に非常に多くの卵を産む理由として最も適当なものはどれか。',
+        correct: '親が卵や子を保護しないので初期の死亡率が高く、多数の卵を産むことで、生き残って繁殖する子を残せるから',
+        wrong: [
+          '親が子を保護するので、多くの子を育てられるから',
+          '卵の数が多いほど、1個体あたりの死亡率が下がるから',
+          'どの年齢でも死亡率が一定なので、卵の数で寿命が決まるから',
+        ],
+        explanation: '早死型の動物は親が卵や子を保護しないことが多く、卵や幼生の時期に大部分が食べられたりして死ぬ。そのため多数の卵を産むことで、少数でも生き残って繁殖する個体を残しているからである。',
+      };
+    },
+  },
+  {
+    id: 'a8-log-axis',
+    stage: 'a8',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '平均型の生存曲線が、縦軸を対数目盛りにしたグラフで直線になる理由として正しいものはどれか。',
+        correct: '一定の期間ごとに、生存している個体のうち同じ割合が死ぬから',
+        wrong: ['一定の期間ごとに、同じ数の個体が死ぬから', '老齢になるほど死亡率が高くなるから', '生まれてすぐの死亡率が最も高いから'],
+        explanation: '対数目盛りでは、同じ割合で減ると同じ幅だけ下がる。平均型では死亡率（割合）がどの年齢でもほぼ一定なので、生存曲線は直線になるからである。',
+      };
+    },
+  },
+  {
+    id: 'a8-survival-rate',
+    stage: 'a8',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const t = rng.pick(['late', 'mid']);
+      const k = TYPES[t].k;
+      const a = rng.pick([20, 30, 40]);
+      const b = a + rng.pick([20, 30]);
+      const la = Math.round(survivors(a, k));
+      const lb = Math.round(survivors(b, k));
+      const ans = (lb / la) * 100;
+      const d = distinctNumbers(ans, [(lb / 1000) * 100, ((la - lb) / la) * 100, (la / 1000) * 100, ((la - lb) / 1000) * 100, (lb / (la + lb)) * 100, ans / 2, (la / lb) * 10, ((la - lb) / lb) * 100], ' %', 1);
+      return {
+        text: `図はある動物の生存曲線（出生数 1000、縦軸は対数目盛り）で、相対年齢 ${a} の生存数は ${la}、${b} の生存数は ${lb} であった。相対年齢 ${a} まで生き残った個体のうち、相対年齢 ${b} まで生き残るのは何%か。`,
+        chart: {
+          x: { min: 0, max: LIFESPAN, label: '相対年齢', step: 10 },
+          y: { min: 1, max: 1000, log: true, label: '生存数（対数目盛り）' },
+          series: [{ points: sample((x) => survivors(x, k), 0, LIFESPAN, 200), color: 'c1', width: 3 }],
+          markers: [{ x: a, y: la, color: 'c2', label: String(la) }, { x: b, y: lb, color: 'c2', shape: 'square', label: String(lb) }],
+          alt: '生存曲線と2つの年齢の生存数',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${lb} ÷ ${la} × 100 ≒ ${fmt(ans, 1)}% である。「年齢 ${a} まで生き残った個体のうち」の割合なので、出生数 1000 ではなく年齢 ${a} の生存数 ${la} を基準にして割るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a8-life-table-term',
+    stage: 'a8',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '同時に生まれた個体群について、年齢ごとの生存数・死亡数・死亡率などをまとめた表を何というか。',
+          correct: '生命表',
+          wrong: ['生存曲線', '齢構成', '個体群ピラミッド', '成長曲線'],
+          explanation: 'これを生命表という。生命表の生存数を、縦軸を対数目盛りにしてグラフに表したものが生存曲線で、年齢による死亡のしかたを比べるのに使われるからである。',
+        };
+      }
+      return {
+        text: '生まれた個体数を一定（例えば1000）として、年齢にともなう生存数の変化をグラフに表したものを何というか。',
+        correct: '生存曲線',
+        wrong: ['生命表', '成長曲線', '年齢ピラミッド', '光合成曲線'],
+        explanation: 'これを生存曲線という。生まれた数をそろえて表すので、異なる種の間で、どの年齢で多く死ぬかを比べられるからである。',
+      };
+    },
+  },
+];
+return { A8 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
@@ -7621,9 +10006,14 @@ const { B10 } = __m["questions/b10.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
+const { A4 } = __m["questions/a4.js"];
+const { A5 } = __m["questions/a5.js"];
+const { A6 } = __m["questions/a6.js"];
+const { A7 } = __m["questions/a7.js"];
+const { A8 } = __m["questions/a8.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -8419,6 +10809,58 @@ const GLOSSARY = {
     { term: '密度効果', desc: '個体群密度の変化が、個体の発育や増殖率などに影響をおよぼすこと。' },
     { term: '被食者−捕食者相互関係', desc: '被食者が増えると捕食者が遅れて増え、捕食者が増えると被食者が減る…という周期的な変動が起こることがある。' },
     { term: '標識再捕法', desc: '捕まえた個体に標識をつけて放し、再び捕まえたときの標識個体の割合から全体の数を推定する方法。全体 ＝ 標識数 × 再捕獲数 ÷ 再捕獲中の標識数。' },
+  ],
+  a4: [
+    { term: 'ニューロン（神経細胞）', desc: '細胞体と、そこからのびる樹状突起・軸索からなる。興奮を伝える神経系の単位。' },
+    { term: '静止電位', desc: '刺激を受けていないときの、細胞外を基準とした細胞内の電位。約−60〜−90 mV で、細胞内が負になっている。ナトリウムポンプで K⁺ が細胞内に多く保たれ、常に開いているカリウムチャネルから K⁺ が流出することで生じる。' },
+    { term: '活動電位', desc: '刺激によって膜電位が一時的に逆転（細胞内が正）し、すぐにもとにもどる変化。1〜2ミリ秒ほどで終わる。' },
+    { term: '脱分極', desc: '電位依存性のナトリウムチャネルが開いて Na⁺ が流入し、膜電位が上がること。' },
+    { term: '再分極', desc: 'ナトリウムチャネルが閉じ、電位依存性のカリウムチャネルが開いて K⁺ が流出し、膜電位が静止電位にもどること。' },
+    { term: '閾値', desc: '活動電位を生じさせるのに必要な最小の刺激の強さ。' },
+    { term: '全か無かの法則', desc: '1本の神経繊維（1つの細胞）では、閾値未満の刺激では興奮せず、閾値以上ならば刺激の強さに関係なく同じ大きさの活動電位が生じること。刺激の強さは興奮の頻度で伝えられる。' },
+    { term: '不応期', desc: '興奮した直後、刺激を受けても興奮しない短い期間。そのため興奮は逆もどりせずに伝わる。' },
+    { term: '伝導', desc: '興奮が軸索などを伝わっていくこと。軸索の途中を刺激すると両方向へ伝わる。' },
+    { term: '跳躍伝導', desc: '有髄神経繊維で、興奮が髄鞘のすき間（ランビエ絞輪）からランビエ絞輪へととびとびに伝わること。無髄神経繊維より伝導速度が大きい。' },
+    { term: '伝導速度の求め方', desc: '神経上の2点で刺激し、筋肉が収縮しはじめるまでの時間の差を求める。伝導速度 ＝ 2点間の距離 ÷ 時間の差。1 mm/ms ＝ 1 m/s。' },
+  ],
+  a5: [
+    { term: '限定要因', desc: '光合成速度に影響する要因（光の強さ・CO₂濃度・温度など）のうち、最も不足していて速度を決めている要因。' },
+    { term: '光の強さが限定要因のとき', desc: '弱い光のもとでは、光合成速度は光の強さにほぼ比例し、CO₂濃度や温度を変えてもほとんど変わらない。' },
+    { term: 'CO₂濃度が限定要因のとき', desc: '光が十分に強いと光合成速度は頭打ちになり（光飽和）、CO₂濃度を高くすると速度が上がる。' },
+    { term: '温度と光合成', desc: '光合成の反応（特にカルビン回路）には酵素がはたらくので、強い光のもとでは温度の影響を受け、最適温度をこえると酵素の失活で急に速度が下がる。' },
+    { term: '光飽和点', desc: 'それ以上光を強くしても光合成速度が増えなくなる光の強さ。CO₂濃度や温度が高いほど大きくなることが多い。' },
+    { term: 'カルビン回路', desc: '葉緑体のストロマで、ATP と NADPH を使って CO₂ を取り込み有機物をつくる反応系。多くの酵素がはたらく。' },
+    { term: 'CO₂の施用', desc: '温室などでCO₂濃度を高めて作物の光合成を促すこと。晴天時にCO₂濃度が限定要因になりやすいことを利用する。' },
+  ],
+  a6: [
+    { term: '遺伝子プール', desc: 'ある集団がもつ遺伝子全体。' },
+    { term: '遺伝子頻度', desc: '集団の遺伝子プールの中で、ある対立遺伝子が占める割合。A の頻度 p ＋ a の頻度 q ＝ 1。' },
+    { term: 'ハーディー・ワインベルグの法則', desc: '一定の条件がそろった集団では、遺伝子頻度は世代をこえて変わらず、遺伝子型頻度は AA : Aa : aa ＝ p² : 2pq : q² になる。' },
+    { term: '法則が成り立つ条件', desc: '①集団が十分に大きい ②自由に交配する ③突然変異が起こらない ④自然選択がはたらかない ⑤移入・移出がない。' },
+    { term: '遺伝子頻度の求め方', desc: 'A の頻度 ＝ (2 × AA の個体数 ＋ Aa の個体数) ÷ (2 × 全個体数)。潜性形質 aa の割合 q² がわかれば q ＝ √(q²)。' },
+    { term: '遺伝的浮動', desc: '偶然によって集団の遺伝子頻度が変化すること。小さな集団ほど影響が大きく、遺伝子が消失したり固定したりしやすい。' },
+    { term: 'びん首効果', desc: '個体数が急激に減少した集団で、遺伝的浮動によって遺伝子頻度がもとの集団と大きく変わること。' },
+    { term: '創始者効果', desc: '少数の個体が新しい集団をつくったとき、その遺伝子頻度がもとの集団と異なるものになること。' },
+    { term: '進化', desc: '集団の遺伝子頻度が世代とともに変化すること。突然変異・自然選択・遺伝的浮動・移入や移出などで起こる。' },
+  ],
+  a7: [
+    { term: 'オペロン', desc: '原核生物で、まとめて転写調節を受ける複数の遺伝子のまとまり。1本のmRNAとして転写される。' },
+    { term: 'ラクトースオペロン', desc: '大腸菌で、ラクトースの分解・取り込みにはたらく酵素などの構造遺伝子が並んだオペロン。β-ガラクトシダーゼの遺伝子を含む。' },
+    { term: 'プロモーター', desc: 'RNAポリメラーゼが結合して転写を始めるDNAの領域。' },
+    { term: 'オペレーター', desc: 'プロモーターと構造遺伝子の間にあり、リプレッサーが結合するDNAの領域。' },
+    { term: '調節遺伝子', desc: '他の遺伝子の発現を調節するタンパク質（調節タンパク質）をつくる遺伝子。ラクトースオペロンではリプレッサーをつくる。' },
+    { term: 'リプレッサー（抑制因子）', desc: 'オペレーターに結合して転写を抑制する調節タンパク質。ラクトースからできる物質と結合すると、オペレーターに結合できなくなる。' },
+    { term: '構造遺伝子', desc: '酵素などのタンパク質のアミノ酸配列を指定する遺伝子。' },
+    { term: 'β-ガラクトシダーゼ', desc: 'ラクトースをグルコースとガラクトースに分解する酵素。ラクトースオペロンの構造遺伝子からつくられる。' },
+    { term: 'グルコースがあるとき（発展）', desc: 'グルコースがあると、転写を促進するタンパク質（CRP）がはたらかないので、ラクトースがあっても転写はわずかしか起こらない。そのため大腸菌はグルコースを先に使う（二段階の増殖）。' },
+  ],
+  a8: [
+    { term: '生命表', desc: '同時に生まれた個体群について、年齢ごとの生存数・死亡数・死亡率などをまとめた表。' },
+    { term: '生存曲線', desc: '生まれた個体数を一定（1000など）にして、年齢にともなう生存数の変化を表したグラフ。縦軸は対数目盛りにすることが多い。' },
+    { term: '死亡率', desc: 'ある年齢の区分で、区分のはじめの生存数に対する、その区分の間に死んだ個体数の割合。死亡率 ＝ 死亡数 ÷ はじめの生存数。' },
+    { term: '晩死型', desc: '若いうちの死亡率が低く、老齢で多くが死ぬ型。産む子の数は少ないが親が子を保護する。ヒトや大形の哺乳類など。' },
+    { term: '平均型', desc: 'どの年齢でも死亡率がほぼ一定の型。対数目盛りの生存曲線はほぼ直線になる。鳥類など。' },
+    { term: '早死型', desc: '生まれてすぐの時期の死亡率がきわめて高い型。多数の卵を産むが親が保護しない。魚類や貝類など。' },
   ],
 };
 return { GLOSSARY };

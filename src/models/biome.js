@@ -1,4 +1,5 @@
 // B8 バイオーム（年平均気温と年降水量による模式的な区分）
+import { monotoneCubic } from '../lib/interp.js';
 // 境界は教科書の図の目安を直線でつないだ模式。点がどの多角形に入るかで判定する（図と判定が必ず一致する）。
 export const T_MIN = -15;
 export const T_MAX = 30;
@@ -25,33 +26,6 @@ export const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂�
 // 段差も折れ曲がりもない曲線を 0.5℃ ごとの点（GRASS_CURVE）にして、判定と図の両方がこの点列を使う（図と判定が必ず一致する）。
 // 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
 export const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
-function monotoneCubic(knots) {
-  const n = knots.length;
-  const h = [];
-  const d = [];
-  for (let i = 0; i < n - 1; i++) {
-    h.push(knots[i + 1][0] - knots[i][0]);
-    d.push((knots[i + 1][1] - knots[i][1]) / h[i]);
-  }
-  const m = [d[0]];
-  for (let i = 1; i < n - 1; i++) {
-    if (d[i - 1] * d[i] <= 0) m.push(0);
-    else {
-      const w1 = 2 * h[i] + h[i - 1];
-      const w2 = h[i] + 2 * h[i - 1];
-      m.push((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]));
-    }
-  }
-  m.push(d[n - 2]);
-  return (T) => {
-    let i = 0;
-    while (i < n - 2 && T > knots[i + 1][0]) i++;
-    const t = (T - knots[i][0]) / h[i];
-    const t2 = t * t;
-    const t3 = t2 * t;
-    return (2 * t3 - 3 * t2 + 1) * knots[i][1] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * knots[i + 1][1] + (t3 - t2) * h[i] * m[i + 1];
-  };
-}
 const grassSmooth = monotoneCubic(GRASS_KNOTS);
 export const GRASS_STEP = 0.5;
 export const GRASS_CURVE = [];

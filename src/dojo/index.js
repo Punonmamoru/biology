@@ -12,5 +12,10 @@ import { dojo as b10 } from './b10.js';
 import { dojo as a1 } from './a1.js';
 import { dojo as a2 } from './a2.js';
 import { dojo as a3 } from './a3.js';
+import { dojo as a4 } from './a4.js';
+import { dojo as a5 } from './a5.js';
+import { dojo as a6 } from './a6.js';
+import { dojo as a7 } from './a7.js';
+import { dojo as a8 } from './a8.js';
 
-export const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3 };
+export const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3, a4, a5, a6, a7, a8 };

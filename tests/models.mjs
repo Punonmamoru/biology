@@ -13,6 +13,11 @@ import * as ox from '../src/models/oxygen.js';
 import * as kd from '../src/models/kidney.js';
 import * as bi from '../src/models/biome.js';
 import * as dn from '../src/models/dna.js';
+import * as nv from '../src/models/nerve.js';
+import * as lm from '../src/models/limiting.js';
+import * as pg from '../src/models/popgen.js';
+import * as op from '../src/models/operon.js';
+import * as sv from '../src/models/survival.js';
 import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
 
 const results = [];
@@ -508,6 +513,130 @@ section('A3 個体群の成長');
   check('被食者・捕食者の変動は周期的（保存量が一定＝同じ輪をくり返す）', consOk);
   check('個体数が負にならない', posOk);
   check('標識再捕法：N = M × C ÷ R', po.markRecapture(50, 40, 5) === 400);
+}
+
+// ---------- A4 ----------
+section('A4 興奮の伝導');
+{
+  const ts = Array.from({ length: 601 }, (_, i) => i * 0.01);
+  const wave = (stim) => ts.map((t) => nv.membrane(t, stim));
+  const w = wave(20);
+  const iMax = w.indexOf(Math.max(...w));
+  const iMin = w.indexOf(Math.min(...w));
+  check('静止電位 約−70 mV、ピーク 約＋40 mV（細胞内が正に逆転）', w[0] === -70 && near(Math.max(...w), 40, 0.5), `静止 ${w[0]}、ピーク ${f(Math.max(...w), 1)}`);
+  let up = true;
+  for (let i = 101; i <= iMax; i++) if (w[i] < w[i - 1] - 1e-9) up = false;
+  let down = true;
+  for (let i = iMax + 1; i <= 240; i++) if (w[i] > w[i - 1] + 1e-9) down = false;
+  check('刺激後、ピークまで単調に上昇（脱分極）し、そのあと単調に下降（再分極）する', up && down);
+  check('再分極のあと一時的に静止電位より低くなり（過分極）、静止電位にもどる', ts[iMin] > ts[iMax] && w[iMin] < -70 && near(w[w.length - 1], -70, 1e-6), `最小 ${f(w[iMin], 1)} mV（${f(ts[iMin], 2)} ms）`);
+  const above = ts.filter((t, i) => w[i] > -70 + 1).length * 0.01;
+  check('活動電位の持続は1〜2ミリ秒程度', above >= 1 && above <= 2, `${f(above, 2)} ms`);
+  const sub = [2, 5, 9, 9.9].map((s) => Math.max(...wave(s)));
+  check('閾値未満の刺激では閾値の膜電位（−55 mV）に届かず、活動電位は生じない', sub.every((m) => m < nv.THRESHOLD) && sub[0] < sub[3], sub.map((m) => f(m, 1)).join(', '));
+  const peaks = [10, 15, 25, 40].map((s) => Math.max(...wave(s)));
+  check('閾値以上の刺激では、刺激の強さに関係なく同じ大きさの活動電位（全か無かの法則）', peaks.every((m) => m === peaks[0]));
+  const resp = Array.from({ length: 41 }, (_, s) => nv.nerveResponse(s));
+  let mono = resp.every((r, i) => i === 0 || r >= resp[i - 1]);
+  const steps = new Set(resp).size;
+  check('神経（繊維の束）では、刺激を強くすると興奮の大きさが段階的に大きくなり、最大で一定になる', mono && resp[0] === 0 && resp[40] === 1 && steps > 5, `段階 ${steps}`);
+  const v = nv.velocity(60, nv.latency(60, 30, 2.5), 20, nv.latency(20, 30, 2.5));
+  check('2点刺激：伝導速度 ＝ 距離の差 ÷ 時間の差（30 m/s を再現、伝達の時間 2.5 ms は打ち消される）', near(v, 30, 1e-9));
+}
+
+// ---------- A5 ----------
+section('A5 光合成の限定要因');
+{
+  const T = 25;
+  const lowLightSame = Math.abs(lm.rate(3, 0.02, T) - lm.rate(3, 0.12, T)) / lm.rate(3, 0.12, T) < 0.02;
+  check('弱い光では、CO₂濃度を変えても光合成速度がほとんど変わらない（光の強さが限定要因）', lowLightSame && lm.limitingFactor(3, 0.02, T).factor === 'light', `${f(lm.rate(3, 0.02, T), 2)} / ${f(lm.rate(3, 0.12, T), 2)}`);
+  check('強い光では、CO₂濃度が高いほど光合成速度が大きい（CO₂濃度が限定要因）', lm.rate(45, 0.12, T) > lm.rate(45, 0.04, T) * 1.3 && lm.limitingFactor(45, 0.04, T).factor === 'co2');
+  const tLow = Math.abs(lm.rate(3, 0.08, 15) - lm.rate(3, 0.08, 30)) / lm.rate(3, 0.08, 30);
+  check('弱い光では温度を変えても速度はほとんど変わらず、強い光では温度の影響が大きい', tLow < 0.02 && lm.rate(45, 0.08, 30) > lm.rate(45, 0.08, 15) * 1.5, `弱光での差 ${f(tLow * 100, 1)}%`);
+  let monoI = true;
+  for (const c of [0.02, 0.04, 0.12]) for (let I = 1; I <= 50; I++) if (lm.rate(I, c, T) < lm.rate(I - 1, c, T)) monoI = false;
+  const sat = lm.rate(50, 0.04, T) - lm.rate(40, 0.04, T);
+  check('光を強くすると速度は単調に増え、やがて頭打ちになる（光飽和）', monoI && sat < 1, `40→50 キロルクスでの増加 ${f(sat, 2)}`);
+  const tc = Array.from({ length: 46 }, (_, t) => lm.rate(45, 0.12, t));
+  const tOpt = tc.indexOf(Math.max(...tc));
+  check('温度に対して山形で、最適温度より高温側で急に低下する', tOpt >= 25 && tOpt <= 32 && tc[tOpt + 10] < tc[tOpt - 10], `最適 ${tOpt}℃、−10℃ ${f(tc[tOpt - 10], 1)}・＋10℃ ${f(tc[tOpt + 10], 1)}`);
+  let capOk = true;
+  for (const I of [2, 10, 30, 50]) for (const c of [0.01, 0.04, 0.15]) for (const t of [5, 20, 30, 40]) {
+    const k = lm.caps(I, c, t);
+    if (lm.rate(I, c, t) > Math.min(k.light, k.co2, k.temp) + 1e-9) capOk = false;
+  }
+  check('実際の速度は、3つの要因の上限のうち最も小さいものをこえない', capOk);
+  check('3つの要因のどれもが限定要因になりうる', ['light', 'co2', 'temp'].every((x) => [[5, 0.12, 30], [45, 0.03, 30], [45, 0.12, 12]].some(([I, c, t]) => lm.limitingFactor(I, c, t).factor === x)));
+}
+
+// ---------- A6 ----------
+section('A6 集団遺伝');
+{
+  let sumOk = true;
+  let maxAa = 0;
+  let pAt = 0;
+  for (let i = 0; i <= 100; i++) {
+    const p = i / 100;
+    const g = pg.genotypeFreq(p);
+    if (!near(g.AA + g.Aa + g.aa, 1, 1e-12)) sumOk = false;
+    if (g.Aa > maxAa) { maxAa = g.Aa; pAt = p; }
+  }
+  check('p² ＋ 2pq ＋ q² ＝ 1、Aa の頻度は p ＝ 0.5 で最大（0.5）', sumOk && pAt === 0.5 && near(maxAa, 0.5, 1e-12));
+  let keep = true;
+  for (const p of [0.1, 0.3, 0.5, 0.8]) {
+    const g = pg.genotypeFreq(p);
+    if (!near(pg.alleleFreqFromGenotypeFreq(g.AA, g.Aa), p, 1e-12)) keep = false;
+  }
+  check('自由交配でできた次の世代でも遺伝子頻度は変わらない（p² ＋ pq ＝ p）', keep);
+  check('個体数から遺伝子頻度：AA 36・Aa 48・aa 16 → p ＝ 0.6', near(pg.alleleFreqFromCounts(36, 48, 16), 0.6, 1e-12));
+  check('潜性形質の割合から q：q² ＝ 1/10000 → q ＝ 0.01、保因者 2pq ≒ 1.98%', near(pg.qFromRecessive(1 / 10000), 0.01, 1e-12) && near(pg.genotypeFreq(0.99).Aa, 0.0198, 1e-9));
+  const rng = makeRng(42);
+  const reps = 200;
+  const smallRuns = pg.driftLines(10, 0.5, 100, reps, rng);
+  const largeRuns = pg.driftLines(10000, 0.5, 100, reps, rng);
+  const fs = pg.fixationSummary(smallRuns);
+  const fl = pg.fixationSummary(largeRuns);
+  const sd = (runs) => Math.sqrt(runs.reduce((a, r) => a + Math.pow(r[r.length - 1] - 0.5, 2), 0) / runs.length);
+  check('遺伝的浮動：小さな集団（N＝10）は固定・消失が多く、大きな集団（N＝10000）は100世代でもほとんど変わらない', (fs.fixed + fs.lost) / reps > 0.7 && fl.fixed + fl.lost === 0 && sd(largeRuns) < 0.05, `N＝10：固定・消失 ${fs.fixed + fs.lost}/${reps}、N＝10000：ずれの標準偏差 ${f(sd(largeRuns), 3)}`);
+  const meanSmall = smallRuns.reduce((a, r) => a + r[r.length - 1], 0) / reps;
+  check('遺伝的浮動は偶然による変化で、方向性がない（多数の集団の平均はほぼ変わらない）', near(meanSmall, 0.5, 0.1), `平均 ${f(meanSmall, 3)}`);
+}
+
+// ---------- A7 ----------
+section('A7 遺伝子発現の調節');
+{
+  const S = (lactose, glucose, mutant = 'none') => op.operonState({ lactose, glucose, mutant });
+  check('ラクトースなし：リプレッサーがオペレーターに結合し、転写されない（グルコースの有無によらない）', S(false, false).repressorBound && S(false, false).level === 'off' && S(false, true).level === 'off');
+  check('ラクトースあり・グルコースなし：リプレッサーが外れ、さかんに転写される', !S(true, false).repressorBound && S(true, false).inducerBound && S(true, false).level === 'high');
+  check('（発展）ラクトースあり・グルコースあり：転写はわずか', S(true, true).level === 'low');
+  check('調節遺伝子・オペレーターの変異：ラクトースがなくても転写される', ['noRepressor', 'operator'].every((m) => S(false, false, m).level !== 'off' && S(true, false, m).level === 'high'));
+  check('ラクトースからできる物質と結合できないリプレッサー：ラクトースがあっても転写されない', S(true, false, 'noInducer').level === 'off');
+  const run = op.diauxie();
+  const tG = op.glucoseOutTime(run);
+  const beforeE = Math.max(...run.filter((q) => q.t < tG).map((q) => q.E));
+  const at = (t) => run[Math.round(t / (run[1].t - run[0].t))];
+  const lagGrowth = at(tG + 0.5).N / at(tG).N;
+  const glcGrowth = at(tG - 0.5).N / at(tG - 1).N;
+  check('二段階の増殖：グルコースがある間は酵素がなく、なくなったあとに酵素が増え、その間に増殖が一時停滞する', beforeE < 0.01 && at(tG + 2).E > 0.8 && lagGrowth < glcGrowth && at(op.DIAUXIE.T).N > at(tG + 0.5).N * 3, `グルコース枯渇 ${f(tG, 1)} 時間、停滞期の増加 ${f(lagGrowth, 2)} 倍／0.5時間`);
+  check('mRNAの翻訳される領域：(アミノ酸数 ＋ 1) × 3（終止コドンを含む）', op.codingBases(1023) === 3072);
+}
+
+// ---------- A8 ----------
+section('A8 生存曲線');
+{
+  const xs = Array.from({ length: 101 }, (_, i) => i);
+  const decreasing = Object.values(sv.TYPES).every((t) => xs.every((x, i) => i === 0 || sv.survivors(x, t.k) <= sv.survivors(x - 1, t.k)));
+  check('どの型も生存数は年齢とともに減少し、1000 から始まって寿命で約1になる', decreasing && Object.values(sv.TYPES).every((t) => sv.survivors(0, t.k) === 1000 && near(sv.survivors(100, t.k), 1, 1e-6)));
+  const half = (k) => sv.survivors(50, k);
+  check('年齢50での生存数：晩死型 ＞ 平均型 ＞ 早死型', half(sv.TYPES.late.k) > half(sv.TYPES.mid.k) && half(sv.TYPES.mid.k) > half(sv.TYPES.early.k), `${f(half(6), 0)}・${f(half(1), 0)}・${f(half(0.25), 0)}`);
+  const lin = xs.slice(1).map((x) => Math.log10(sv.survivors(x, 1)) - Math.log10(sv.survivors(x - 1, 1)));
+  check('平均型は対数目盛りで直線（年齢あたりの死亡率が一定）', lin.every((d) => near(d, lin[0], 1e-9)));
+  const mt = (k) => sv.lifeTable(sv.lxFromCurve(k)).map((r) => r.mortality);
+  const mLate = mt(6);
+  const mEarly = mt(0.25);
+  check('晩死型は若い区分の死亡率が低く老齢で高い、早死型は最初の区分の死亡率が最も高い', mLate[0] < 0.01 && mLate[8] > 0.5 && mEarly[0] === Math.max(...mEarly) && mEarly[0] > 0.9, `晩死型 ${f(mLate[0], 3)}→${f(mLate[8], 2)}、早死型 区分1 ${f(mEarly[0], 3)}`);
+  check('生命表：死亡率 ＝ 死亡数 ÷ はじめの生存数（1000・700・420 → 0.3・0.4）', sv.lifeTable([1000, 700, 420]).map((r) => f(r.mortality, 3)).join() === '0.3,0.4');
+  check('生命表から型を判定（死亡率一定 → 平均型、初期が高い → 早死型、老齢が高い → 晩死型）', sv.typeOfTable([1000, 500, 250, 125, 63]) === 'mid' && sv.typeOfTable([1000, 100, 50, 40, 32]) === 'early' && sv.typeOfTable([1000, 980, 951, 856, 428]) === 'late');
 }
 
 const ng = results.filter((r) => !r.ok);

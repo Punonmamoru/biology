@@ -18,6 +18,11 @@ export const STAGES = [
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
+  { id: 'a4', code: 'A4', course: 'advanced', title: '興奮の伝導', unit: '生物の環境応答', lead: '活動電位の波形、閾値と全か無かの法則。2点刺激で伝導速度を計算する。' },
+  { id: 'a5', code: 'A5', course: 'advanced', title: '光合成の限定要因', unit: '生命現象と物質', lead: '光の強さ・CO₂濃度・温度のうち、最も不足している要因が光合成速度を決める。' },
+  { id: 'a6', code: 'A6', course: 'advanced', title: '集団遺伝', unit: '生物の進化', lead: 'ハーディー・ワインベルグの法則の計算と、集団の大きさによる遺伝的浮動のちがい。' },
+  { id: 'a7', code: 'A7', course: 'advanced', title: '遺伝子発現の調節', unit: '遺伝情報の発現と発生', lead: 'ラクトースオペロン。リプレッサーの結合で転写のオン・オフが切りかわる。' },
+  { id: 'a8', code: 'A8', course: 'advanced', title: '生存曲線', unit: '生態と環境', lead: '早死型・平均型・晩死型の比較と、生命表からの死亡率の計算。' },
 ];
 
 export function stageById(id) {
