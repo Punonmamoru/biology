@@ -3,6 +3,9 @@ import { h, clear, toast } from './lib/dom.js';
 import { initTheme, cycleTheme } from './lib/theme.js';
 import { renderHome } from './ui/home.js';
 import { renderDojo } from './ui/dojo.js';
+import { renderRush } from './ui/rush.js';
+import { renderMiss } from './ui/miss.js';
+import { renderGlossary } from './ui/glossary.js';
 import { stageById } from './stages.js';
 
 const app = document.getElementById('app');
@@ -16,6 +19,9 @@ function notFound() {
 const ROUTES = {
   home: () => renderHome(app),
   dojo: (id) => (stageById(id) ? renderDojo(app, id) : notFound()),
+  rush: (id) => renderRush(app, id || ''),
+  miss: () => renderMiss(app),
+  glossary: (id) => renderGlossary(app, id),
 };
 
 function route() {

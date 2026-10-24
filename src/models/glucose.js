@@ -1,6 +1,6 @@
 // B2 血糖値の調節モデル（定性的な形を保証する簡単な微分方程式）
-// 状態：Q＝消化管内の糖, G＝血糖値[mg/100mL], I＝インスリン（相対値）, N＝グルカゴン（相対値）
-//   dQ/dt = −ka·Q
+// 状態：S＝胃の中の糖, Q＝小腸の糖, G＝血糖値[mg/100mL], I＝インスリン（相対値）, N＝グルカゴン（相対値）
+//   dS/dt = −ks·S,  dQ/dt = ks·S − ka·Q（胃から小腸へ送られ、小腸で吸収される）
 //   dG/dt = ka·Q（吸収）＋ 肝臓からの放出 − 組織への取り込み
 //           肝臓からの放出   = (p0 + pg·N) / (1 + hi·I)   …グルカゴンで増え、インスリンで抑えられる
 //           組織への取り込み = (u0 + si·S·I)·G             …インスリンが効くほど増える
@@ -15,16 +15,17 @@ export const PRESETS = {
 };
 
 export const P = {
-  ka: 1 / 50, // 消化管からの吸収速度
-  dose: 150, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
+  ks: 1 / 20, // 胃から小腸へ送られる速さ
+  ka: 1 / 30, // 小腸からの吸収速度
+  dose: 170, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
   u0: 0.0028, // インスリンによらない取り込み（脳など）
   si: 0.07, // インスリンによる取り込み
   p0: 0.75, // 肝臓からの基礎的な放出
   pg: 1.8, // グルカゴンによる肝臓からの放出（グリコーゲンの分解）
   hi: 1.5, // インスリンによる肝臓からの放出の抑制
-  kI: 1 / 20,
+  kI: 1 / 15,
   kN: 1 / 15,
-  kX: 1 / 20,
+  kX: 1 / 15,
   gHalf: 140,
   gLow: 80,
 };
@@ -38,15 +39,16 @@ export function low(G) {
   return 1 / (1 + Math.pow(G / P.gLow, 6));
 }
 
-const KEYS = ['Q', 'G', 'I', 'N', 'X'];
+const KEYS = ['S', 'Q', 'G', 'I', 'N', 'X'];
 
 function deriv(s, prm) {
-  const { Q, G, I, N, X } = s;
+  const { S, Q, G, I, N, X } = s;
   const absorb = P.ka * Q;
   const liver = (P.p0 + P.pg * N) / (1 + P.hi * X);
   const uptake = (P.u0 + P.si * prm.sens * X) * G;
   return {
-    Q: -absorb,
+    S: -P.ks * S,
+    Q: P.ks * S - absorb,
     G: absorb + liver - uptake,
     I: P.kI * (prm.cap * sec(G) - I),
     N: P.kN * (low(G) - N),
@@ -71,7 +73,7 @@ function step(s, prm, dt) {
 
 // 食事前の安定状態（食事なしで十分長く計算する）
 export function fasting(prm) {
-  let s = { Q: 0, G: 100, I: prm.cap * sec(100), N: low(100), X: prm.cap * sec(100) };
+  let s = { S: 0, Q: 0, G: 100, I: prm.cap * sec(100), N: low(100), X: prm.cap * sec(100) };
   for (let i = 0; i < 3000; i++) s = step(s, prm, 1);
   return s;
 }
@@ -79,7 +81,7 @@ export function fasting(prm) {
 // 食事（t=0）から minutes 分後までを計算。prm = { meal, cap, sens }
 export function simulate(prm, minutes = 300, dt = 1) {
   const s0 = fasting(prm);
-  let s = { ...s0, Q: P.dose * prm.meal };
+  let s = { ...s0, S: P.dose * prm.meal };
   const out = [{ t: 0, ...s }];
   for (let t = dt; t <= minutes + 1e-9; t += dt) {
     s = step(s, prm, dt);

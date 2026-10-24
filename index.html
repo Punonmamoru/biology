@@ -1618,8 +1618,8 @@ return { dojo };
 // ---- models/glucose.js ----
 __m["models/glucose.js"] = (function () {
 // B2 血糖値の調節モデル（定性的な形を保証する簡単な微分方程式）
-// 状態：Q＝消化管内の糖, G＝血糖値[mg/100mL], I＝インスリン（相対値）, N＝グルカゴン（相対値）
-//   dQ/dt = −ka·Q
+// 状態：S＝胃の中の糖, Q＝小腸の糖, G＝血糖値[mg/100mL], I＝インスリン（相対値）, N＝グルカゴン（相対値）
+//   dS/dt = −ks·S,  dQ/dt = ks·S − ka·Q（胃から小腸へ送られ、小腸で吸収される）
 //   dG/dt = ka·Q（吸収）＋ 肝臓からの放出 − 組織への取り込み
 //           肝臓からの放出   = (p0 + pg·N) / (1 + hi·I)   …グルカゴンで増え、インスリンで抑えられる
 //           組織への取り込み = (u0 + si·S·I)·G             …インスリンが効くほど増える
@@ -1634,16 +1634,17 @@ const PRESETS = {
 };
 
 const P = {
-  ka: 1 / 50, // 消化管からの吸収速度
-  dose: 150, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
+  ks: 1 / 20, // 胃から小腸へ送られる速さ
+  ka: 1 / 30, // 小腸からの吸収速度
+  dose: 170, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
   u0: 0.0028, // インスリンによらない取り込み（脳など）
   si: 0.07, // インスリンによる取り込み
   p0: 0.75, // 肝臓からの基礎的な放出
   pg: 1.8, // グルカゴンによる肝臓からの放出（グリコーゲンの分解）
   hi: 1.5, // インスリンによる肝臓からの放出の抑制
-  kI: 1 / 20,
+  kI: 1 / 15,
   kN: 1 / 15,
-  kX: 1 / 20,
+  kX: 1 / 15,
   gHalf: 140,
   gLow: 80,
 };
@@ -1657,15 +1658,16 @@ function low(G) {
   return 1 / (1 + Math.pow(G / P.gLow, 6));
 }
 
-const KEYS = ['Q', 'G', 'I', 'N', 'X'];
+const KEYS = ['S', 'Q', 'G', 'I', 'N', 'X'];
 
 function deriv(s, prm) {
-  const { Q, G, I, N, X } = s;
+  const { S, Q, G, I, N, X } = s;
   const absorb = P.ka * Q;
   const liver = (P.p0 + P.pg * N) / (1 + P.hi * X);
   const uptake = (P.u0 + P.si * prm.sens * X) * G;
   return {
-    Q: -absorb,
+    S: -P.ks * S,
+    Q: P.ks * S - absorb,
     G: absorb + liver - uptake,
     I: P.kI * (prm.cap * sec(G) - I),
     N: P.kN * (low(G) - N),
@@ -1690,7 +1692,7 @@ function step(s, prm, dt) {
 
 // 食事前の安定状態（食事なしで十分長く計算する）
 function fasting(prm) {
-  let s = { Q: 0, G: 100, I: prm.cap * sec(100), N: low(100), X: prm.cap * sec(100) };
+  let s = { S: 0, Q: 0, G: 100, I: prm.cap * sec(100), N: low(100), X: prm.cap * sec(100) };
   for (let i = 0; i < 3000; i++) s = step(s, prm, 1);
   return s;
 }
@@ -1698,7 +1700,7 @@ function fasting(prm) {
 // 食事（t=0）から minutes 分後までを計算。prm = { meal, cap, sens }
 function simulate(prm, minutes = 300, dt = 1) {
   const s0 = fasting(prm);
-  let s = { ...s0, Q: P.dose * prm.meal };
+  let s = { ...s0, S: P.dose * prm.meal };
   const out = [{ t: 0, ...s }];
   for (let t = dt; t <= minutes + 1e-9; t += dt) {
     s = step(s, prm, dt);
@@ -2343,11 +2345,1377 @@ const DOJOS = { b1, b2, b3, b4, b5 };
 return { DOJOS };
 })();
 
+// ---- lib/rng.js ----
+__m["lib/rng.js"] = (function () {
+// 再現可能な乱数（mulberry32）。問題は (ジェネレーターID, シード) から必ず同じものが作られる。
+function makeRng(seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const rng = {
+    next,
+    // 整数 [min, max]
+    int(min, max) {
+      return min + Math.floor(next() * (max - min + 1));
+    },
+    pick(arr) {
+      return arr[Math.floor(next() * arr.length)];
+    },
+    shuffle(arr) {
+      const a2 = arr.slice();
+      for (let i = a2.length - 1; i > 0; i--) {
+        const j = Math.floor(next() * (i + 1));
+        [a2[i], a2[j]] = [a2[j], a2[i]];
+      }
+      return a2;
+    },
+    // 重複なしで k 個
+    sample(arr, k) {
+      return rng.shuffle(arr).slice(0, k);
+    },
+    chance(p) {
+      return next() < p;
+    },
+  };
+  return rng;
+}
+
+function randomSeed() {
+  return (Math.random() * 4294967296) >>> 0;
+}
+return { makeRng, randomSeed };
+})();
+
+// ---- questions/common.js ----
+__m["questions/common.js"] = (function () {
+// 4択問題の共通部品（DOM に依存しない純粋関数。Node の検証スクリプトからも使う）
+const { makeRng } = __m["lib/rng.js"];
+const { fmt } = __m["lib/format.js"];
+
+const LEVEL_LABEL = { 1: '★基礎', 2: '★★標準', 3: '★★★発展' };
+const KIND_LABEL = { calc: '計算', graph: 'グラフ読み取り', term: '用語・しくみ' };
+const KATA = ['ア', 'イ', 'ウ', 'エ', 'オ'];
+
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// ジェネレーター定義：{ id, stage, level, kind, make(rng) }
+// make は { text, correct, wrong: [3個以上], explanation, chart?, ordered? } を返す
+function generate(gen, seed) {
+  const rng = makeRng((seed ^ hashStr(gen.id)) >>> 0);
+  const raw = gen.make(rng);
+  const correct = String(raw.correct);
+  const seen = new Set([correct]);
+  const pool = [];
+  for (const w of raw.wrong) {
+    const s = String(w);
+    if (!seen.has(s)) {
+      seen.add(s);
+      pool.push(s);
+    }
+  }
+  if (pool.length < 3) throw new Error(`${gen.id}: 誤答の候補が足りません（seed=${seed}）`);
+  // ordered: 誤答候補を「よくある誤解」の順に並べてあるときは先頭から使う
+  const wrong = raw.ordered ? pool.slice(0, 3) : rng.sample(pool, 3);
+  const choices = rng.shuffle([correct, ...wrong]);
+  return {
+    gen: gen.id,
+    seed,
+    stage: gen.stage,
+    level: gen.level,
+    kind: gen.kind,
+    text: raw.text,
+    choices,
+    answer: choices.indexOf(correct),
+    correct,
+    explanation: raw.explanation,
+    chart: raw.chart || null,
+  };
+}
+
+// 数値の選択肢（単位つき）
+function numChoice(x, unit = '', digits = 2) {
+  return fmt(x, digits) + unit;
+}
+
+// 「ア：X　イ：Y　ウ：Z」形式の組合せ選択肢
+function assignmentText(labels, names) {
+  return labels.map((l, i) => `${l}：${names[i]}`).join('　');
+}
+
+function permutations(arr) {
+  if (arr.length <= 1) return [arr.slice()];
+  const out = [];
+  arr.forEach((x, i) => {
+    for (const p of permutations([...arr.slice(0, i), ...arr.slice(i + 1)])) out.push([x, ...p]);
+  });
+  return out;
+}
+
+// 組合せ問題：正しい対応と、それ以外の並べ替えを誤答にする
+function assignmentQuestion(labels, names) {
+  const correct = assignmentText(labels, names);
+  const wrong = permutations(names)
+    .map((p) => assignmentText(labels, p))
+    .filter((s) => s !== correct);
+  return { correct, wrong };
+}
+
+// 値をいくつかの候補の中から重複なく誤答として集める
+function distinctNumbers(correct, cands, unit = '', digits = 2) {
+  const c = numChoice(correct, unit, digits);
+  const out = [];
+  for (const v of cands) {
+    if (!Number.isFinite(v) || v <= 0) continue;
+    const s = numChoice(v, unit, digits);
+    if (s !== c && !out.includes(s)) out.push(s);
+  }
+  return { correct: c, wrong: out };
+}
+return { LEVEL_LABEL, KIND_LABEL, KATA, generate, numChoice, assignmentText, permutations, assignmentQuestion, distinctNumbers };
+})();
+
+// ---- questions/b1.js ----
+__m["questions/b1.js"] = (function () {
+// B1 細胞周期とDNA量 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { PHASES } = __m["models/cellcycle.js"];
+
+const NAME = { G1: 'G1期', S: 'S期', G2: 'G2期', M: 'M期' };
+const FULL = { G1: 'G1期（DNA合成準備期）', S: 'S期（DNA合成期）', G2: 'G2期（分裂準備期）', M: 'M期（分裂期）' };
+const WHY = {
+  G1: 'G1期はDNA合成の準備をする時期で、DNA量は複製前の2のままだから、DNA量が2で一定の区間になる。',
+  S: 'S期にはDNAが複製されるから、DNA量が2から4へしだいに増える区間になる。',
+  G2: 'G2期は複製が終わって分裂の準備をする時期だから、DNA量は4で一定の区間になる。',
+  M: 'M期の終わりに細胞質分裂が起こってDNAが2つの細胞に分けられるから、DNA量が4から2へ急に減る直前の区間になる。',
+};
+
+// 指定した時期から始まる1周期分のDNA量の点列と区間
+function cycleChart(len, startIdx, labels) {
+  let x = 0;
+  const pts = [];
+  const regions = [];
+  for (let i = 0; i < 4; i++) {
+    const ph = PHASES[(startIdx + i) % 4];
+    const x1 = x + len[ph];
+    const v0 = ph === 'G1' ? 2 : ph === 'S' ? 2 : 4;
+    const v1 = ph === 'G1' ? 2 : 4;
+    pts.push([x, v0], [x1, v1]);
+    if (ph === 'M') pts.push([x1, 2]);
+    regions.push({ x0: x, x1, label: labels ? labels[i] : null, fill: i % 2 ? 'region-2' : 'region', phase: ph });
+    x = x1;
+  }
+  return { pts, regions, T: x };
+}
+
+function randomLengths(rng) {
+  return { G1: rng.int(4, 10), S: rng.int(4, 8), G2: rng.int(2, 5), M: rng.int(2, 3) };
+}
+
+const B1 = [
+  {
+    id: 'b1-graph-phase',
+    stage: 'b1',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const len = randomLengths(rng);
+      const start = rng.int(0, 3);
+      const { pts, regions, T } = cycleChart(len, start, KATA.slice(0, 4));
+      const ask = rng.pick(PHASES);
+      const idx = regions.findIndex((r) => r.phase === ask);
+      return {
+        text: `図は、ある細胞の細胞周期における細胞1個あたりのDNA量（相対値）の変化を表している。${FULL[ask]}にあたる区間はア〜エのどれか。`,
+        chart: {
+          x: { min: 0, max: T, label: '時間', ticks: [] },
+          y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
+          regions: regions.map(({ x0, x1, label, fill }) => ({ x0, x1, label, fill })),
+          series: [{ points: pts, color: 'c1', width: 3 }],
+          alt: 'DNA量の変化のグラフ。区間ア〜エ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 4),
+        explanation: `${FULL[ask]}は区間${KATA[idx]}である。${WHY[ask]}`,
+      };
+    },
+  },
+  {
+    id: 'b1-dna-change',
+    stage: 'b1',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '細胞周期の中で、DNAが複製されて細胞1個あたりのDNA量が2倍になるのはどの時期か。',
+          correct: 'S期（DNA合成期）',
+          wrong: ['G1期（DNA合成準備期）', 'G2期（分裂準備期）', 'M期（分裂期）の中期', 'M期（分裂期）の後期'],
+          explanation: 'DNAが複製されるのはS期である。S期の間にDNAが少しずつ合成されるから、DNA量は2から4へしだいに増える。',
+        };
+      }
+      return {
+        text: '体細胞分裂で、細胞1個あたりのDNA量が4から2に減るのはいつか。',
+        correct: 'M期の終わり（細胞質分裂が起こるとき）',
+        wrong: ['S期の終わり', 'G2期のはじめ', 'M期の中期（染色体が赤道面に並ぶとき）', 'G1期の終わり'],
+        explanation: 'DNA量が半分に戻るのはM期の終わりである。細胞質分裂で1つの細胞が2つに分かれ、複製されたDNAが2つの細胞に等しく分配されるからである。',
+      };
+    },
+  },
+  {
+    id: 'b1-calc-length',
+    stage: 'b1',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const T = rng.pick([12, 16, 18, 20, 24, 30]);
+      const N = rng.pick([100, 200, 400, 500]);
+      const pctM = rng.int(4, 12);
+      const pctG2 = rng.int(10, 18);
+      const pctS = rng.int(25, 38);
+      const counts = { M: (N * pctM) / 100, G2: (N * pctG2) / 100, S: (N * pctS) / 100 };
+      counts.G1 = N - counts.M - counts.G2 - counts.S;
+      const ask = rng.pick(PHASES);
+      const c = counts[ask];
+      const ans = (T * c) / N;
+      const d = distinctNumbers(ans, [(c / N) * 100, (T * (N - c)) / N, ans * 2, ans / 2, c / T, ans + T / 10, T - ans + 1], ' 時間');
+      return {
+        text: `ある組織の細胞を固定・染色して観察したところ、G1期 ${counts.G1}個、S期 ${counts.S}個、G2期 ${counts.G2}個、M期 ${counts.M}個であった。この細胞の細胞周期が ${T}時間のとき、${NAME[ask]}の長さは何時間か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）で求める。${T} × ${c}/${N} ＝ ${fmt(ans, 2)}時間となる。細胞がそれぞれの時期にいる割合は、その時期にかかる時間の割合に等しいとみなせるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b1-calc-mcount',
+    stage: 'b1',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const len = { G1: rng.int(6, 12), S: rng.int(5, 8), G2: rng.int(2, 5), M: rng.pick([1, 2, 3]) };
+      const T = len.G1 + len.S + len.G2 + len.M;
+      const k = rng.pick([10, 20, 50]);
+      const N = T * k;
+      const ask = rng.pick(['M', 'S', 'G2']);
+      const ans = (N * len[ask]) / T;
+      const d = distinctNumbers(ans, [(N * len[ask]) / 100, N / 4, N - ans, ans * 2, ans / 2, ans + k], ' 個', 1);
+      return {
+        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間である。この細胞が細胞周期のさまざまな時期にばらばらに分布している組織で ${N}個の細胞を観察すると、${NAME[ask]}の細胞はおよそ何個見られるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `全周期は ${T}時間なので、${NAME[ask]}の細胞の数は ${N} × ${len[ask]}/${T} ＝ ${fmt(ans, 1)}個となる。各時期の細胞数の割合は、その時期にかかる時間の割合に比例するからである。`,
+      };
+    },
+  },
+  {
+    id: 'b1-calc-total',
+    stage: 'b1',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const cands = [];
+      for (const T of [10, 12, 15, 16, 18, 20, 24, 25, 30, 40]) for (const M of [1, 1.5, 2, 3]) {
+        const p = (M / T) * 100;
+        if (Number.isInteger(p * 2) && p < 20) cands.push({ T, M, p });
+      }
+      const { T, M, p } = rng.pick(cands);
+      const N = rng.pick([200, 400, 1000]);
+      const m = (N * p) / 100;
+      const d = distinctNumbers(T, [(M * p) / 100, T * 2, T / 2, M * 10, T + M, (M * 100) / (100 - p)], ' 時間', 2);
+      return {
+        text: `体細胞分裂が盛んな組織で ${N}個の細胞を観察したところ、M期の細胞が ${fmt(m, 1)}個あった。M期の長さが ${M}時間のとき、この細胞の細胞周期（1周期）は何時間か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `M期の細胞の割合は ${fmt(m, 1)}/${N} ＝ ${fmt(p / 100, 4)} である。M期の時間 ＝ 全周期 × 割合 だから、全周期 ＝ ${M} ÷ ${fmt(p / 100, 4)} ＝ ${T}時間となる。`,
+      };
+    },
+  },
+  {
+    id: 'b1-dna-value',
+    stage: 'b1',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const len = { G1: rng.int(6, 10), S: rng.pick([4, 6, 8]), G2: rng.int(2, 4), M: 2 };
+      const where = rng.pick(['G1', 'S1', 'S2', 'S3', 'G2', 'M']);
+      let t;
+      let ans;
+      if (where === 'G1') { t = rng.int(1, len.G1 - 1); ans = 2; }
+      else if (where[0] === 'S') { const q = Number(where[1]); t = len.G1 + (len.S * q) / 4; ans = 2 + q / 2; }
+      else if (where === 'G2') { t = len.G1 + len.S + 1; ans = 4; }
+      else { t = len.G1 + len.S + len.G2 + 1; ans = 4; }
+      const d = distinctNumbers(ans, [1, 2, 2.5, 3, 3.5, 4, 8], '', 1);
+      return {
+        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間で、S期にはDNAが一定の速さで合成される。G1期に入った直後の細胞1個あたりのDNA量を2とすると、その ${fmt(t, 1)}時間後のDNA量はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${fmt(t, 1)}時間後は${where[0] === 'S' ? 'S期' : NAME[where]}にあたる。${where[0] === 'S' ? `S期の ${where[1]}/4 が過ぎているので、DNA量は 2 ＋ 2 × ${where[1]}/4 ＝ ${fmt(ans, 1)} となる。` : where === 'G1' ? 'G1期はまだDNAが複製されていないから、DNA量は2のままである。' : 'S期でDNAの複製が終わっているから、細胞質分裂が起こるまではDNA量は4のままである。'}`,
+      };
+    },
+  },
+  {
+    id: 'b1-subphase',
+    stage: 'b1',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const D = {
+        前期: '核の中で染色体が凝縮し、太く短いひも状に見えるようになる',
+        中期: '染色体が細胞の中央の赤道面に並ぶ',
+        後期: '各染色体が縦に裂けるように分かれ、両極へ移動する',
+        終期: '核膜が再び現れ、細胞質分裂が起こる',
+      };
+      const keys = Object.keys(D);
+      const k = rng.pick(keys);
+      if (rng.chance(0.5)) {
+        return {
+          text: `体細胞分裂のM期で、「${D[k]}」のはどの時期か。`,
+          correct: k,
+          wrong: keys,
+          explanation: `これは${k}の特徴である。M期は染色体の様子によって前期・中期・後期・終期に分けられ、染色体を正確に2つに分けるためにこの順に進むからである。`,
+        };
+      }
+      return {
+        text: `体細胞分裂のM期の「${k}」の特徴として正しいものはどれか。`,
+        correct: D[k],
+        wrong: keys.map((x) => D[x]).concat(['DNAが複製され、DNA量が2倍になる']),
+        explanation: `${k}には${D[k]}。M期は前期→中期→後期→終期の順に進み、染色体を2つの細胞へ等しく分けるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b1-interphase-majority',
+    stage: 'b1',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const tissue = rng.pick(['タマネギの根端', 'ソラマメの根端', 'ネギの根端']);
+      return {
+        text: `${tissue}の細胞を固定・染色して観察すると、分裂期（M期）の細胞より間期の細胞のほうがはるかに多く見られた。その理由として最も適当なものはどれか。`,
+        correct: '細胞周期の中で、間期にかかる時間が分裂期よりずっと長いから',
+        wrong: ['間期の細胞だけが染色液でよく染まるから', '分裂期の細胞は、固定すると間期の細胞に戻るから', '分裂期の細胞は核をもたないから', '間期の細胞は分裂期の細胞より大きく、見つけやすいから'],
+        explanation: '細胞はばらばらの時期にあるので、各時期の細胞数の割合はその時期にかかる時間の割合に等しい。間期は細胞周期の大部分を占めるから、間期の細胞が多く見られる。',
+      };
+    },
+  },
+  {
+    id: 'b1-phase-desc',
+    stage: 'b1',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const D = {
+        G1: 'DNAの合成（複製）の準備をする時期',
+        S: 'DNAが合成（複製）される時期',
+        G2: 'DNAの複製が終わり、分裂の準備をする時期',
+        M: '染色体が凝縮して2つの細胞に分配される時期',
+      };
+      const k = rng.pick(PHASES);
+      return {
+        text: `細胞周期のうち、「${D[k]}」はどれか。`,
+        correct: FULL[k],
+        wrong: PHASES.map((x) => FULL[x]),
+        explanation: `「${D[k]}」は${FULL[k]}である。細胞周期は G1期 → S期 → G2期 → M期 の順に進み、DNAを複製してから分裂することで、娘細胞が同じ遺伝情報を受け継ぐからである。`,
+      };
+    },
+  },
+  {
+    id: 'b1-graph-length',
+    stage: 'b1',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const len = { G1: 2 * rng.int(3, 5), S: 2 * rng.int(2, 4), G2: 2 * rng.int(1, 2), M: 2 };
+      const { pts, regions, T } = cycleChart(len, 0, null);
+      const ask = rng.pick(['G1', 'S', 'G2']);
+      const ans = len[ask];
+      const end = { G1: len.G1, S: len.G1 + len.S, G2: len.G1 + len.S + len.G2 }[ask];
+      const d = distinctNumbers(ans, [T, end, ...PHASES.map((p) => len[p]), ans * 2, ans + 1, ans - 1], ' 時間', 0);
+      return {
+        text: `図は、ある細胞の細胞1個あたりのDNA量の変化を表している（横軸の目盛りは2時間ごと、M期の長さは2時間）。${FULL[ask]}の長さは何時間か。`,
+        chart: {
+          x: { min: 0, max: T, label: '時間（時間）', step: 2 },
+          y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
+          series: [{ points: pts, color: 'c1', width: 3 }],
+          alt: 'DNA量の変化のグラフ（時間目盛りつき）',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${NAME[ask]}は${ask === 'S' ? 'DNA量が2から4へ増えている区間' : ask === 'G1' ? 'DNA量が2で一定の最初の区間' : 'DNA量が4になってから細胞質分裂で2に戻るまでの区間から、M期の2時間を除いた部分'}で、その長さは ${ans}時間である。${WHY[ask]}`,
+      };
+    },
+  },
+];
+return { B1 };
+})();
+
+// ---- questions/b2.js ----
+__m["questions/b2.js"] = (function () {
+// B2 血糖値の調節 の問題
+const { KATA, assignmentQuestion } = __m["questions/common.js"];
+const { PRESETS, simulate, summarize, hormoneRef } = __m["models/glucose.js"];
+const { thin } = __m["lib/series.js"];
+
+const runCache = new Map();
+function run(prm) {
+  const key = JSON.stringify(prm);
+  if (!runCache.has(key)) runCache.set(key, simulate(prm, 300, 1));
+  return runCache.get(key);
+}
+
+const norm = (arr) => {
+  const lo = Math.min(...arr);
+  const hi = Math.max(...arr);
+  return arr.map((v) => (hi - lo < 1e-9 ? 0.5 : (v - lo) / (hi - lo)));
+};
+
+const B2 = [
+  {
+    id: 'b2-hormone-cell',
+    stage: 'b2',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { h: 'インスリン', a: 'すい臓のランゲルハンス島のB細胞', why: 'B細胞は血糖値の上昇を感知してインスリンを分泌し、血糖値を下げるからである' },
+        { h: 'グルカゴン', a: 'すい臓のランゲルハンス島のA細胞', why: 'A細胞は血糖値の低下を感知してグルカゴンを分泌し、血糖値を上げるからである' },
+        { h: 'アドレナリン', a: '副腎髄質', why: '血糖値が下がると視床下部から交感神経を通じて副腎髄質が刺激され、アドレナリンが分泌されるからである' },
+        { h: '糖質コルチコイド', a: '副腎皮質', why: '脳下垂体前葉からの副腎皮質刺激ホルモンによって副腎皮質が刺激され、糖質コルチコイドが分泌されるからである' },
+      ];
+      const q = rng.pick(Q);
+      return {
+        text: `${q.h}を分泌する内分泌腺（細胞）はどれか。`,
+        correct: q.a,
+        wrong: Q.map((x) => x.a).concat(['脳下垂体後葉', '甲状腺']),
+        explanation: `${q.h}は${q.a}から分泌される。${q.why}。`,
+      };
+    },
+  },
+  {
+    id: 'b2-hormone-function',
+    stage: 'b2',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const F = {
+        インスリン: '細胞へのグルコースの取り込みや肝臓でのグリコーゲンの合成を促進し、血糖値を下げる',
+        グルカゴン: '肝臓でのグリコーゲンの分解を促進し、血糖値を上げる',
+      };
+      const h = rng.pick(Object.keys(F));
+      return {
+        text: `${h}のはたらきとして正しいものはどれか。`,
+        correct: F[h],
+        wrong: [...Object.values(F), '腎臓の集合管での水の再吸収を促進し、尿量を減らす', '血液中のカルシウムイオン濃度を上げる', '体温を下げるように代謝を抑制する'],
+        explanation: `${h}は${F[h]}。血糖値は、下げるインスリンと上げるグルカゴンなどが互いに反対のはたらきをすることで、一定の範囲に保たれているからである。`,
+      };
+    },
+  },
+  {
+    id: 'b2-raise-lower',
+    stage: 'b2',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.6)) {
+        const a = rng.pick(['グルカゴン', 'アドレナリン', '糖質コルチコイド']);
+        return {
+          text: '次のうち、血糖値を上げるはたらきをもつホルモンはどれか。',
+          correct: a,
+          wrong: ['インスリン', 'バソプレシン', 'パラトルモン'],
+          explanation: `${a}は血糖値を上げるホルモンである。血糖値が下がると、グルカゴン・アドレナリン・糖質コルチコイドなど複数のホルモンで血糖値を上げるしくみがはたらくからである。`,
+        };
+      }
+      return {
+        text: '次のうち、血糖値を下げるはたらきをもつホルモンはどれか。',
+        correct: 'インスリン',
+        wrong: ['グルカゴン', 'アドレナリン', '糖質コルチコイド'],
+        explanation: '血糖値を下げるホルモンはインスリンである。インスリンは細胞へのグルコースの取り込みや、肝臓でのグリコーゲンの合成を促進するから、血糖値が下がる。',
+      };
+    },
+  },
+  {
+    id: 'b2-feedback',
+    stage: 'b2',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '血糖値が上がるとインスリンの分泌が増え、インスリンのはたらきで血糖値が下がるとインスリンの分泌が減る。このように、結果が原因にもどって作用をおさえるしくみを何というか。',
+          correct: '負のフィードバック',
+          wrong: ['正のフィードバック', '拮抗作用', '自律神経による二重支配'],
+          explanation: 'これは負のフィードバックである。ホルモンのはたらきの結果が分泌をおさえる向きにはたらくから、血糖値は一定の範囲に保たれる。',
+        };
+      }
+      return {
+        text: '食後にインスリンが分泌され、血糖値が空腹時の値まで下がった。このあとインスリンの分泌量はどうなるか。',
+        correct: '減少する',
+        wrong: ['さらに増加する', '変化しない', '食後と同じ量のまま続く'],
+        explanation: 'インスリンの分泌は減少する。血糖値が下がるとB細胞への刺激が弱まり、負のフィードバックによって分泌がおさえられるからである。',
+      };
+    },
+  },
+  {
+    id: 'b2-graph-identify',
+    stage: 'b2',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const meal = rng.pick([0.8, 1, 1.2, 1.5]);
+      const r = run({ ...PRESETS.healthy, meal });
+      const t = r.map((x) => x.t / 60);
+      const keys = ['血糖値', 'インスリン', 'グルカゴン'];
+      const data = { 血糖値: norm(r.map((x) => x.G)), インスリン: norm(r.map((x) => x.I)), グルカゴン: norm(r.map((x) => x.N)) };
+      const order = rng.shuffle(keys);
+      const labels = KATA.slice(0, 3);
+      const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c4', dash: 'dot' }];
+      const series = order.map((k, i) => ({
+        points: thin(t.map((tt, j) => [tt, 0.1 + 0.9 * data[k][j]]), 160),
+        ...styles[i],
+        width: 3,
+        label: labels[i],
+        labelAt: [0.9, 2.3, 3.6][i],
+      }));
+      const aq = assignmentQuestion(labels, order);
+      return {
+        text: '図は、健康な人が食事をしたあとの血糖値、インスリン濃度、グルカゴン濃度の変化を、それぞれ最大と最小の幅をそろえて表したものである。ア〜ウの組合せとして正しいものはどれか（食事は時刻0）。',
+        chart: {
+          x: { min: 0, max: 5, label: '食事からの時間（時間）', step: 1 },
+          y: { min: 0, max: 1.15, label: '相対値', ticks: [] },
+          series,
+          alt: '3本の曲線ア・イ・ウ',
+        },
+        correct: aq.correct,
+        wrong: aq.wrong,
+        explanation: '食後にまず血糖値が上がり、それを感知したB細胞からインスリンが少し遅れて分泌されるので、インスリンの山は血糖値の山より後になる。グルカゴンは血糖値が高い間は分泌が減り、血糖値が下がると増えるからである。',
+      };
+    },
+  },
+  {
+    id: 'b2-diabetes-graph',
+    stage: 'b2',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const kind = rng.pick(['healthy', 'type1', 'type2']);
+      const r = run({ ...PRESETS[kind], meal: 1 });
+      const ref = hormoneRef();
+      const ANS = {
+        healthy: '健康な人',
+        type1: '1型糖尿病（インスリンがほとんど分泌されない）',
+        type2: '2型糖尿病（インスリンは分泌されるが、血糖値が下がりにくい）',
+      };
+      const WHY = {
+        healthy: '空腹時の血糖値が約100で、食後に上がった血糖値がインスリンの増加によって2時間ほどで元に戻っているからである',
+        type1: 'インスリンがほとんど増えず、血糖値が高いまま下がらないからである',
+        type2: 'インスリンは増えているのに血糖値が高いまま下がりにくく、インスリンが効きにくいか分泌が不十分だからである',
+      };
+      return {
+        text: '図は、ある人が食事をしたあとの血糖値とインスリン濃度の変化である（インスリンは健康な人の空腹時を1とした相対値）。この人の状態として最も適当なものはどれか。',
+        chart: {
+          x: { min: 0, max: 5, label: '食事からの時間（時間）', step: 1 },
+          y: { min: 0, max: 300, label: '血糖値（mg/100mL）', step: 50 },
+          y2: { min: 0, max: 8, label: 'インスリン（相対値）', step: 2 },
+          hlines: [{ y: 100, color: 'muted', dash: 'dot' }],
+          series: [
+            { points: thin(r.map((x) => [x.t / 60, x.G]), 160), color: 'c2', width: 3, label: '血糖値' },
+            { points: thin(r.map((x) => [x.t / 60, x.I / ref.I]), 160), color: 'c1', dash: 'dash', width: 3, axis: 'y2', label: 'インスリン' },
+          ],
+          alt: '血糖値とインスリンのグラフ',
+        },
+        correct: ANS[kind],
+        wrong: [...Object.values(ANS), 'インスリンが過剰に分泌され、血糖値が下がりすぎる人'],
+        explanation: `この人は${ANS[kind]}と考えられる。${WHY[kind]}。`,
+      };
+    },
+  },
+  {
+    id: 'b2-type-desc',
+    stage: 'b2',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const D = {
+        '1型': 'すい臓のB細胞が自己免疫などで破壊され、インスリンがほとんど分泌されない',
+        '2型': 'インスリンの分泌量が減ったり、標的細胞がインスリンに反応しにくくなったりする',
+      };
+      const k = rng.pick(Object.keys(D));
+      return {
+        text: `${k}糖尿病の説明として最も適当なものはどれか。`,
+        correct: D[k],
+        wrong: [...Object.values(D), 'グルカゴンが分泌されなくなり、血糖値が下がりすぎる', '腎臓でグルコースがまったくろ過されなくなる'],
+        explanation: `${k}糖尿病は、${D[k]}ものである。どちらの場合もインスリンによって血糖値を下げるしくみが十分にはたらかないから、血糖値が高い状態が続く。`,
+      };
+    },
+  },
+  {
+    id: 'b2-fasting-value',
+    stage: 'b2',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '健康な人の空腹時の血糖値（血液中のグルコース濃度）はおよそいくらか。',
+          correct: '約100 mg/100mL',
+          wrong: ['約1 mg/100mL', '約10 mg/100mL', '約1000 mg/100mL', '約10000 mg/100mL'],
+          explanation: '健康な人の空腹時の血糖値は約100 mg/100mL（約0.1%）である。インスリンやグルカゴンなどのはたらきで調節されているから、食事をしても一定の範囲に戻る。',
+        };
+      }
+      return {
+        text: '健康な人の空腹時の血糖値は、質量パーセント濃度でおよそ何%か。',
+        correct: '約0.1%',
+        wrong: ['約0.001%', '約0.01%', '約1%', '約10%'],
+        explanation: '空腹時の血糖値は約100 mg/100mL で、これは約0.1%にあたる。100 mL の血液（約100 g）に約0.1 g のグルコースがふくまれるからである。',
+      };
+    },
+  },
+  {
+    id: 'b2-low-path',
+    stage: 'b2',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '血糖値が低下したとき、アドレナリンの分泌が増えるまでの経路として正しいものはどれか。',
+          correct: '間脳の視床下部 → 交感神経 → 副腎髄質',
+          wrong: ['間脳の視床下部 → 副交感神経 → 副腎髄質', '脳下垂体後葉 → 交感神経 → 副腎皮質', '延髄 → 副交感神経 → すい臓のB細胞', '間脳の視床下部 → 交感神経 → すい臓のB細胞'],
+          explanation: '血糖値の低下を視床下部が感知すると、交感神経を通じて副腎髄質が刺激され、アドレナリンが分泌される。アドレナリンは肝臓のグリコーゲンの分解を促すから、血糖値が上がる。',
+        };
+      }
+      return {
+        text: '血糖値が低下したとき、糖質コルチコイドの分泌が増えるまでの経路として正しいものはどれか。',
+        correct: '視床下部 → 脳下垂体前葉（副腎皮質刺激ホルモン） → 副腎皮質',
+        wrong: ['視床下部 → 脳下垂体後葉（バソプレシン） → 副腎皮質', '視床下部 → 交感神経 → 副腎髄質', '視床下部 → 脳下垂体前葉（甲状腺刺激ホルモン） → 甲状腺'],
+        explanation: '視床下部からの放出ホルモンで脳下垂体前葉が副腎皮質刺激ホルモンを分泌し、それが副腎皮質から糖質コルチコイドを分泌させる。糖質コルチコイドはタンパク質からグルコースをつくる反応を促すから、血糖値が上がる。',
+      };
+    },
+  },
+  {
+    id: 'b2-urine',
+    stage: 'b2',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '糖尿病で血糖値が非常に高い状態が続くと、尿中にグルコースが排出されることがある。その理由として最も適当なものはどれか。',
+        correct: '原尿中のグルコースが多すぎて、細尿管（腎細管）で再吸収しきれないから',
+        wrong: ['糸球体でグルコースがろ過されなくなるから', 'インスリンが腎臓にはたらき、グルコースを尿中に排出させるから', 'グルカゴンが腎臓でグルコースを合成するから'],
+        explanation: 'グルコースは糸球体でろ過されたあと、ふつうは細尿管でほぼすべて再吸収される。血糖値が高すぎると原尿中のグルコースが再吸収できる量を超えるから、尿中に出てくる。',
+      };
+    },
+  },
+  {
+    id: 'b2-graph-peak',
+    stage: 'b2',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const meal = rng.pick([0.8, 1, 1.2, 1.5, 2]);
+      const r = run({ ...PRESETS.healthy, meal });
+      const sm = summarize(r);
+      const ans = Math.round(sm.peakT / 30) * 30;
+      const opts = [0, 30, 60, 90, 120, 180, 240].filter((m) => Math.abs(m - ans) >= 30);
+      const lab = (m) => (m === 0 ? '食事の直後（0分）' : `食後 約${m}分`);
+      return {
+        text: '図は、健康な人が食事をしたあとの血糖値の変化である（横軸の目盛りは30分ごと）。血糖値が最も高くなるのは食後およそ何分か。',
+        chart: {
+          x: { min: 0, max: 240, label: '食事からの時間（分）', step: 30 },
+          y: { min: 0, max: 200, label: '血糖値（mg/100mL）', step: 50 },
+          series: [{ points: thin(r.filter((x) => x.t <= 240).map((x) => [x.t, x.G]), 160), color: 'c2', width: 3 }],
+          alt: '食後の血糖値の変化',
+        },
+        correct: lab(ans),
+        wrong: opts.map(lab),
+        explanation: `グラフの山の位置から、血糖値は食後約${ans}分で最大になる。そのあとはインスリンのはたらきで細胞へのグルコースの取り込みが進むから、2時間ほどで空腹時の値近くまで戻る。`,
+      };
+    },
+  },
+];
+return { B2 };
+})();
+
+// ---- questions/b3.js ----
+__m["questions/b3.js"] = (function () {
+// B3 免疫の一次応答・二次応答 の問題
+const { antibodyModel, responseShape, PRIMARY, SECONDARY, FLOOR, peakDelay } = __m["models/immune.js"];
+const { sample } = __m["lib/series.js"];
+
+function twoExposureChart(d1, d2, antigen2, log) {
+  const m = antibodyModel([{ day: d1, antigen: 'A' }, { day: d2, antigen: antigen2 }]);
+  const series = [{ points: sample((t) => m.level('A', t), 0, 80, 240), color: 'c1', width: 3, label: '抗原Aに対する抗体' }];
+  if (antigen2 === 'B') series.push({ points: sample((t) => m.level('B', t), 0, 80, 240), color: 'c2', dash: 'dash', width: 3, label: '抗原Bに対する抗体', labelAt: Math.min(70, d2 + 16) });
+  return {
+    x: { min: 0, max: 80, label: '日数', step: 10 },
+    y: log ? { min: 0.01, max: 1000, log: true, label: '抗体量（相対値・対数）' } : { min: 0, max: 120, step: 20, label: '抗体量（相対値）' },
+    series,
+    vlines: [
+      { x: d1, color: 'muted', label: '1回目 A' },
+      { x: d2, color: 'muted', label: `2回目 ${antigen2}`, dy: 18 },
+    ],
+    alt: '抗体量の変化のグラフ',
+  };
+}
+
+const B3 = [
+  {
+    id: 'b3-second-feature',
+    stage: 'b3',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const d1 = rng.int(0, 5);
+      const d2 = rng.int(30, 45);
+      return {
+        text: `図は、ある動物に抗原Aを${d1}日目と${d2}日目の2回注射したときの、抗原Aに対する抗体量の変化である。2回目の注射後の抗体産生の特徴として正しいものはどれか。`,
+        chart: twoExposureChart(d1, d2, 'A', true),
+        correct: '1回目より速く、多量の抗体がつくられる',
+        wrong: ['1回目より遅いが、多量の抗体がつくられる', '1回目より速いが、少量の抗体しかつくられない', '1回目と同じ速さで、同じ量の抗体がつくられる', '1回目より遅く、少量の抗体しかつくられない'],
+        explanation: '2回目は1回目より速く、多量の抗体がつくられる（二次応答）。1回目の侵入でできた記憶細胞が、同じ抗原の再侵入ですぐに増殖して抗体産生細胞になるからである。',
+      };
+    },
+  },
+  {
+    id: 'b3-memory-reason',
+    stage: 'b3',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '同じ抗原が2回目に侵入したとき、二次応答が起こる理由として最も適当なものはどれか。',
+        correct: '1回目の侵入のときにつくられた記憶細胞が体内に残っているから',
+        wrong: ['1回目につくられた抗体が、減らずにすべて血液中に残っているから', '1回目の抗原が体内で増え続けているから', '2回目には樹状細胞が直接抗体をつくるから', 'あらゆる抗原に反応できる抗体が1回目につくられたから'],
+        explanation: '1回目の免疫応答では、B細胞やT細胞の一部が記憶細胞として長く残る。同じ抗原が再び侵入すると記憶細胞がすばやく増殖・分化するから、二次応答が起こる。',
+      };
+    },
+  },
+  {
+    id: 'b3-other-antigen',
+    stage: 'b3',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const d1 = rng.int(0, 5);
+      const d2 = rng.int(30, 45);
+      return {
+        text: `ある動物に、${d1}日目に抗原Aを、${d2}日目に別の抗原Bを注射した。図はそれぞれに対する抗体量の変化である（縦軸は対数目盛り）。抗原Bに対する抗体産生について正しいものはどれか。`,
+        chart: twoExposureChart(d1, d2, 'B', true),
+        correct: '抗原Bに対しては、一次応答（遅く、少ない）が起こる',
+        wrong: ['抗原Bに対しても、二次応答（速く、多い）が起こる', '抗原Bに対しては、抗体がまったくつくられない', '抗原Aに対する抗体が抗原Bと結合し、抗原Bを排除する', '抗原Bに対しては、抗原Aのときより遅く少量だが二次応答が起こる'],
+        explanation: '抗原Bには一次応答が起こる。記憶細胞は1回目の抗原Aに特異的で、抗原Bの記憶細胞はまだないからである。',
+      };
+    },
+  },
+  {
+    id: 'b3-cells',
+    stage: 'b3',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { q: '抗体をつくって放出する細胞', a: '形質細胞（抗体産生細胞）', why: 'B細胞がヘルパーT細胞によって活性化されると、増殖して形質細胞に分化するからである' },
+        { q: '抗原を取り込んで、ヘルパーT細胞に抗原の情報を提示する細胞', a: '樹状細胞', why: '樹状細胞は抗原を取り込んでリンパ節へ移動し、抗原提示によってT細胞を活性化するからである' },
+        { q: '同じ抗原を認識したB細胞を活性化させる細胞', a: 'ヘルパーT細胞', why: 'ヘルパーT細胞は抗原提示を受けて活性化し、同じ抗原を認識したB細胞やキラーT細胞のはたらきを促すからである' },
+        { q: 'ウイルスに感染した細胞を直接攻撃して破壊する細胞', a: 'キラーT細胞', why: 'キラーT細胞は感染細胞の表面の抗原を認識し、その細胞を直接破壊するからである（細胞性免疫）' },
+      ];
+      const x = rng.pick(Q);
+      return {
+        text: `獲得免疫で、「${x.q}」はどれか。`,
+        correct: x.a,
+        wrong: Q.map((y) => y.a).concat(['マクロファージ']),
+        explanation: `${x.q}は${x.a}である。${x.why}。`,
+      };
+    },
+  },
+  {
+    id: 'b3-vaccine',
+    stage: 'b3',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'ワクチンによる予防接種のしくみとして最も適当なものはどれか。',
+          correct: '無毒化・弱毒化した病原体や抗原を接種し、記憶細胞をつくらせておく',
+          wrong: ['他の動物につくらせた抗体を注射し、すぐに病原体を排除させる', '抗生物質を注射し、病原体の増殖を止めておく', '記憶細胞そのものを注射し、すぐに二次応答を起こさせる'],
+          explanation: 'ワクチンは、無毒化・弱毒化した病原体や抗原を接種して記憶細胞をつくらせる方法である。本物の病原体が侵入したときに二次応答がすばやく起こるから、発症を防いだり軽くしたりできる。',
+        };
+      }
+      return {
+        text: '毒ヘビにかまれたとき、ウマなどにつくらせておいた抗体をふくむ血清を注射する治療法を何というか。',
+        correct: '血清療法',
+        wrong: ['予防接種', '化学療法', '自己免疫療法'],
+        explanation: 'これは血清療法である。すでにできている抗体を注射するので、自分で抗体をつくるのを待たずにすぐに毒を無毒化できるからである。',
+      };
+    },
+  },
+  {
+    id: 'b3-ratio-log',
+    stage: 'b3',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const k = rng.pick([1, 2, 3]);
+      const a1 = rng.pick([0.1, 1]);
+      const a2 = a1 * Math.pow(10, k);
+      const d1 = 5;
+      const d2 = rng.int(35, 45);
+      const f = (t) => FLOOR + a1 * responseShape(t - d1, PRIMARY) + a2 * responseShape(t - d2, SECONDARY);
+      const lab = (n) => `約${n}倍`;
+      return {
+        text: '図は、同じ抗原を2回注射したときの抗体量の変化を、縦軸を対数目盛りにして表したものである。二次応答での抗体量の最大値は、一次応答の最大値のおよそ何倍か。',
+        chart: {
+          x: { min: 0, max: 80, label: '日数', step: 10 },
+          y: { min: 0.01, max: 10000, log: true, label: '抗体量（相対値・対数）' },
+          series: [{ points: sample(f, 0, 80, 240), color: 'c1', width: 3 }],
+          vlines: [{ x: d1, color: 'muted', label: '1回目' }, { x: d2, color: 'muted', label: '2回目' }],
+          alt: '対数目盛りの抗体量のグラフ',
+        },
+        correct: lab(Math.pow(10, k)),
+        wrong: [2, 5, 10, 100, 1000, 10000].filter((n) => n !== Math.pow(10, k)).map(lab),
+        explanation: `一次応答の山は約${a1}、二次応答の山は約${a2}なので、約${Math.pow(10, k)}倍である。対数目盛りでは目盛り1つ分上がるごとに10倍になるから、山の高さの差が${k}目盛りなら10の${k}乗倍と読める。`,
+      };
+    },
+  },
+  {
+    id: 'b3-days-read',
+    stage: 'b3',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const d1 = rng.int(0, 4);
+      const d2 = rng.int(30, 40);
+      const which = rng.pick([1, 2]);
+      const ans = which === 1 ? peakDelay(PRIMARY) : peakDelay(SECONDARY);
+      const lab = (n) => `約${n}日`;
+      return {
+        text: `図は、${d1}日目と${d2}日目に同じ抗原Aを注射したときの抗体量の変化である（縦軸は対数目盛り）。${which}回目の注射から、抗体量が最大になるまでおよそ何日かかっているか。`,
+        chart: twoExposureChart(d1, d2, 'A', true),
+        correct: lab(ans),
+        wrong: [1, 2, 6, 12, 25, 40].filter((n) => n !== ans).map(lab),
+        explanation: `${which}回目の注射から約${ans}日で最大になっている。${which === 1 ? '一次応答では、抗原に合うリンパ球が活性化・増殖して形質細胞になるまでに時間がかかるからである。' : '二次応答では記憶細胞がすぐに増殖して形質細胞になるから、一次応答（約12日）より速く最大になる。'}`,
+      };
+    },
+  },
+  {
+    id: 'b3-primary-slow',
+    stage: 'b3',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '一次応答で、抗原の侵入から抗体が増えはじめるまでに1週間ほどかかる理由として最も適当なものはどれか。',
+        correct: 'その抗原に合うリンパ球はもともと少なく、活性化・増殖して抗体産生細胞になるまでに時間がかかるから',
+        wrong: ['抗体が血液中を全身に運ばれるのに1週間かかるから', '抗原が体内で十分に増えるまで、免疫はまったくはたらかないから', '一次応答では自然免疫だけがはたらき、抗体はつくられないから'],
+        explanation: '抗原に合うB細胞やT細胞は最初はごく少数しかない。それらが抗原提示を受けて活性化し、増殖・分化して形質細胞になるまでに時間がかかるから、一次応答は遅い。',
+      };
+    },
+  },
+  {
+    id: 'b3-disorders',
+    stage: 'b3',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { q: '花粉など、本来は無害な抗原に対して免疫が過敏に反応し、体に不都合が起こること', a: 'アレルギー', why: '同じ抗原に2回目以降に反応するとき、免疫反応が過剰に起こるからである' },
+        { q: '免疫が自分の体の成分を抗原として認識し、攻撃してしまう病気', a: '自己免疫疾患', why: '本来は自分の成分に反応するリンパ球は排除されるが、そのしくみがうまくはたらかないことがあるからである' },
+        { q: 'HIVがヘルパーT細胞に感染して破壊し、免疫のはたらきが低下する病気', a: '後天性免疫不全症候群（エイズ）', why: 'ヘルパーT細胞が減ると、B細胞やキラーT細胞を活性化できなくなるからである' },
+      ];
+      const x = rng.pick(Q);
+      return {
+        text: `「${x.q}」を何というか。`,
+        correct: x.a,
+        wrong: Q.map((y) => y.a).concat(['拒絶反応']),
+        explanation: `これは${x.a}である。${x.why}。`,
+      };
+    },
+  },
+];
+return { B3 };
+})();
+
+// ---- questions/b4.js ----
+__m["questions/b4.js"] = (function () {
+// B4 光の強さと光合成 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { PLANTS, apparent, compensationPoint } = __m["models/photosynthesis.js"];
+const { sample } = __m["lib/series.js"];
+
+const signed = (x) => fmt(x, 2);
+
+const B4 = [
+  {
+    id: 'b4-point-def',
+    stage: 'b4',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '光補償点（補償点）の説明として正しいものはどれか。',
+          correct: '光合成速度と呼吸速度が等しくなり、見かけの光合成速度が0になる光の強さ',
+          wrong: ['光合成が止まる光の強さ', '光合成速度が最大になる光の強さ', '呼吸が止まる光の強さ', 'それ以上光を強くしても光合成速度が大きくならない光の強さ'],
+          explanation: '補償点は光合成速度と呼吸速度がつり合う光の強さである。補償点でも光合成は行われているが、呼吸で放出するCO₂と同じ量しか吸収しないから、見かけ上CO₂の出入りがなくなる。',
+        };
+      }
+      return {
+        text: '光飽和点の説明として正しいものはどれか。',
+        correct: 'それ以上光を強くしても光合成速度がほとんど大きくならない光の強さ',
+        wrong: ['見かけの光合成速度が0になる光の強さ', '光合成が止まる光の強さ', '呼吸速度が最大になる光の強さ', '光合成速度と呼吸速度が等しくなる光の強さ'],
+        explanation: '光飽和点は、光を強くしても光合成速度がそれ以上大きくならなくなる光の強さである。光が十分に強いときは、CO₂濃度や温度など光以外の条件が光合成速度を決める（限定要因になる）からである。',
+      };
+    },
+  },
+  {
+    id: 'b4-gross-calc',
+    stage: 'b4',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const R = rng.int(1, 6);
+      const a = rng.int(2, 20);
+      const d = distinctNumbers(a + R, [a - R, a, a + 2 * R, R, a * R, a + R + 1], '', 0);
+      return {
+        text: `ある植物に一定の強さの光を当てたとき、見かけの光合成速度（CO₂吸収速度）は ${a}、暗黒での呼吸速度（CO₂放出速度）は ${R} であった（単位は同じ）。このときの光合成速度はいくらか。ただし呼吸速度は光の有無によらず一定とする。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 なので、${a} ＋ ${R} ＝ ${a + R} となる。見かけの光合成速度は、光合成で吸収したCO₂から呼吸で放出したCO₂を差し引いた値だからである。`,
+      };
+    },
+  },
+  {
+    id: 'b4-graph-gross',
+    stage: 'b4',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const n = rng.pick([1, 2, 3]);
+      const m = rng.int(1, 3);
+      const Pmax = (n + 1) * 2 * m;
+      const K = rng.pick([2, 4, 5]);
+      const R = rng.pick([2, 4]);
+      const X = K * n;
+      const P = (Pmax * n) / (n + 1);
+      const p = { Pmax, K, R };
+      const ap = P - R;
+      const d = distinctNumbers(P, [ap, Math.abs(ap - R), Pmax, R, P + 2 * R, P * 2, P + 1, P + 3], '', 0);
+      return {
+        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とする。`,
+        chart: {
+          x: { min: 0, max: K * 6, label: '光の強さ', step: K },
+          y: { min: -R - 2, max: Pmax, label: 'CO₂吸収速度', step: 2 },
+          series: [{ points: sample((I) => apparent(p, I), 0, K * 6, 200), color: 'c2', width: 3 }],
+          markers: [{ x: X, y: ap, color: 'c2' }],
+          alt: '見かけの光合成速度のグラフ',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${signed(ap)} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${signed(ap)} ＋ ${R} ＝ ${fmt(P, 2)} となる。`,
+      };
+    },
+  },
+  {
+    id: 'b4-which-shade',
+    stage: 'b4',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(['sun', 'shade']);
+      const lab = { [order[0]]: KATA[0], [order[1]]: KATA[1] };
+      const styles = [{ color: 'c2', dash: 'solid' }, { color: 'c1', dash: 'dash' }];
+      const ask = rng.pick(['shade', 'sun']);
+      const other = ask === 'sun' ? 'shade' : 'sun';
+      const correct = ask === 'shade' ? `${lab.shade}：補償点と光飽和点がともに小さいから` : `${lab.sun}：補償点と光飽和点がともに大きいから`;
+      return {
+        text: `図のア・イは、陽生植物と陰生植物の光の強さと見かけの光合成速度の関係を表している。${PLANTS[ask].name}はどちらか。理由とともに選べ。`,
+        chart: {
+          x: { min: 0, max: 60, label: '光の強さ（キロルクス）', step: 10 },
+          y: { min: -6, max: 18, label: 'CO₂吸収速度（相対値）', step: 3 },
+          series: order.map((k, i) => ({ points: sample((I) => apparent(PLANTS[k], I), 0, 60, 240), ...styles[i], width: 3, label: KATA[i] })),
+          alt: '2種類の植物の光合成曲線ア・イ',
+        },
+        correct,
+        wrong: [
+          `${lab[ask]}：呼吸速度が大きいから`,
+          `${lab[other]}：補償点と光飽和点がともに${ask === 'shade' ? '小さい' : '大きい'}から`,
+          `${lab[other]}：最大の光合成速度が${ask === 'shade' ? '大きい' : '小さい'}から`,
+          `${lab[ask]}：光が弱いと光合成をしないから`,
+        ],
+        explanation: `${PLANTS[ask].name}は${lab[ask]}である。陰生植物は呼吸速度が小さく補償点・光飽和点が低いので弱い光でも成長でき、陽生植物は強い光のもとで大きな光合成速度を示すからである。`,
+      };
+    },
+  },
+  {
+    id: 'b4-growth-region',
+    stage: 'b4',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const regime = rng.pick(['none', 'shade', 'both']);
+      const X = regime === 'none' ? rng.pick([0.05, 0.1]) : regime === 'shade' ? rng.pick([0.4, 0.6, 0.8, 1, 1.2]) : rng.pick([2, 2.5, 3, 3.5]);
+      const ANS = { none: 'どちらもCO₂を吸収しない', shade: '陰生植物だけ', both: '陽生植物と陰生植物の両方' };
+      const icS = compensationPoint(PLANTS.sun);
+      const icH = compensationPoint(PLANTS.shade);
+      const why = {
+        none: `${X}キロルクスは両方の補償点（陰生植物 約${fmt(icH, 2)}、陽生植物 約${fmt(icS, 2)}）より弱いから、どちらも呼吸のほうが大きい`,
+        shade: `${X}キロルクスは陰生植物の補償点（約${fmt(icH, 2)}）より強く、陽生植物の補償点（約${fmt(icS, 2)}）より弱いから`,
+        both: `${X}キロルクスは両方の補償点より強いから`,
+      };
+      return {
+        text: `図は陽生植物と陰生植物の、弱い光での見かけの光合成速度を表したものである。光の強さ ${X} キロルクスで見かけの光合成速度が正（CO₂を吸収）になるのはどれか。`,
+        chart: {
+          x: { min: 0, max: 4, label: '光の強さ（キロルクス）', step: 0.5, digits: 1 },
+          y: { min: -5, max: 5, label: 'CO₂吸収速度（相対値）', step: 1 },
+          series: [
+            { points: sample((I) => apparent(PLANTS.sun, I), 0, 4, 200), color: 'c2', width: 3, label: '陽生植物' },
+            { points: sample((I) => apparent(PLANTS.shade, I), 0, 4, 200), color: 'c1', dash: 'dash', width: 3, label: '陰生植物' },
+          ],
+          vlines: [{ x: X, color: 'fg', dash: 'dot', label: `${X}` }],
+          alt: '陽生植物と陰生植物の弱光での光合成曲線',
+        },
+        correct: ANS[regime],
+        wrong: [...Object.values(ANS), '陽生植物だけ'],
+        explanation: `答えは「${ANS[regime]}」である。${why[regime]}。補償点より強い光のときだけ、光合成速度が呼吸速度を上回ってCO₂を吸収する。`,
+      };
+    },
+  },
+  {
+    id: 'b4-succession',
+    stage: 'b4',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '森林の遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となることが多い。その理由として最も適当なものはどれか。',
+        correct: '林床が暗くなると陽樹の芽生えは育ちにくいが、陰樹の芽生えは育つことができるから',
+        wrong: ['陰樹は陽樹より成長が速く、すぐに陽樹より高くなるから', '陽樹は寿命が短く、すべての木が同時に枯れるから', '陰樹の芽生えは強い光のもとでしか育たないから'],
+        explanation: '陽樹林の林床は暗く、補償点の高い陽樹の芽生えは育ちにくい。陰樹の芽生えは補償点が低く弱い光でも成長できるから、しだいに陰樹が置きかわり陰樹林が極相となる。',
+      };
+    },
+  },
+  {
+    id: 'b4-comp-calc',
+    stage: 'b4',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const cands = [];
+      for (const Ic of [0.5, 1, 1.5, 2, 3, 4]) for (const R of [1, 2, 3, 4]) for (const K of [2, 3, 4, 5, 6, 8, 10]) {
+        const Pmax = (R * (K + Ic)) / Ic;
+        if (Number.isInteger(Pmax) && Pmax <= 40 && Pmax > R) cands.push({ Ic, R, K, Pmax });
+      }
+      const c = rng.pick(cands);
+      const d = distinctNumbers(c.Ic, [(c.R * c.K) / c.Pmax, (c.R * c.K) / (c.Pmax + c.R), c.K, c.Pmax / c.R, c.Ic * 2, c.K / c.R], '', 2);
+      return {
+        text: `ある植物の光合成速度 P（呼吸を差し引く前）が、光の強さ I を用いて P ＝ ${c.Pmax}I／(${c.K} ＋ I) で表され、呼吸速度は ${c.R} で一定である。この植物の補償点（光の強さ）はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `補償点では光合成速度と呼吸速度が等しいので、${c.Pmax}I／(${c.K}＋I) ＝ ${c.R} を解く。${c.Pmax}I ＝ ${c.R}(${c.K}＋I) より I ＝ ${c.R}×${c.K}／(${c.Pmax}−${c.R}) ＝ ${fmt(c.Ic, 2)} となり、これは見かけの光合成速度が0になる光の強さだからである。`,
+      };
+    },
+  },
+  {
+    id: 'b4-day-balance',
+    stage: 'b4',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const R = rng.int(1, 4);
+      const a = rng.int(R + 2, 15);
+      const L = rng.pick([8, 10, 12, 14, 16]);
+      const D = 24 - L;
+      const ans = a * L - R * D;
+      if (ans <= 0) return this.make(rng);
+      const d = distinctNumbers(ans, [(a - R) * L - R * D, a * L, a * L + R * D, a * L - R * 24, a * 24 - R * D, ans + R * L, ans * 2, ans + 10], ' mg', 0);
+      return {
+        text: `ある植物の、明るいときの見かけの光合成速度は CO₂吸収 ${a} mg/時、暗黒での呼吸速度は CO₂放出 ${R} mg/時である。明るい時間が ${L}時間、暗黒が ${D}時間の1日で、この植物が吸収するCO₂の量は差し引き何 mg か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `明るい間の吸収量は ${a}×${L} ＝ ${a * L} mg、暗黒の間の放出量は ${R}×${D} ＝ ${R * D} mg なので、差し引き ${ans} mg となる。見かけの光合成速度にはすでに呼吸の分が差し引かれているから、明るい間の呼吸を重ねて引いてはいけない。`,
+      };
+    },
+  },
+  {
+    id: 'b4-below-comp',
+    stage: 'b4',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '補償点より弱い光のもとに置いた植物の状態として正しいものはどれか。',
+        correct: '光合成は行っているが、呼吸速度のほうが大きいのでCO₂を放出している',
+        wrong: ['光合成を行っていないので、呼吸によるCO₂の放出だけが起きている', '光合成速度と呼吸速度が等しく、CO₂の出入りがない', '光合成速度が呼吸速度より大きく、CO₂を吸収している'],
+        explanation: '補償点より弱い光でも光合成は行われている。ただし光合成速度が呼吸速度より小さいので、差し引きでCO₂を放出しているからである。',
+      };
+    },
+  },
+  {
+    id: 'b4-traits',
+    stage: 'b4',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const sun = rng.chance(0.5);
+      const A = '補償点・光飽和点ともに陰生植物より大きく、強い光のもとで光合成速度が大きい';
+      const B = '補償点・光飽和点ともに陽生植物より小さく、弱い光のもとでも成長できる';
+      return {
+        text: `${sun ? '陽生植物' : '陰生植物'}の特徴として最も適当なものはどれか。`,
+        correct: sun ? A : B,
+        wrong: [sun ? B : A, '補償点は小さく、光飽和点は大きい', '呼吸速度が0で、光が弱くても必ずCO₂を吸収する', '光の強さに関係なく、光合成速度が一定である'],
+        explanation: `${sun ? '陽生植物' : '陰生植物'}は${sun ? A : B}。陰生植物は呼吸速度が小さいので補償点が低く、陽生植物は呼吸速度も最大の光合成速度も大きいからである。`,
+      };
+    },
+  },
+  {
+    id: 'b4-limiting',
+    stage: 'b4',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '光飽和点より強い光を当てている植物の光合成速度を、さらに大きくするための操作として最も適当なものはどれか。',
+        correct: '空気中のCO₂濃度を高くする',
+        wrong: ['光をさらに強くする', '暗黒にする時間を長くする', '呼吸速度を大きくする'],
+        explanation: '光飽和点より強い光では、光の強さは光合成速度を決める要因ではなくなっている。このときはCO₂濃度などが限定要因になっているから、CO₂濃度を高くすると光合成速度が大きくなる。',
+      };
+    },
+  },
+];
+return { B4 };
+})();
+
+// ---- questions/b5.js ----
+__m["questions/b5.js"] = (function () {
+// B5 生態系のバランス（キーストーン種）の問題
+const { KATA, assignmentQuestion } = __m["questions/common.js"];
+const { simulate, SCALE } = __m["models/keystone.js"];
+
+const B5 = [
+  {
+    id: 'b5-keystone-def',
+    stage: 'b5',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'キーストーン種の説明として最も適当なものはどれか。',
+        correct: '個体数は多くなくても、生態系のバランスを保つうえで大きな影響をもつ種',
+        wrong: ['生態系の中で最も個体数が多い種', '食物連鎖の出発点となる生産者', '人間によってほかの地域から持ち込まれて定着した種'],
+        explanation: 'キーストーン種は、個体数は少なくても生態系のバランスに大きな影響をもつ種である。ラッコのように上位の捕食者であることが多く、その種がいなくなると食物網を通じて多くの生物に影響が広がるからである。',
+      };
+    },
+  },
+  {
+    id: 'b5-indirect',
+    stage: 'b5',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const dir = rng.pick(['減少', '増加']);
+      const target = rng.pick(['ウニ', 'ケルプ']);
+      const T = {
+        '減少-ウニ': ['増加する（ラッコに食べられる量が減るから）', '減少する（ラッコと同じように数が減るから）', '変化しない（ウニはケルプを食べて生活しているから）', '減少する（ケルプが増えすぎるから）'],
+        '減少-ケルプ': ['減少する（増えたウニに多く食べられるから）', '増加する（ラッコに食べられなくなるから）', '変化しない（ラッコはケルプを食べないから）', '増加する（ウニが減るから）'],
+        '増加-ウニ': ['減少する（ラッコに多く食べられるから）', '増加する（ラッコと同じように数が増えるから）', '変化しない（ウニはケルプを食べて生活しているから）', '増加する（ケルプが減るから）'],
+        '増加-ケルプ': ['増加する（ウニが減って食べられる量が減るから）', '減少する（ラッコに食べられるから）', '変化しない（ラッコはケルプを食べないから）', '減少する（ウニが増えるから）'],
+      }[`${dir}-${target}`];
+      return {
+        text: `ラッコはウニを食べ、ウニはケルプ（大型の海藻）を食べる。ある海域でラッコが${dir}すると、その後${target}の量はどうなると考えられるか。`,
+        correct: T[0],
+        wrong: T.slice(1),
+        explanation: `${target}は${T[0].split('（')[0]}と考えられる。${T[0].split('（')[1].replace('）', '')}である。ラッコはケルプを直接食べないが、ウニを介してケルプに影響をおよぼす（間接効果）。`,
+      };
+    },
+  },
+  {
+    id: 'b5-indirect-def',
+    stage: 'b5',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '食物網で、ある生物が、直接の捕食・被食の関係にない別の生物に、ほかの生物を介して影響をおよぼすことを何というか。',
+        correct: '間接効果',
+        wrong: ['種間競争', '環境形成作用', '生物濃縮', '共生'],
+        explanation: 'これは間接効果である。ラッコがウニを減らすことでケルプが守られるように、生物どうしが食物網でつながっているから、影響が別の生物にまで伝わる。',
+      };
+    },
+  },
+  {
+    id: 'b5-graph-identify',
+    stage: 'b5',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const o1 = rng.pick([0, 0.1, 0.2, 0.3]);
+      const run = simulate({ o0: 1, o1, tHunt: 20, tEnd: 120 });
+      const names = ['ラッコ', 'ウニ', 'ケルプ'];
+      const val = { ラッコ: (r) => r.o * SCALE.o, ウニ: (r) => r.u * SCALE.u, ケルプ: (r) => r.k * SCALE.k };
+      const order = rng.shuffle(names);
+      const labels = KATA.slice(0, 3);
+      const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c4', dash: 'dot' }];
+      const aq = assignmentQuestion(labels, order);
+      return {
+        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは3種の個体数（相対値）の変化を表している。ア〜ウの組合せとして正しいものはどれか。',
+        chart: {
+          x: { min: 0, max: 120, label: '時間（年）', step: 20 },
+          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
+          vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
+          alt: '3種の個体数の変化ア・イ・ウ',
+        },
+        correct: aq.correct,
+        wrong: aq.wrong,
+        explanation: '乱獲で最初に急に減るのがラッコで、捕食者が減ったウニがそのあと増える。増えたウニに食べられるからケルプは遅れて減る。',
+      };
+    },
+  },
+  {
+    id: 'b5-trophic',
+    stage: 'b5',
+    level: 1,
+    kind: 'term',
+    make() {
+      const aq = assignmentQuestion(['ケルプ', 'ウニ', 'ラッコ'], ['生産者', '一次消費者', '二次消費者']);
+      return {
+        text: 'ケルプ（海藻）→ ウニ → ラッコ という食物連鎖で、それぞれの栄養段階の組合せとして正しいものはどれか。',
+        correct: aq.correct,
+        wrong: aq.wrong,
+        explanation: 'ケルプは光合成で有機物をつくる生産者、それを食べるウニは一次消費者、ウニを食べるラッコは二次消費者である。栄養段階は、生産者から何段階目に食べるかで決まるからである。',
+      };
+    },
+  },
+  {
+    id: 'b5-starfish',
+    stage: 'b5',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '北アメリカの岩礁の潮間帯で、イガイやフジツボなどを食べるヒトデを人為的に取り除き続けた。その結果として最も適当なものはどれか。',
+        correct: 'イガイが岩場を独占し、そこに見られる生物の種数が減った',
+        wrong: ['ヒトデに食べられていた生物がすべて増え、種数も増えた', 'ヒトデに食べられていた生物がすべて絶滅した', '生物の種類や数にほとんど変化が見られなかった'],
+        explanation: 'ヒトデを除くと、競争に強いイガイが岩場を独占し、ほかの生物のすみかがなくなって種数が減った。ヒトデはイガイを食べることで多くの種が共存できる状態を保っていたから、キーストーン種といえる。',
+      };
+    },
+  },
+  {
+    id: 'b5-resilience',
+    stage: 'b5',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '台風や山火事などで生態系が乱されても、その程度が小さければやがて元の状態に戻る。生態系のこのような性質を何というか。',
+          correct: '復元力',
+          wrong: ['生物濃縮', '富栄養化', '間接効果'],
+          explanation: 'これは生態系の復元力である。撹乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
+        };
+      }
+      return {
+        text: '「生態系のバランスが保たれている」状態の説明として最も適当なものはどれか。',
+        correct: '生物の種類や個体数が変動しながらも、一定の範囲内に保たれている状態',
+        wrong: ['すべての生物の個体数がまったく変化しない状態', '最も強い捕食者だけが生き残った状態', '生産者と消費者の個体数がつねに等しい状態'],
+        explanation: '生態系では個体数はつねに変動しているが、その変動が一定の範囲内におさまっている。捕食・被食などの関係が増えすぎた種を減らす向きにはたらくから、バランスが保たれる。',
+      };
+    },
+  },
+  {
+    id: 'b5-kelp-habitat',
+    stage: 'b5',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ラッコが減ってケルプの森が大きく失われた海域では、ケルプの森をすみかや産卵場所にしていた魚類はどうなると考えられるか。',
+        correct: 'すみかや産卵場所が減るので、減少する',
+        wrong: ['ラッコと直接の関係がないので、影響を受けない', 'ラッコに食べられなくなるので、必ず増加する', 'ウニとの競争に勝って、増加する'],
+        explanation: '魚類はすみかや産卵場所を失うので減少すると考えられる。ラッコの減少の影響は、ウニ・ケルプを通じて、さらにケルプを利用する多くの生物へと間接的に広がるからである。',
+      };
+    },
+  },
+  {
+    id: 'b5-graph-ratio',
+    stage: 'b5',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const o1 = rng.pick([0, 0.2, 0.4, 0.6]);
+      const run = simulate({ o0: 1, o1, tHunt: 20, tEnd: 120 });
+      const before = run.find((r) => r.t >= 19);
+      const end = run[run.length - 1];
+      const target = rng.pick(['ウニ', 'ケルプ']);
+      const up = target === 'ウニ';
+      return {
+        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニ・ケルプの個体数（相対値）である。乱獲後に十分時間がたったとき、${target}の個体数は乱獲前と比べてどうなったか。`,
+        chart: {
+          x: { min: 0, max: 120, label: '時間（年）', step: 20 },
+          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          series: [
+            { points: run.map((r) => [r.t, r.o * SCALE.o]), color: 'c4', dash: 'dashdot', width: 3, label: 'ラッコ' },
+            { points: run.map((r) => [r.t, r.u * SCALE.u]), color: 'c2', dash: 'dash', width: 3, label: 'ウニ' },
+            { points: run.map((r) => [r.t, r.k * SCALE.k]), color: 'c3', width: 3, label: 'ケルプ' },
+          ],
+          vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
+          alt: 'ラッコ・ウニ・ケルプの個体数のグラフ',
+        },
+        correct: up ? '増えて、乱獲前より多い値で落ち着いた' : '減って、乱獲前より少ない値で落ち着いた',
+        wrong: up
+          ? ['減って、乱獲前より少ない値で落ち着いた', '一時的に増えたが、乱獲前と同じ値に戻った', 'ラッコと同じ割合で減り続けた']
+          : ['増えて、乱獲前より多い値で落ち着いた', '一時的に減ったが、乱獲前と同じ値に戻った', 'ラッコと同じ割合で増え続けた'],
+        explanation: `${target}は乱獲前の約${Math.round(before[up ? 'u' : 'k'] * SCALE[up ? 'u' : 'k'])}から約${Math.round(end[up ? 'u' : 'k'] * SCALE[up ? 'u' : 'k'])}になって落ち着いた。ラッコが減るとウニを食べる量が減ってウニが増え、増えたウニがケルプを多く食べるからである。`,
+      };
+    },
+  },
+];
+return { B5 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
-const GENERATORS = [];
-return { GENERATORS };
+const { B1 } = __m["questions/b1.js"];
+const { B2 } = __m["questions/b2.js"];
+const { B3 } = __m["questions/b3.js"];
+const { B4 } = __m["questions/b4.js"];
+const { B5 } = __m["questions/b5.js"];
+const { generate } = __m["questions/common.js"];
+
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5];
+
+function generatorById(id) {
+  return GENERATORS.find((g) => g.id === id) || null;
+}
+
+function questionFrom(id, seed) {
+  const g = generatorById(id);
+  return g ? generate(g, seed) : null;
+}
+return { GENERATORS, generatorById, questionFrom };
 })();
 
 // ---- ui/home.js ----
@@ -2542,6 +3910,507 @@ function renderDojo(app, stageId, ...args) {
 return { renderDojo };
 })();
 
+// ---- badges.js ----
+__m["badges.js"] = (function () {
+// 実績バッジ（M5 で実装）
+function checkBadges() {
+  return [];
+}
+return { checkBadges };
+})();
+
+// ---- ui/rush.js ----
+__m["ui/rush.js"] = (function () {
+// 4択ラッシュ：ステージごとの問題を連続出題。正誤即時判定＋解説＋図解道場への1タップ移動
+const { h } = __m["lib/dom.js"];
+const { makeRng, randomSeed } = __m["lib/rng.js"];
+const { createChart, legendFromSpec } = __m["lib/chart.js"];
+const { stageById, stagesOf, COURSES } = __m["stages.js"];
+const { GENERATORS } = __m["questions/index.js"];
+const { generate, LEVEL_LABEL, KIND_LABEL } = __m["questions/common.js"];
+const { recordAnswer, recordRound } = __m["progress.js"];
+const { checkBadges } = __m["badges.js"];
+const { loadJSON, saveJSON } = __m["lib/storage.js"];
+
+const ROUND = 10;
+const KEYS = ['A', 'B', 'C', 'D'];
+let saved = null; // 途中のラウンド（図解道場へ移動して戻ってきたときに再開する）
+
+function scopeOf(key) {
+  if (key.startsWith('mix-')) {
+    const course = COURSES.find((c) => 'mix-' + c.id === key);
+    if (!course) return null;
+    const ids = stagesOf(course.id).map((s) => s.id);
+    return { title: `${course.name} ミックス`, code: course.short, gens: GENERATORS.filter((g) => ids.includes(g.stage)) };
+  }
+  const st = stageById(key);
+  if (!st) return null;
+  return { title: st.title, code: st.code, stage: st, gens: GENERATORS.filter((g) => g.stage === key) };
+}
+
+// 同じ種類が続かないように、ジェネレーターを一巡ずつシャッフルして使う
+function buildRound(gens, level) {
+  const rng = makeRng(randomSeed());
+  const pool = level ? gens.filter((g) => g.level === level) : gens;
+  const list = [];
+  let bag = [];
+  while (list.length < ROUND) {
+    if (!bag.length) bag = rng.shuffle(pool);
+    const g = bag.shift();
+    if (list.length && list[list.length - 1].gen === g.id && pool.length > 1) continue;
+    list.push(generate(g, randomSeed()));
+  }
+  return list.map((q) => ({ q, chosen: null }));
+}
+
+function renderRush(app, key) {
+  const scope = scopeOf(key);
+  if (!scope || !scope.gens.length) {
+    app.append(h('div', { class: 'panel' }, h('p', null, 'このステージの4択は準備中です。'), h('a', { class: 'btn', href: '#/home' }, 'ホームへ')));
+    return null;
+  }
+  let level = Number(loadJSON('rushLevel', 0)) || 0;
+  if (!scope.gens.some((g) => !level || g.level === level)) level = 0;
+  if (!saved || saved.key !== key || saved.done) saved = { key, level, round: buildRound(scope.gens, level), i: 0, done: false };
+  else level = saved.level;
+
+  const head = h('div', { class: 'hero' },
+    h('div', { class: 'stage-head' }, h('span', { class: 'stage-code' }, scope.code), h('h1', { class: 'stage-title' }, '4択ラッシュ：' + scope.title)),
+  );
+  const levelSel = h('div', { class: 'seg', role: 'group', 'aria-label': '難易度' });
+  const levels = [0, 1, 2, 3].filter((lv) => !lv || scope.gens.some((g) => g.level === lv));
+  for (const lv of levels) {
+    levelSel.append(h('button', { type: 'button', 'aria-pressed': lv === level ? 'true' : 'false', onclick: () => {
+      if (cleanupKey) cleanupKey();
+      saveJSON('rushLevel', lv);
+      saved = null;
+      app.replaceChildren();
+      renderRush(app, key);
+    } }, lv ? LEVEL_LABEL[lv] : 'すべて'));
+  }
+  const body = h('div');
+  app.append(head, levelSel, body);
+
+  let cleanupKey = null;
+  function show() {
+    if (cleanupKey) cleanupKey();
+    cleanupKey = null;
+    if (saved.i >= saved.round.length) return finish();
+    const item = saved.round[saved.i];
+    const q = item.q;
+    const box = h('section', { class: 'panel', 'aria-labelledby': 'q-text' });
+    body.replaceChildren(box);
+    box.append(
+      h('div', { class: 'q-meta' },
+        h('span', null, `第${saved.i + 1}問 / ${saved.round.length}`),
+        h('span', null, h('span', { class: 'stars', 'aria-label': `難易度 ${LEVEL_LABEL[q.level]}` }, LEVEL_LABEL[q.level]), '　', KIND_LABEL[q.kind], '　', stageById(q.stage).code),
+      ),
+      h('p', { class: 'q-text', id: 'q-text' }, q.text),
+    );
+    if (q.chart) {
+      const wrap = h('div', { class: 'q-chart' });
+      box.append(wrap);
+      const c = createChart(wrap, { aspect: 0.62, maxHeight: 340, label: q.chart.alt || '問題の図' });
+      c.draw(q.chart);
+      if ((q.chart.series || []).some((s) => s.label && s.label.length > 1)) wrap.append(legendFromSpec(q.chart));
+      wrap.append(h('div', { class: 'small muted' }, 'モデルによる模式図'));
+    }
+    const choiceBox = h('div', { class: 'choices', role: 'group', 'aria-label': '選択肢' });
+    const buttons = q.choices.map((c, i) =>
+      h('button', { type: 'button', class: 'choice', onclick: () => answer(i) }, h('span', { class: 'key', 'aria-hidden': 'true' }, KEYS[i]), h('span', null, c)),
+    );
+    choiceBox.append(...buttons);
+    const fb = h('div', { 'aria-live': 'polite' });
+    box.append(choiceBox, fb);
+
+    function paint() {
+      buttons.forEach((b, i) => {
+        b.disabled = true;
+        b.setAttribute('aria-disabled', 'true');
+        if (i === q.answer) {
+          b.classList.add('correct');
+          b.append(h('span', { class: 'verdict' }, '✓ 正解'));
+        } else if (i === item.chosen) {
+          b.classList.add('wrong');
+          b.append(h('span', { class: 'verdict' }, '✗ あなたの答え'));
+        }
+      });
+      const ok = item.chosen === q.answer;
+      const next = h('button', { type: 'button', class: 'btn primary grow', onclick: () => { saved.i += 1; show(); window.scrollTo(0, 0); } }, saved.i + 1 < saved.round.length ? '次の問題 →' : '結果を見る');
+      fb.replaceChildren(
+        h('div', { class: 'feedback ' + (ok ? 'ok' : 'ng') },
+          h('div', { class: 'verdict-title' }, ok ? '○ 正解！' : '× 不正解'),
+          ok ? null : h('p', { class: 'small' }, '正解：', h('b', null, q.choices[q.answer])),
+          h('p', null, q.explanation),
+          h('div', { class: 'row' },
+            h('a', { class: 'btn grow', href: `#/dojo/${q.stage}` }, '図解道場で確かめる'),
+            next,
+          ),
+        ),
+      );
+      next.focus({ preventScroll: true });
+    }
+
+    function answer(i) {
+      if (item.chosen != null) return;
+      item.chosen = i;
+      recordAnswer(q, i);
+      checkBadges();
+      paint();
+    }
+    if (item.chosen != null) paint();
+
+    const onKey = (e) => {
+      if (item.chosen != null) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= 4) answer(n - 1);
+    };
+    document.addEventListener('keydown', onKey);
+    cleanupKey = () => document.removeEventListener('keydown', onKey);
+  }
+
+  function finish() {
+    if (!saved.done) {
+      saved.done = true;
+      const score = saved.round.filter((it) => it.chosen === it.q.answer).length;
+      recordRound(scope.stage ? scope.stage.id : key, score, saved.round.length);
+      checkBadges();
+    }
+    const score = saved.round.filter((it) => it.chosen === it.q.answer).length;
+    const missed = saved.round.filter((it) => it.chosen !== it.q.answer);
+    body.replaceChildren(
+      h('section', { class: 'panel' },
+        h('h2', null, '結果'),
+        h('div', { class: 'score-big' }, `${score} / ${saved.round.length}`),
+        h('p', { class: 'muted', style: { textAlign: 'center' } }, score === saved.round.length ? '全問正解！ 形とわけがつながっている。' : score >= 8 ? 'よくできた。まちがえた問題は図解道場で確かめよう。' : '解説と図解道場で「なぜそうなるか」を確かめてから、もう一度挑戦しよう。'),
+        missed.length
+          ? h('div', null, h('h3', null, 'まちがえた問題'), ...missed.map((it) => h('div', { class: 'miss-item' },
+            h('p', { class: 'q-text' }, it.q.text),
+            h('p', { class: 'ans-line' }, '正解：', h('b', { class: 'ok' }, it.q.choices[it.q.answer])),
+            h('p', { class: 'small' }, it.q.explanation),
+          )))
+          : null,
+        h('div', { class: 'row' },
+          h('button', { type: 'button', class: 'btn primary grow', onclick: () => { saved = null; app.replaceChildren(); renderRush(app, key); } }, 'もう一度'),
+          h('a', { class: 'btn grow', href: '#/miss' }, 'ミスサマリー'),
+          h('a', { class: 'btn grow', href: '#/home' }, 'ホーム'),
+        ),
+      ),
+    );
+  }
+
+  show();
+  return () => {
+    if (cleanupKey) cleanupKey();
+  };
+}
+return { renderRush };
+})();
+
+// ---- ui/miss.js ----
+__m["ui/miss.js"] = (function () {
+// ミスサマリー：間違えた問題の一覧。出席番号を入れて画像保存（提出用）
+// 出席番号は保存も送信もしない（画面と保存画像にだけ表示する）
+const { h, toast } = __m["lib/dom.js"];
+const { createChart } = __m["lib/chart.js"];
+const { getProgress, clearMisses, setFlag } = __m["progress.js"];
+const { questionFrom } = __m["questions/index.js"];
+const { LEVEL_LABEL } = __m["questions/common.js"];
+const { STAGES, stageById } = __m["stages.js"];
+const { checkBadges } = __m["badges.js"];
+
+const MAX_IMAGE_ITEMS = 30;
+
+function missItems(filter) {
+  const out = [];
+  const list = getProgress().misses.slice().reverse();
+  for (const m of list) {
+    if (filter && m.st !== filter) continue;
+    const q = questionFrom(m.g, m.s);
+    if (!q) continue;
+    out.push({ q, chosen: m.c, t: m.t });
+  }
+  return out;
+}
+
+function dateText(d = new Date()) {
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+// 日本語を1文字ずつ測って折り返す
+function wrap(ctx, text, maxW) {
+  const lines = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const ch of para) {
+      if (ctx.measureText(line + ch).width > maxW && line) {
+        lines.push(line);
+        line = ch;
+      } else line += ch;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+// 提出用の画像（テーマに関係なく白地・黒字）
+function renderSummaryImage(items, number) {
+  const W = 1080;
+  const pad = 48;
+  const font = getComputedStyle(document.body).fontFamily;
+  const measure = document.createElement('canvas').getContext('2d');
+  const blocks = [];
+  const F = { title: `bold 44px ${font}`, head: `bold 30px ${font}`, body: `28px ${font}`, small: `24px ${font}` };
+  const lineH = { title: 60, head: 42, body: 40, small: 34 };
+  const push = (style, text, color = '#111', indent = 0) => {
+    measure.font = F[style];
+    for (const l of wrap(measure, text, W - pad * 2 - indent)) blocks.push({ style, text: l, color, indent });
+  };
+  push('title', 'BIOLOGY ミスサマリー');
+  push('head', `出席番号：${number || '（未記入）'}　　${dateText()}　　${items.length}問`);
+  blocks.push({ gap: 16, rule: true });
+  items.slice(0, MAX_IMAGE_ITEMS).forEach((it, i) => {
+    const st = stageById(it.q.stage);
+    push('head', `${i + 1}. [${st.code} ${st.title}] ${LEVEL_LABEL[it.q.level]}`, '#1f5f3f');
+    push('body', it.q.text + (it.q.chart ? '（図あり）' : ''));
+    push('body', `あなたの答え：${it.q.choices[it.chosen] ?? '—'}`, '#b3261e', 20);
+    push('body', `正解：${it.q.choices[it.q.answer]}`, '#1b6e35', 20);
+    push('small', `解説：${it.q.explanation}`, '#333', 20);
+    blocks.push({ gap: 18, rule: true });
+  });
+  if (items.length > MAX_IMAGE_ITEMS) push('small', `ほか ${items.length - MAX_IMAGE_ITEMS}問（新しい${MAX_IMAGE_ITEMS}問を表示）`, '#555');
+  const H = pad * 2 + blocks.reduce((a, b) => a + (b.gap != null ? b.gap * 2 : lineH[b.style]), 0);
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = Math.min(H, 32000);
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, W, c.height);
+  g.textBaseline = 'top';
+  let y = pad;
+  for (const b of blocks) {
+    if (b.gap != null) {
+      y += b.gap;
+      if (b.rule) {
+        g.fillStyle = '#cccccc';
+        g.fillRect(pad, y - 1, W - pad * 2, 2);
+      }
+      y += b.gap;
+      continue;
+    }
+    g.font = F[b.style];
+    g.fillStyle = b.color;
+    g.fillText(b.text, pad + b.indent, y + 4);
+    y += lineH[b.style];
+  }
+  return c;
+}
+
+function renderMiss(app) {
+  let filter = '';
+  let lastUrl = null;
+  const list = h('div');
+  const numberIn = h('input', { type: 'text', inputmode: 'numeric', maxlength: 8, id: 'miss-number', autocomplete: 'off', placeholder: '例：12' });
+  const filterSel = h('select', { id: 'miss-filter', class: 'search', onchange: () => { filter = filterSel.value; draw(); } },
+    h('option', { value: '' }, 'すべてのステージ'),
+    ...STAGES.map((s) => h('option', { value: s.id }, `${s.code} ${s.title}`)),
+  );
+  const out = h('div', { 'aria-live': 'polite' });
+
+  app.append(
+    h('div', { class: 'hero' }, h('h1', null, 'ミスサマリー'), h('p', { class: 'small muted' }, '4択ラッシュで間違えた問題（新しい順、最大60問）。出席番号を入れて画像として保存し、提出に使える。出席番号は保存・送信されない。')),
+    h('section', { class: 'panel' },
+      h('div', { class: 'field' }, h('label', { for: 'miss-number' }, '出席番号'), numberIn),
+      h('div', { class: 'field' }, h('label', { for: 'miss-filter' }, '表示するステージ'), filterSel),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'btn primary grow', onclick: () => makeImage() }, '画像として保存'),
+        h('button', { type: 'button', class: 'btn ghost', onclick: () => {
+          if (!getProgress().misses.length) return;
+          if (window.confirm('ミスサマリーの記録をすべて消去しますか？')) { clearMisses(); draw(); }
+        } }, '記録を消去'),
+      ),
+      out,
+    ),
+    list,
+  );
+
+  function makeImage() {
+    const items = missItems(filter);
+    if (!items.length) {
+      toast('間違えた問題はありません');
+      return;
+    }
+    const num = numberIn.value.trim();
+    const canvas = renderSummaryImage(items, num);
+    const d = new Date();
+    const name = `BIOLOGY_miss_${num ? 'No' + num.replace(/[^0-9A-Za-z]/g, '') + '_' : ''}${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.png`;
+    const show = (url) => {
+      const a = h('a', { class: 'btn block', href: url, download: name }, '画像をダウンロード');
+      out.replaceChildren(
+        h('p', { class: 'small' }, '画像を作成した。うまくダウンロードできない端末では、下の画像を長押し（右クリック）して保存する。'),
+        a,
+        h('img', { class: 'preview-img', src: url, alt: 'ミスサマリーの画像' }),
+      );
+      try {
+        a.click();
+      } catch (e) {
+        /* 長押し保存で代用 */
+      }
+    };
+    if (lastUrl) URL.revokeObjectURL(lastUrl);
+    lastUrl = null;
+    if (canvas.toBlob) {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          lastUrl = URL.createObjectURL(blob);
+          show(lastUrl);
+        } else show(canvas.toDataURL('image/png'));
+      }, 'image/png');
+    } else show(canvas.toDataURL('image/png'));
+    setFlag('savedSummary');
+    checkBadges();
+  }
+
+  function draw() {
+    const items = missItems(filter);
+    if (!items.length) {
+      list.replaceChildren(h('div', { class: 'panel muted' }, '間違えた問題はまだありません。4択ラッシュに挑戦しよう。'));
+      return;
+    }
+    const panelEl = h('section', { class: 'panel' }, h('h2', null, `${items.length}問`));
+    for (const it of items) {
+      const st = stageById(it.q.stage);
+      const item = h('div', { class: 'miss-item' },
+        h('div', { class: 'small muted' }, `${st.code} ${st.title}　${LEVEL_LABEL[it.q.level]}`),
+        h('p', { class: 'q-text' }, it.q.text),
+      );
+      if (it.q.chart) {
+        const wrapEl = h('div', { class: 'q-chart' });
+        item.append(wrapEl);
+        createChart(wrapEl, { aspect: 0.55, maxHeight: 260, label: it.q.chart.alt || '問題の図' }).draw(it.q.chart);
+      }
+      item.append(
+        h('p', { class: 'ans-line' }, 'あなたの答え：', h('b', { class: 'ng' }, it.q.choices[it.chosen] ?? '—')),
+        h('p', { class: 'ans-line' }, '正解：', h('b', { class: 'ok' }, it.q.choices[it.q.answer])),
+        h('p', { class: 'small' }, it.q.explanation),
+        h('a', { class: 'btn', href: `#/dojo/${it.q.stage}` }, '図解道場で確かめる'),
+      );
+      panelEl.append(item);
+    }
+    list.replaceChildren(panelEl);
+  }
+  draw();
+  return null;
+}
+return { renderSummaryImage, renderMiss };
+})();
+
+// ---- glossary.js ----
+__m["glossary.js"] = (function () {
+// 用語帳（ステージごとの重要語と意味）
+const GLOSSARY = {
+  b1: [
+    { term: '細胞周期', desc: '分裂を終えた細胞が、次の分裂を終えるまでの一連の過程。間期（G1期・S期・G2期）と分裂期（M期）からなる。' },
+    { term: 'G1期（DNA合成準備期）', desc: 'DNAを複製する準備をする時期。細胞1個あたりのDNA量は2（相対値）。' },
+    { term: 'S期（DNA合成期）', desc: 'DNAが複製される時期。DNA量が2から4へしだいに増える。' },
+    { term: 'G2期（分裂準備期）', desc: 'DNAの複製が終わり、分裂の準備をする時期。DNA量は4。' },
+    { term: 'M期（分裂期）', desc: '核分裂と細胞質分裂が起こる時期。前期・中期・後期・終期に分けられる。終わりにDNA量が4から2に戻る。' },
+    { term: '間期', desc: 'G1期・S期・G2期をまとめた呼び名。細胞周期の大部分を占めるので、観察すると多くの細胞が間期にある。' },
+    { term: '中期', desc: 'M期のうち、染色体が細胞の中央（赤道面）に並ぶ時期。染色体の形や数の観察に適している。' },
+    { term: '細胞質分裂', desc: '核分裂のあと、細胞質が2つに分かれること。これによって複製されたDNAが2つの娘細胞に等しく分配される。' },
+    { term: '各期の長さの求め方', desc: '各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）。細胞が各時期にばらばらに分布しているときに使える。' },
+  ],
+  b2: [
+    { term: '血糖値', desc: '血液中のグルコース濃度。健康な人の空腹時は約100 mg/100mL（約0.1%）に保たれている。' },
+    { term: 'ランゲルハンス島', desc: 'すい臓の中に島のように散らばる内分泌腺の細胞群。A細胞とB細胞などがある。' },
+    { term: 'インスリン', desc: 'ランゲルハンス島のB細胞から分泌される。細胞へのグルコースの取り込みや肝臓でのグリコーゲン合成を促し、血糖値を下げる。血糖値を下げる唯一のホルモン。' },
+    { term: 'グルカゴン', desc: 'ランゲルハンス島のA細胞から分泌される。肝臓のグリコーゲンの分解を促し、血糖値を上げる。' },
+    { term: 'アドレナリン', desc: '副腎髄質から分泌される。血糖値が下がると、視床下部から交感神経を通じて分泌が促され、グリコーゲンの分解を促す。' },
+    { term: '糖質コルチコイド', desc: '副腎皮質から分泌される。タンパク質からグルコースをつくる反応を促し、血糖値を上げる。' },
+    { term: 'グリコーゲン', desc: 'グルコースが多数つながった物質。肝臓や筋肉にたくわえられ、必要なときに分解されてグルコースになる。' },
+    { term: '負のフィードバック', desc: '結果が原因にもどって、そのはたらきをおさえる向きに作用するしくみ。体内環境を一定に保つ（恒常性）。' },
+    { term: '1型糖尿病', desc: 'B細胞が自己免疫などで破壊され、インスリンがほとんど分泌されない糖尿病。インスリンの注射が必要。' },
+    { term: '2型糖尿病', desc: 'インスリンの分泌量の低下や、標的細胞がインスリンに反応しにくくなることで起こる糖尿病。生活習慣が関係する。' },
+  ],
+  b3: [
+    { term: '一次応答', desc: '初めて侵入した抗原に対する免疫反応。抗体が増えはじめるまで約1週間かかり、つくられる量も少ない。' },
+    { term: '二次応答', desc: '同じ抗原が再び侵入したときの免疫反応。記憶細胞がはたらくので、速く・多量の抗体がつくられる。' },
+    { term: '記憶細胞', desc: '一次応答のときに一部のB細胞・T細胞が分化して長く体内に残るもの。特定の抗原にだけ反応する（特異性）。' },
+    { term: 'B細胞', desc: 'リンパ球の一種。ヘルパーT細胞により活性化されると増殖し、形質細胞に分化する。' },
+    { term: '形質細胞（抗体産生細胞）', desc: 'B細胞が分化した細胞で、抗体を大量につくって放出する。' },
+    { term: '抗体', desc: '免疫グロブリンというタンパク質。特定の抗原と結合して（抗原抗体反応）、抗原を無毒化したり食作用を受けやすくしたりする。' },
+    { term: '樹状細胞', desc: '抗原を取り込み、その情報をT細胞に提示する（抗原提示）細胞。' },
+    { term: 'ヘルパーT細胞', desc: '抗原提示を受けて活性化し、B細胞やキラーT細胞を活性化するT細胞。' },
+    { term: 'ワクチン（予防接種）', desc: '無毒化・弱毒化した病原体や抗原を接種し、記憶細胞をつくらせて二次応答を起こせるようにしておく方法。' },
+    { term: '血清療法', desc: '他の動物につくらせた抗体をふくむ血清を注射して、すぐに抗原を無毒化する治療法。' },
+  ],
+  b4: [
+    { term: '光合成速度', desc: '単位時間あたりに光合成で吸収するCO₂の量など。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度。' },
+    { term: '見かけの光合成速度', desc: '実際に測定されるCO₂吸収速度。光合成で吸収したCO₂から呼吸で放出したCO₂を差し引いた値。' },
+    { term: '呼吸速度', desc: '呼吸でCO₂を放出する速さ。光の有無にかかわらず行われるので、暗黒でのCO₂放出速度として測れる。' },
+    { term: '補償点（光補償点）', desc: '光合成速度と呼吸速度が等しくなり、見かけの光合成速度が0になる光の強さ。光合成は止まっていない。' },
+    { term: '光飽和点', desc: 'それ以上光を強くしても光合成速度がほとんど大きくならない光の強さ。' },
+    { term: '限定要因', desc: '光合成速度を決めている、最も不足している条件（光の強さ・CO₂濃度・温度など）。' },
+    { term: '陽生植物', desc: '強い光のもとでよく成長する植物。補償点・光飽和点がともに高く、最大の光合成速度も大きい。' },
+    { term: '陰生植物', desc: '弱い光のもとでも成長できる植物。呼吸速度が小さく、補償点・光飽和点がともに低い。' },
+    { term: '陽樹・陰樹', desc: '陽樹は芽生えが強い光のもとでよく育つ樹木、陰樹は芽生えが暗い林床でも育つ樹木。' },
+    { term: '極相（極相林）', desc: '遷移が進んで、構成する種が大きく変化しなくなった安定した状態。日本の多くの地域では陰樹林が極相となる。' },
+  ],
+  b5: [
+    { term: '食物連鎖・食物網', desc: '被食者と捕食者のつながりが鎖のように続く関係が食物連鎖。実際には複雑な網目状になっており、食物網という。' },
+    { term: '栄養段階', desc: '生産者・一次消費者・二次消費者…のように、食物連鎖の各段階。' },
+    { term: 'キーストーン種', desc: '個体数は多くなくても、生態系のバランスを保つうえで大きな影響をもつ種。例：ラッコ、岩礁のヒトデ。' },
+    { term: '間接効果', desc: 'ある生物が、直接の捕食・被食関係のない生物に、ほかの生物を介して影響をおよぼすこと。' },
+    { term: '生態系のバランス', desc: '生物の種類や個体数が変動しながらも、一定の範囲内に保たれている状態。' },
+    { term: '復元力', desc: '撹乱を受けても、その程度が小さければ元の状態に戻る生態系の性質。' },
+    { term: 'ケルプ', desc: 'コンブのなかまの大型の褐藻。海中に森のような群落（ケルプの森）をつくり、多くの生物のすみかになる。' },
+    { term: '撹乱', desc: '台風・山火事・人間の活動などで、生態系の状態が乱されること。' },
+  ],
+};
+return { GLOSSARY };
+})();
+
+// ---- ui/glossary.js ----
+__m["ui/glossary.js"] = (function () {
+// 用語帳：ステージごとの重要語と意味
+const { h } = __m["lib/dom.js"];
+const { STAGES, stageById } = __m["stages.js"];
+const { GLOSSARY } = __m["glossary.js"];
+
+function renderGlossary(app, stageId) {
+  let current = stageById(stageId) ? stageId : '';
+  let query = '';
+  const chips = h('div', { class: 'seg', role: 'group', 'aria-label': 'ステージ' });
+  const chipBtns = [{ id: '', code: 'すべて' }, ...STAGES.filter((s) => GLOSSARY[s.id])].map((s) =>
+    h('button', { type: 'button', 'aria-pressed': 'false', onclick: () => { current = s.id; draw(); } }, s.code),
+  );
+  chips.append(...chipBtns);
+  const search = h('input', { type: 'search', class: 'search', placeholder: '用語をさがす（例：補償点）', 'aria-label': '用語をさがす', oninput: () => { query = search.value.trim(); draw(); } });
+  const list = h('div');
+  app.append(h('div', { class: 'hero' }, h('h1', null, '用語帳')), chips, search, h('div', { style: { height: '10px' } }), list);
+
+  function draw() {
+    const ids = [{ id: '' }, ...STAGES.filter((s) => GLOSSARY[s.id])];
+    chipBtns.forEach((b, i) => b.setAttribute('aria-pressed', ids[i].id === current ? 'true' : 'false'));
+    const stages = STAGES.filter((s) => GLOSSARY[s.id] && (!current || s.id === current));
+    const blocks = [];
+    for (const s of stages) {
+      const terms = GLOSSARY[s.id].filter((t) => !query || t.term.includes(query) || t.desc.includes(query));
+      if (!terms.length) continue;
+      blocks.push(h('section', { class: 'panel' },
+        h('h2', null, `${s.code} ${s.title}`),
+        h('dl', null, ...terms.map((t) => h('div', { class: 'term' }, h('dt', null, t.term), h('dd', null, t.desc)))),
+        h('div', { class: 'row' }, h('a', { class: 'btn', href: `#/dojo/${s.id}` }, '図解道場'), h('a', { class: 'btn', href: `#/rush/${s.id}` }, '4択ラッシュ')),
+      ));
+    }
+    list.replaceChildren(...(blocks.length ? blocks : [h('div', { class: 'panel muted' }, '見つかりませんでした。')]));
+  }
+  draw();
+  return null;
+}
+return { renderGlossary };
+})();
+
 // ---- main.js ----
 __m["main.js"] = (function () {
 // エントリーポイント：画面の切替（ハッシュルーター）
@@ -2549,6 +4418,9 @@ const { h, clear, toast } = __m["lib/dom.js"];
 const { initTheme, cycleTheme } = __m["lib/theme.js"];
 const { renderHome } = __m["ui/home.js"];
 const { renderDojo } = __m["ui/dojo.js"];
+const { renderRush } = __m["ui/rush.js"];
+const { renderMiss } = __m["ui/miss.js"];
+const { renderGlossary } = __m["ui/glossary.js"];
 const { stageById } = __m["stages.js"];
 
 const app = document.getElementById('app');
@@ -2562,6 +4434,9 @@ function notFound() {
 const ROUTES = {
   home: () => renderHome(app),
   dojo: (id) => (stageById(id) ? renderDojo(app, id) : notFound()),
+  rush: (id) => renderRush(app, id || ''),
+  miss: () => renderMiss(app),
+  glossary: (id) => renderGlossary(app, id),
 };
 
 function route() {
