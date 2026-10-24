@@ -1,0 +1,23 @@
+[project]
+name = "kodo"
+version = "0.1.0"
+description = "高校生物部・SSH探究のための動物行動解析パイプライン（SLEAP / TrackMate / 手動追跡）"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.22",
+    "scipy>=1.8",
+    "pandas>=1.4",
+    "matplotlib>=3.5",
+    "h5py>=3.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "nbformat>=5", "nbclient>=0.7", "ipykernel>=6"]
+
+[tool.setuptools]
+packages = ["kodo"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = ["slow: ノートブック全体の実行など時間のかかるテスト"]

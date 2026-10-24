@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+results/
+demo_data/
+notebooks/results/
+notebooks/demo_data/
