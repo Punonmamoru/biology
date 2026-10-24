@@ -2446,10 +2446,10 @@ __m["models/oxygen.js"] = (function () {
 // B6 酸素解離曲線
 // 酸素ヘモグロビンの割合 S(P) ＝ Pⁿ / (P50ⁿ ＋ Pⁿ)（ヒルの式。n≒2.7 でS字形になる）
 // CO₂分圧が高いほど P50（半分が酸素ヘモグロビンになる酸素分圧）が大きくなり、曲線は右へずれる。
-// 単位：分圧［mmHg］、割合［%］。数値は教科書の図の目安（肺：O₂ 100・CO₂ 40、組織：O₂ 30・CO₂ 70）に合わせた模式。
+// 単位：分圧［相対値。教科書の図と同じく肺胞のO₂分圧を100とする］、割合［%］。数値は教科書の図の目安（肺：O₂ 100・CO₂ 40、組織：O₂ 30・CO₂ 70）に合わせた模式。
 const HILL_N = 2.7;
-const P50_BASE = 27; // CO₂分圧 40 mmHg のときの P50
-const P50_SLOPE = 14 / 30; // CO₂分圧が 1 mmHg 上がるごとの P50 の増加
+const P50_BASE = 27; // CO₂分圧 40 のときの P50
+const P50_SLOPE = 14 / 30; // CO₂分圧が 1 上がるごとの P50 の増加
 
 const LUNG = { pO2: 100, pCO2: 40 };
 const TISSUE = { pO2: 30, pCO2: 70 };
@@ -2498,9 +2498,9 @@ const { sample } = __m["lib/series.js"];
 const dojo = {
   tasks: [
     { id: 'half', text: '組織のO₂分圧を動かして、組織での酸素ヘモグロビンの割合がほぼ50%になる値を探そう。', short: '半分が酸素を離す分圧' },
-    { id: 'co2', text: '組織のCO₂分圧を40 mmHg（肺と同じ）に下げて、組織で放出される酸素の割合が小さくなることを確かめよう。', short: 'CO₂分圧の効果' },
-    { id: 'flat', text: '肺のO₂分圧を70 mmHg以下に下げても、肺での酸素ヘモグロビンの割合が90%以上に保たれることを確かめよう。', short: 'S字の上側は平ら' },
-    { id: 'exercise', text: '激しい運動中の筋肉のように、組織のO₂分圧を20 mmHg以下・CO₂分圧を75 mmHg以上にして、放出される割合を80%以上にしよう。', short: '運動中の筋肉' },
+    { id: 'co2', text: '組織のCO₂分圧を40（肺胞と同じ）に下げて、組織で放出される酸素の割合が小さくなることを確かめよう。', short: 'CO₂分圧の効果' },
+    { id: 'flat', text: '肺のO₂分圧を70以下に下げても、肺での酸素ヘモグロビンの割合が90%以上に保たれることを確かめよう。', short: 'S字の上側は平ら' },
+    { id: 'exercise', text: '激しい運動中の筋肉のように、組織のO₂分圧を20以下・CO₂分圧を75以上にして、放出される割合を80%以上にしよう。', short: '運動中の筋肉' },
   ],
   mount(root, ctx) {
     const st = { lungO2: LUNG.pO2, tisO2: TISSUE.pO2, tisCO2: TISSUE.pCO2 };
@@ -2510,17 +2510,17 @@ const dojo = {
     top.append(h('h2', null, '酸素分圧と酸素ヘモグロビンの割合 ', modelNote()));
     const chart = createChart(top, { label: '酸素解離曲線のグラフ', aspect: 0.75 });
     const leg = h('div');
-    top.append(leg, h('p', { class: 'small muted' }, `肺胞のCO₂分圧は ${LUNG.pCO2} mmHg とした。組織のO₂分圧は肺胞より低い範囲で動かせる。分圧の単位 mmHg は、教科書によっては相対値で示される。`));
+    top.append(leg, h('p', { class: 'small muted' }, `分圧はすべて相対値（教科書の図と同じく、肺胞のO₂分圧を100とする目盛り）。肺胞のCO₂分圧は ${LUNG.pCO2} とした。組織のO₂分圧は肺胞より低い範囲で動かせる。`));
 
-    const sLung = slider({ label: '肺（肺胞）のO₂分圧', min: 40, max: 100, step: 1, value: st.lungO2, format: (v) => v + ' mmHg', onInput: (v) => {
+    const sLung = slider({ label: '肺（肺胞）のO₂分圧', min: 40, max: 100, step: 1, value: st.lungO2, format: (v) => v + '（相対値）', onInput: (v) => {
       st.lungO2 = v;
-      // 組織のO₂分圧は肺胞より低い（肺胞より10 mmHg以上低い範囲で動かせる）
+      // 組織のO₂分圧は肺胞より低い（肺胞より10以上低い範囲で動かせる）
       sTis.setRange(5, Math.min(60, v - 10));
       st.tisO2 = sTis.value;
       update();
     } });
-    const sTis = slider({ label: '組織のO₂分圧', min: 5, max: 60, step: 1, value: st.tisO2, format: (v) => v + ' mmHg', onInput: (v) => { st.tisO2 = v; update(); } });
-    const sCO2 = slider({ label: '組織のCO₂分圧', min: 40, max: 80, step: 1, value: st.tisCO2, format: (v) => v + ' mmHg', onInput: (v) => { st.tisCO2 = v; update(); } });
+    const sTis = slider({ label: '組織のO₂分圧', min: 5, max: 60, step: 1, value: st.tisO2, format: (v) => v + '（相対値）', onInput: (v) => { st.tisO2 = v; update(); } });
+    const sCO2 = slider({ label: '組織のCO₂分圧', min: 40, max: 80, step: 1, value: st.tisCO2, format: (v) => v + '（相対値）', onInput: (v) => { st.tisCO2 = v; update(); } });
     const readout = h('div', { class: 'small', 'aria-live': 'polite' });
     const exp = explainBox();
     const calcBox = h('div', { 'aria-live': 'polite' });
@@ -2535,14 +2535,14 @@ const dojo = {
       const sT = saturation(st.tisO2, st.tisCO2);
       const frac = releaseFraction(sL, sT);
       const series = [
-        { points: sample((p) => saturation(p, LUNG.pCO2), 0, 100, 200), color: 'c1', width: 3, label: `CO₂ ${LUNG.pCO2}（肺）`, legendLabel: `CO₂分圧 ${LUNG.pCO2} mmHg（肺胞）` },
+        { points: sample((p) => saturation(p, LUNG.pCO2), 0, 100, 200), color: 'c1', width: 3, label: `CO₂ ${LUNG.pCO2}（肺）`, legendLabel: `CO₂分圧 ${LUNG.pCO2}（肺胞）` },
       ];
       if (st.tisCO2 !== LUNG.pCO2) {
-        series.push({ points: sample((p) => saturation(p, st.tisCO2), 0, 100, 200), color: 'c2', dash: 'dash', width: 3, label: `CO₂ ${st.tisCO2}（組織）`, labelAt: 72, legendLabel: `CO₂分圧 ${st.tisCO2} mmHg（組織）` });
+        series.push({ points: sample((p) => saturation(p, st.tisCO2), 0, 100, 200), color: 'c2', dash: 'dash', width: 3, label: `CO₂ ${st.tisCO2}（組織）`, labelAt: 72, legendLabel: `CO₂分圧 ${st.tisCO2}（組織）` });
       }
       chart.draw({
         alt: `肺で ${fmt(sL, 0)}%、組織で ${fmt(sT, 0)}%。放出した割合 ${fmt(frac, 0)}%`,
-        x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+        x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
         y: { min: 0, max: 100, label: '酸素ヘモグロビンの割合（%）', step: 10 },
         series,
         vlines: [
@@ -2560,8 +2560,8 @@ const dojo = {
       });
       leg.replaceChildren(legend([...series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash })), { label: '肺・組織の分圧（縦の点線）', color: 'muted', dash: 'dot' }]));
       readout.replaceChildren(
-        h('div', null, h('b', null, '肺'), `：O₂ ${st.lungO2}・CO₂ ${LUNG.pCO2} mmHg → 酸素ヘモグロビン ${fmt(sL, 1)}%`),
-        h('div', null, h('b', null, '組織'), `：O₂ ${st.tisO2}・CO₂ ${st.tisCO2} mmHg → 酸素ヘモグロビン ${fmt(sT, 1)}%`),
+        h('div', null, h('b', null, '肺'), `：O₂分圧 ${st.lungO2}・CO₂分圧 ${LUNG.pCO2} → 酸素ヘモグロビン ${fmt(sL, 1)}%`),
+        h('div', null, h('b', null, '組織'), `：O₂分圧 ${st.tisO2}・CO₂分圧 ${st.tisCO2} → 酸素ヘモグロビン ${fmt(sT, 1)}%`),
       );
       calcBox.replaceChildren(
         h('p', { class: 'small' }, h('b', null, '組織で酸素を放出した割合 ＝ （肺での割合 − 組織での割合）÷ 肺での割合 × 100')),
@@ -2572,14 +2572,14 @@ const dojo = {
       const lines = [];
       lines.push('酸素分圧が高い肺胞では、ヘモグロビンの大部分が酸素と結合して酸素ヘモグロビンになる。酸素分圧が低い組織では、酸素ヘモグロビンが酸素を離してヘモグロビンにもどり、離れた酸素が組織の細胞に渡される。');
       if (st.tisCO2 > LUNG.pCO2) {
-        lines.push(`組織のようにCO₂分圧が高いと、曲線は右にずれる（いまの設定で、半分が酸素ヘモグロビンになるO₂分圧は ${fmt(p50(LUNG.pCO2), 0)} → ${fmt(p50(st.tisCO2), 0)} mmHg）。同じO₂分圧でも酸素ヘモグロビンの割合が小さくなるので、CO₂を多く出している（さかんに呼吸している）組織ほど、多くの酸素を受け取れる。`);
+        lines.push(`組織のようにCO₂分圧が高いと、曲線は右にずれる（いまの設定で、半分が酸素ヘモグロビンになるO₂分圧は ${fmt(p50(LUNG.pCO2), 0)} → ${fmt(p50(st.tisCO2), 0)}）。同じO₂分圧でも酸素ヘモグロビンの割合が小さくなるので、CO₂を多く出している（さかんに呼吸している）組織ほど、多くの酸素を受け取れる。`);
       } else {
         lines.push('組織のCO₂分圧を肺と同じにすると、曲線は1本になる。CO₂分圧が高いときより酸素を離しにくくなるので、組織で放出される酸素の割合は小さくなる。');
       }
       if (st.lungO2 <= 70 && sL >= 90) {
-        lines.push(`曲線はS字形で、O₂分圧の高い側は平らに近い。そのため肺のO₂分圧が ${st.lungO2} mmHg に下がっても、酸素ヘモグロビンの割合は ${fmt(sL, 0)}% と大きくは下がらない。`);
+        lines.push(`曲線はS字形で、O₂分圧の高い側は平らに近い。そのため肺のO₂分圧が ${st.lungO2} に下がっても、酸素ヘモグロビンの割合は ${fmt(sL, 0)}% と大きくは下がらない。`);
       } else {
-        lines.push('曲線がS字形なので、O₂分圧が 20〜50 mmHg くらいの範囲では、O₂分圧が少し下がるだけで酸素ヘモグロビンの割合が大きく下がる。組織の酸素分圧はこの範囲にあるので、組織で効率よく酸素を放出できる。');
+        lines.push('曲線がS字形なので、O₂分圧が 20〜50 くらいの範囲では、O₂分圧が少し下がるだけで酸素ヘモグロビンの割合が大きく下がる。組織の酸素分圧はこの範囲にあるので、組織で効率よく酸素を放出できる。');
       }
       exp.set(lines);
       ctx.update({ ...st, sL, sT, frac });
@@ -2800,8 +2800,22 @@ const BIOMES = {
 
 // 境界線（気温 T の関数）
 const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂漠
-const pGrass = (T) => 400 + 15 * (T + 5); // 気温20℃未満で、これより少ないと草原（ステップ）
-const P_SAVANNA = 1300; // 気温20℃以上で、これより少ないと草原（サバンナ）
+// 森林と草原の境界（これより少ないと草原）。気温が高いほど蒸発が多いので、森林に必要な降水量が多くなる。
+// 折れ線の頂点を結ぶ連続した境界にする（20℃付近でも段差なく、なめらかに上がる）。
+// 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
+const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
+function pGrass(T) {
+  const k = GRASS_KNOTS;
+  if (T <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) {
+    if (T <= k[i][0]) {
+      const [t0, p0] = k[i - 1];
+      const [t1, p1] = k[i];
+      return p0 + ((p1 - p0) * (T - t0)) / (t1 - t0);
+    }
+  }
+  return k[k.length - 1][1];
+}
 const P_SCLERO = 1200; // 13〜20℃で、これより少ない森林は硬葉樹林
 const P_RAIN = 2000; // 20℃以上で、これ以上なら多雨林
 const pEnvelope = (T) => 1000 + ((T - T_MIN) * 3500) / (T_MAX - T_MIN); // これより多い地域はほとんどない
@@ -2821,26 +2835,28 @@ function classify(T, P) {
     if (T < T_TEMPERATE) return 'temperate';
     return P < P_SCLERO ? 'sclerophyll' : 'laurel';
   }
-  if (P < P_SAVANNA) return 'savanna';
+  if (P < pGrass(T)) return 'savanna';
   if (P < P_RAIN) return 'monsoon';
   return T < T_TROPICAL ? 'subtropical' : 'tropical';
 }
 
 // 図に描く多角形（classify と同じ境界）。[気温, 降水量] の点列
 const line = (f, t0, t1) => [[t0, f(t0)], [t1, f(t1)]];
+// 森林と草原の境界の折れ線（t0〜t1 の間の頂点を含む）
+const grassLine = (t0, t1) => [t0, ...GRASS_KNOTS.map((k) => k[0]).filter((t) => t > t0 && t < t1), t1].map((t) => [t, pGrass(t)]);
 function polygons() {
   const env = (t0, t1) => line(pEnvelope, t0, t1);
   const rev = (pts) => pts.slice().reverse();
   return [
     { id: 'tundra', points: [[T_MIN, 0], [T_TUNDRA, 0], ...rev(env(T_MIN, T_TUNDRA))], at: [-10, 450] },
     { id: 'desert', points: [[T_TUNDRA, 0], [T_MAX, 0], ...rev(line(pDesert, T_TUNDRA, T_MAX))], at: [12.5, 140] },
-    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(line(pGrass, T_TUNDRA, T_WARM))], at: [9, 520] },
-    { id: 'taiga', points: [...line(pGrass, T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
-    { id: 'temperate', points: [...line(pGrass, T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
-    { id: 'sclerophyll', points: [...line(pGrass, T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
+    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [9, 520] },
+    { id: 'taiga', points: [...grassLine(T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
+    { id: 'temperate', points: [...grassLine(T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
+    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
     { id: 'laurel', points: [[T_TEMPERATE, P_SCLERO], [T_WARM, P_SCLERO], ...rev(env(T_TEMPERATE, T_WARM))], at: [16.5, 2200] },
-    { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), [T_MAX, P_SAVANNA], [T_WARM, P_SAVANNA]], at: [25, 850] },
-    { id: 'monsoon', points: [[T_WARM, P_SAVANNA], [T_MAX, P_SAVANNA], [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25, 1650] },
+    { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), ...rev(grassLine(T_WARM, T_MAX))], at: [26, 800] },
+    { id: 'monsoon', points: [...grassLine(T_WARM, T_MAX), [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25.5, 1650] },
     { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2900] },
     { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3100] },
   ];
@@ -2900,7 +2916,7 @@ const WI_ZONES = [
 function biomeByWI(wi) {
   return (WI_ZONES.find((z) => wi >= z.lo && wi < z.hi) || WI_ZONES[0]).biome;
 }
-return { T_MIN, T_MAX, P_MAX, BIOMES, pDesert, pGrass, P_SAVANNA, P_SCLERO, P_RAIN, pEnvelope, T_TUNDRA, T_TAIGA, T_TEMPERATE, T_WARM, T_TROPICAL, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, LAPSE, tempAt, warmthIndex, WI_ZONES, biomeByWI };
+return { T_MIN, T_MAX, P_MAX, BIOMES, pDesert, GRASS_KNOTS, pGrass, P_SCLERO, P_RAIN, pEnvelope, T_TUNDRA, T_TAIGA, T_TEMPERATE, T_WARM, T_TROPICAL, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, LAPSE, tempAt, warmthIndex, WI_ZONES, biomeByWI };
 })();
 
 // ---- dojo/b8.js ----
@@ -5645,11 +5661,11 @@ const B6 = [
       const sT = Math.round(saturation(tisO2, tisCO2));
       const ans = ((sL - sT) / sL) * 100;
       const sWrongCurve = Math.round(saturation(tisO2, LUNG.pCO2));
-      const d = distinctNumbers(ans, [((sL - sWrongCurve) / sL) * 100, sL - sT, (sT / sL) * 100, sL - sWrongCurve], '%', 0);
+      const d = distinctNumbers(ans, [((sL - sWrongCurve) / sL) * 100, sL - sT, (sT / sL) * 100, 100 - ans + 10], '%', 0);
       return {
-        text: `図は、CO₂分圧が ${LUNG.pCO2} mmHg と ${tisCO2} mmHg のときの酸素解離曲線である。肺胞（O₂分圧 ${LUNG.pO2}、CO₂分圧 ${LUNG.pCO2} mmHg）で酸素と結合していたヘモグロビンのうち、組織（O₂分圧 ${tisO2}、CO₂分圧 ${tisCO2} mmHg）で酸素を放出したものはおよそ何%か。図中の横線の値を使って求めよ。`,
+        text: `図は、CO₂分圧が ${LUNG.pCO2} と ${tisCO2} のときの酸素解離曲線である（分圧はいずれも相対値）。肺胞（O₂分圧 ${LUNG.pO2}、CO₂分圧 ${LUNG.pCO2}）で酸素と結合していたヘモグロビンのうち、組織（O₂分圧 ${tisO2}、CO₂分圧 ${tisCO2}）で酸素を放出したものはおよそ何%か。図中の横線の値を使って求めよ。`,
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: curves([LUNG.pCO2, tisCO2], [`CO₂ ${LUNG.pCO2}`, `CO₂ ${tisCO2}`]),
           hlines: [
@@ -5679,9 +5695,9 @@ const B6 = [
       const opts = [r - 40, r - 25, r + 25, r - 15, r + 15].filter((x) => x >= 5 && x <= 100);
       const d = distinctNumbers(r, opts, '%', 0);
       return {
-        text: `図はCO₂分圧 ${LUNG.pCO2} mmHg のときの酸素解離曲線である。O₂分圧が ${p} mmHg のとき、酸素ヘモグロビンの割合はおよそ何%か。`,
+        text: `図はCO₂分圧 ${LUNG.pCO2}（相対値）のときの酸素解離曲線である。O₂分圧（相対値）が ${p} のとき、酸素ヘモグロビンの割合はおよそ何%か。`,
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 10 },
           series: curves([LUNG.pCO2], [`CO₂ ${LUNG.pCO2}`]),
           vlines: [{ x: p, color: 'muted', dash: 'dot', label: `${p}` }],
@@ -5689,7 +5705,7 @@ const B6 = [
         },
         correct: '約' + d.correct,
         wrong: d.wrong.slice(0, 4).map((s) => '約' + s),
-        explanation: `O₂分圧 ${p} mmHg の縦線と曲線の交点を横に読むと、約 ${r}% である。酸素解離曲線は、各O₂分圧でヘモグロビンのうち何%が酸素と結合しているかを表したグラフだから、交点の縦軸の値を読めばよい。`,
+        explanation: `O₂分圧 ${p} の縦線と曲線の交点を横に読むと、約 ${r}% である。酸素解離曲線は、各O₂分圧でヘモグロビンのうち何%が酸素と結合しているかを表したグラフだから、交点の縦軸の値を読めばよい。`,
       };
     },
   },
@@ -5705,7 +5721,7 @@ const B6 = [
       return {
         text: '図のア・イは、CO₂分圧だけを変えて測定した酸素解離曲線である。CO₂分圧が高い（組織に近い）条件の曲線はどちらか。理由とともに選べ。',
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: order.map((c, i) => ({ points: sample((p) => saturation(p, c), 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: c === 70 ? 60 : 28 })),
           alt: '2本の酸素解離曲線ア・イ',
@@ -5810,7 +5826,7 @@ const B6 = [
       return {
         text: '【発展】図のア・イは、同じ条件で測定した母親（おとな）のヘモグロビンと胎児のヘモグロビンの酸素解離曲線である。胎盤で母親の血液から胎児の血液へ酸素が渡されることから考えて、胎児のヘモグロビンの曲線はどちらか。',
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: fns.map((f, i) => ({ points: sample(f, 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: i === fetalIdx ? 14 : 42 })),
           alt: '2本の酸素解離曲線ア・イ',
@@ -8288,7 +8304,7 @@ const GLOSSARY = {
     { term: 'ヘモグロビン', desc: '赤血球に含まれる、鉄を含むタンパク質。酸素分圧の高いところで酸素と結合し、低いところで酸素を離す。' },
     { term: '酸素ヘモグロビン', desc: 'ヘモグロビンが酸素と結合したもの。肺胞でつくられ、組織で酸素を離してヘモグロビンにもどる。' },
     { term: '酸素解離曲線', desc: '酸素分圧と、全ヘモグロビンのうち酸素ヘモグロビンになっているものの割合（%）の関係を表したグラフ。S字形になる。' },
-    { term: '分圧', desc: '混合気体の中で、ある気体が占める圧力。肺胞はO₂分圧が高くCO₂分圧が低い。組織はO₂分圧が低くCO₂分圧が高い。' },
+    { term: '分圧', desc: '混合気体の中で、ある気体が占める圧力。肺胞はO₂分圧が高くCO₂分圧が低い。組織はO₂分圧が低くCO₂分圧が高い。教科書の図では相対値で示すことが多い（例：肺胞 O₂ 100・CO₂ 40、組織 O₂ 30・CO₂ 70）。' },
     { term: 'CO₂分圧の影響', desc: 'CO₂分圧が高いほど曲線は右にずれ、同じO₂分圧でも酸素ヘモグロビンの割合が小さくなる。さかんに呼吸する組織ほど酸素を受け取りやすい。' },
     { term: '組織で放出される酸素の割合', desc: '肺で酸素と結合していたヘモグロビンのうち、組織で酸素を離したものの割合 ＝（肺での割合 − 組織での割合）÷ 肺での割合 × 100。' },
     { term: '胎児のヘモグロビン（発展）', desc: '母親のヘモグロビンより酸素と結合しやすい（曲線が左にある）。そのため胎盤で母親の血液から酸素を受け取れる。' },

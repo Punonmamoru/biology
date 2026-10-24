@@ -42,11 +42,11 @@ export const B6 = [
       const sT = Math.round(saturation(tisO2, tisCO2));
       const ans = ((sL - sT) / sL) * 100;
       const sWrongCurve = Math.round(saturation(tisO2, LUNG.pCO2));
-      const d = distinctNumbers(ans, [((sL - sWrongCurve) / sL) * 100, sL - sT, (sT / sL) * 100, sL - sWrongCurve], '%', 0);
+      const d = distinctNumbers(ans, [((sL - sWrongCurve) / sL) * 100, sL - sT, (sT / sL) * 100, 100 - ans + 10], '%', 0);
       return {
-        text: `図は、CO₂分圧が ${LUNG.pCO2} mmHg と ${tisCO2} mmHg のときの酸素解離曲線である。肺胞（O₂分圧 ${LUNG.pO2}、CO₂分圧 ${LUNG.pCO2} mmHg）で酸素と結合していたヘモグロビンのうち、組織（O₂分圧 ${tisO2}、CO₂分圧 ${tisCO2} mmHg）で酸素を放出したものはおよそ何%か。図中の横線の値を使って求めよ。`,
+        text: `図は、CO₂分圧が ${LUNG.pCO2} と ${tisCO2} のときの酸素解離曲線である（分圧はいずれも相対値）。肺胞（O₂分圧 ${LUNG.pO2}、CO₂分圧 ${LUNG.pCO2}）で酸素と結合していたヘモグロビンのうち、組織（O₂分圧 ${tisO2}、CO₂分圧 ${tisCO2}）で酸素を放出したものはおよそ何%か。図中の横線の値を使って求めよ。`,
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: curves([LUNG.pCO2, tisCO2], [`CO₂ ${LUNG.pCO2}`, `CO₂ ${tisCO2}`]),
           hlines: [
@@ -76,9 +76,9 @@ export const B6 = [
       const opts = [r - 40, r - 25, r + 25, r - 15, r + 15].filter((x) => x >= 5 && x <= 100);
       const d = distinctNumbers(r, opts, '%', 0);
       return {
-        text: `図はCO₂分圧 ${LUNG.pCO2} mmHg のときの酸素解離曲線である。O₂分圧が ${p} mmHg のとき、酸素ヘモグロビンの割合はおよそ何%か。`,
+        text: `図はCO₂分圧 ${LUNG.pCO2}（相対値）のときの酸素解離曲線である。O₂分圧（相対値）が ${p} のとき、酸素ヘモグロビンの割合はおよそ何%か。`,
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 10 },
           series: curves([LUNG.pCO2], [`CO₂ ${LUNG.pCO2}`]),
           vlines: [{ x: p, color: 'muted', dash: 'dot', label: `${p}` }],
@@ -86,7 +86,7 @@ export const B6 = [
         },
         correct: '約' + d.correct,
         wrong: d.wrong.slice(0, 4).map((s) => '約' + s),
-        explanation: `O₂分圧 ${p} mmHg の縦線と曲線の交点を横に読むと、約 ${r}% である。酸素解離曲線は、各O₂分圧でヘモグロビンのうち何%が酸素と結合しているかを表したグラフだから、交点の縦軸の値を読めばよい。`,
+        explanation: `O₂分圧 ${p} の縦線と曲線の交点を横に読むと、約 ${r}% である。酸素解離曲線は、各O₂分圧でヘモグロビンのうち何%が酸素と結合しているかを表したグラフだから、交点の縦軸の値を読めばよい。`,
       };
     },
   },
@@ -102,7 +102,7 @@ export const B6 = [
       return {
         text: '図のア・イは、CO₂分圧だけを変えて測定した酸素解離曲線である。CO₂分圧が高い（組織に近い）条件の曲線はどちらか。理由とともに選べ。',
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: order.map((c, i) => ({ points: sample((p) => saturation(p, c), 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: c === 70 ? 60 : 28 })),
           alt: '2本の酸素解離曲線ア・イ',
@@ -207,7 +207,7 @@ export const B6 = [
       return {
         text: '【発展】図のア・イは、同じ条件で測定した母親（おとな）のヘモグロビンと胎児のヘモグロビンの酸素解離曲線である。胎盤で母親の血液から胎児の血液へ酸素が渡されることから考えて、胎児のヘモグロビンの曲線はどちらか。',
         chart: {
-          x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
           series: fns.map((f, i) => ({ points: sample(f, 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: i === fetalIdx ? 14 : 42 })),
           alt: '2本の酸素解離曲線ア・イ',

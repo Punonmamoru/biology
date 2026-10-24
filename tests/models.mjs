@@ -212,10 +212,10 @@ section('B6 酸素解離曲線');
     const sl = S(p + 0.5) - S(p);
     if (sl > maxSlope) { maxSlope = sl; pMax = p; }
   }
-  check('S字形：傾きが最大になる点がO₂分圧の中ほど（10〜50 mmHg）にあり、低い側・高い側では傾きが小さい', pMax > 10 && pMax < 50 && S(5) - S(0) < maxSlope && S(100) - S(99.5) < maxSlope, `傾き最大 ${pMax} mmHg`);
+  check('S字形：傾きが最大になる点がO₂分圧（相対値）の中ほど（10〜50）にあり、低い側・高い側では傾きが小さい', pMax > 10 && pMax < 50 && S(5) - S(0) < maxSlope && S(100) - S(99.5) < maxSlope, `傾き最大 O₂分圧 ${pMax}`);
   let right = true;
   for (let p = 1; p < 100; p += 1) if (!(S(p, 70) < S(p, 40))) right = false;
-  check('CO₂分圧が高いと右へずれる（同じO₂分圧で割合が小さい、P50が大きい）', right && ox.p50(70) > ox.p50(40), `P50 ${f(ox.p50(40), 0)} → ${f(ox.p50(70), 0)} mmHg`);
+  check('CO₂分圧が高いと右へずれる（同じO₂分圧で割合が小さい、P50が大きい）', right && ox.p50(70) > ox.p50(40), `P50 ${f(ox.p50(40), 0)} → ${f(ox.p50(70), 0)}（相対値）`);
   const ex = ox.exchange();
   check('教科書の目安：肺胞（O₂100・CO₂40）で約95〜98%、組織（O₂30・CO₂70）で約30%', ex.sLung >= 95 && ex.sLung <= 98 && near(ex.sTissue, 30, 3), `${f(ex.sLung, 1)}%・${f(ex.sTissue, 1)}%`);
   check('放出した割合 ＝（肺 − 組織）÷ 肺 × 100（95%・30% → 68.4%）', near(ox.releaseFraction(95, 30), 68.42, 0.01));
@@ -266,6 +266,35 @@ section('B8 バイオーム');
     }
   }
   check('図の区画（多角形）と判定（classify）が一致する（格子点で重なり・すき間なし）', agree === total, `${agree}/${total} ${bad}`);
+  // 森林と草原の境界がなめらか（気温0.1℃ごとに、森林になる最小の降水量の変化が小さい）
+  const forestFrom = (T) => {
+    for (let P = 0; P <= bi.pEnvelope(T); P += 5) {
+      const c = bi.classify(T, P);
+      if (c && bi.BIOMES[c].kind === '森林') return P;
+    }
+    return null;
+  };
+  let maxJump = 0;
+  let jumpAt = 0;
+  let prev = forestFrom(-4.9);
+  for (let i = 1; i <= 348; i++) {
+    const T = Math.round((-4.9 + i * 0.1) * 10) / 10; // −4.8〜29.9℃
+    const cur = forestFrom(T);
+    if (Math.abs(cur - prev) > maxJump) { maxJump = Math.abs(cur - prev); jumpAt = T; }
+    prev = cur;
+  }
+  check('森林と草原の境界は連続（気温0.1℃あたりの変化が15 mm以下。20℃付近でも段差がない）', maxJump <= 15, `最大の変化 ${maxJump} mm（${f(jumpAt, 1)}℃付近）、20℃で ${forestFrom(19.9)} → ${forestFrom(20.1)} mm`);
+  let agree2 = 0;
+  let total2 = 0;
+  for (let T = 19.05; T < 21; T += 0.1) {
+    for (let P = 600; P < 1400; P += 10) {
+      const c = bi.classify(T, P);
+      const hits = polys.filter((pg) => inside([T, P], pg.points)).map((pg) => pg.id);
+      total2++;
+      if (hits.length === 1 && hits[0] === c) agree2++;
+    }
+  }
+  check('20℃付近（19〜21℃・600〜1400 mm）の細かい格子でも、図の区画と判定が一致する', agree2 === total2, `${agree2}/${total2}`);
   const cities = { 東京: 'laurel', 札幌: 'temperate', 那覇: 'subtropical', シンガポール: 'tropical', カイロ: 'desert', ローマ: 'sclerophyll' };
   check('代表的な都市の判定が教科書と合う（東京＝照葉樹林、札幌＝夏緑樹林、那覇＝亜熱帯多雨林、シンガポール＝熱帯多雨林、カイロ＝砂漠、ローマ＝硬葉樹林）', Object.entries(cities).every(([n, b]) => { const c = bi.CITIES.find((x) => x.name === n); return bi.classify(c.T, c.P) === b; }));
   let dryOk = true;

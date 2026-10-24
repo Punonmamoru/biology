@@ -20,8 +20,22 @@ export const BIOMES = {
 
 // 境界線（気温 T の関数）
 export const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂漠
-export const pGrass = (T) => 400 + 15 * (T + 5); // 気温20℃未満で、これより少ないと草原（ステップ）
-export const P_SAVANNA = 1300; // 気温20℃以上で、これより少ないと草原（サバンナ）
+// 森林と草原の境界（これより少ないと草原）。気温が高いほど蒸発が多いので、森林に必要な降水量が多くなる。
+// 折れ線の頂点を結ぶ連続した境界にする（20℃付近でも段差なく、なめらかに上がる）。
+// 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
+export const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
+export function pGrass(T) {
+  const k = GRASS_KNOTS;
+  if (T <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) {
+    if (T <= k[i][0]) {
+      const [t0, p0] = k[i - 1];
+      const [t1, p1] = k[i];
+      return p0 + ((p1 - p0) * (T - t0)) / (t1 - t0);
+    }
+  }
+  return k[k.length - 1][1];
+}
 export const P_SCLERO = 1200; // 13〜20℃で、これより少ない森林は硬葉樹林
 export const P_RAIN = 2000; // 20℃以上で、これ以上なら多雨林
 export const pEnvelope = (T) => 1000 + ((T - T_MIN) * 3500) / (T_MAX - T_MIN); // これより多い地域はほとんどない
@@ -41,26 +55,28 @@ export function classify(T, P) {
     if (T < T_TEMPERATE) return 'temperate';
     return P < P_SCLERO ? 'sclerophyll' : 'laurel';
   }
-  if (P < P_SAVANNA) return 'savanna';
+  if (P < pGrass(T)) return 'savanna';
   if (P < P_RAIN) return 'monsoon';
   return T < T_TROPICAL ? 'subtropical' : 'tropical';
 }
 
 // 図に描く多角形（classify と同じ境界）。[気温, 降水量] の点列
 const line = (f, t0, t1) => [[t0, f(t0)], [t1, f(t1)]];
+// 森林と草原の境界の折れ線（t0〜t1 の間の頂点を含む）
+const grassLine = (t0, t1) => [t0, ...GRASS_KNOTS.map((k) => k[0]).filter((t) => t > t0 && t < t1), t1].map((t) => [t, pGrass(t)]);
 export function polygons() {
   const env = (t0, t1) => line(pEnvelope, t0, t1);
   const rev = (pts) => pts.slice().reverse();
   return [
     { id: 'tundra', points: [[T_MIN, 0], [T_TUNDRA, 0], ...rev(env(T_MIN, T_TUNDRA))], at: [-10, 450] },
     { id: 'desert', points: [[T_TUNDRA, 0], [T_MAX, 0], ...rev(line(pDesert, T_TUNDRA, T_MAX))], at: [12.5, 140] },
-    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(line(pGrass, T_TUNDRA, T_WARM))], at: [9, 520] },
-    { id: 'taiga', points: [...line(pGrass, T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
-    { id: 'temperate', points: [...line(pGrass, T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
-    { id: 'sclerophyll', points: [...line(pGrass, T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
+    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [9, 520] },
+    { id: 'taiga', points: [...grassLine(T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
+    { id: 'temperate', points: [...grassLine(T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
+    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
     { id: 'laurel', points: [[T_TEMPERATE, P_SCLERO], [T_WARM, P_SCLERO], ...rev(env(T_TEMPERATE, T_WARM))], at: [16.5, 2200] },
-    { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), [T_MAX, P_SAVANNA], [T_WARM, P_SAVANNA]], at: [25, 850] },
-    { id: 'monsoon', points: [[T_WARM, P_SAVANNA], [T_MAX, P_SAVANNA], [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25, 1650] },
+    { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), ...rev(grassLine(T_WARM, T_MAX))], at: [26, 800] },
+    { id: 'monsoon', points: [...grassLine(T_WARM, T_MAX), [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25.5, 1650] },
     { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2900] },
     { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3100] },
   ];
