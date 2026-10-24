@@ -94,3 +94,7 @@ node tests/smoke.mjs      # 画面のスモークテスト（Playwright があ�
 ### 用語の方針
 
 現行の学習指導要領（2022年度〜）の教科書に合わせ、遺伝の用語は「顕性・潜性」を使う。旧用語が残っていないことは `tests/validate.mjs` が自動で確認する。
+
+## 関連：動物の行動解析パイプライン（`behavior_analysis/`）
+
+生物部・SSH探究向けに、SLEAP / Fiji TrackMate / 手動追跡の座標から速度・直進性・転向角・滞在時間・MSD などを計算し、グラフまで出す Python のプログラムを `behavior_analysis/` に置いている。Google Colab でセルを上から実行するだけで使える。使い方は [`behavior_analysis/README.md`](behavior_analysis/README.md) を参照。
