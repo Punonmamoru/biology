@@ -1138,10 +1138,1208 @@ function setFlag(name) {
 return { emptyStage, emptyProgress, normalize, getProgress, saveProgress, replaceProgress, onProgress, markVisited, markTask, recordAnswer, recordRound, clearMisses, setFlag };
 })();
 
+// ---- lib/format.js ----
+__m["lib/format.js"] = (function () {
+// 数値の表示用フォーマット
+function fmt(x, digits = 1) {
+  if (!Number.isFinite(x)) return String(x);
+  const v = Number(x.toFixed(digits));
+  return String(Object.is(v, -0) ? 0 : v);
+}
+
+// 有効数字ではなく「整数ならそのまま、そうでなければ指定桁」
+function num(x, digits = 2) {
+  if (Number.isInteger(x)) return String(x);
+  return fmt(x, digits);
+}
+
+function pct(x, digits = 0) {
+  return fmt(x * 100, digits) + '%';
+}
+
+function gcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
+function ratioText(values) {
+  let g = values.reduce((acc, v) => gcd(acc, v), 0) || 1;
+  return values.map((v) => v / g).join(' : ');
+}
+
+function fracText(n, d) {
+  const g = gcd(n, d) || 1;
+  return `${n / g}/${d / g}`;
+}
+
+function clamp(x, lo, hi) {
+  return Math.min(hi, Math.max(lo, x));
+}
+return { fmt, num, pct, gcd, ratioText, fracText, clamp };
+})();
+
+// ---- dojo/common.js ----
+__m["dojo/common.js"] = (function () {
+// 図解道場の共通部品（スライダー・切替ボタン・解説欄）
+const { h } = __m["lib/dom.js"];
+
+let uid = 0;
+
+// キーボード操作できるネイティブのスライダー
+function slider({ label, min, max, step = 1, value, format = (v) => String(v), onInput }) {
+  const id = 'sl-' + ++uid;
+  const out = h('output', { for: id, 'aria-live': 'off' }, format(value));
+  const input = h('input', { type: 'range', id, min, max, step, value });
+  const el = h('div', { class: 'control' }, h('label', { for: id }, label), out, input);
+  const ctl = {
+    el,
+    input,
+    get value() {
+      return Number(input.value);
+    },
+    set(v, silent) {
+      input.value = String(v);
+      out.textContent = format(Number(input.value));
+      input.setAttribute('aria-valuetext', out.textContent);
+      if (!silent && onInput) onInput(Number(input.value));
+    },
+    setRange(lo, hi) {
+      input.min = String(lo);
+      input.max = String(hi);
+      ctl.set(Math.min(hi, Math.max(lo, ctl.value)), true);
+    },
+  };
+  input.setAttribute('aria-valuetext', out.textContent);
+  input.addEventListener('input', () => {
+    out.textContent = format(Number(input.value));
+    input.setAttribute('aria-valuetext', out.textContent);
+    if (onInput) onInput(Number(input.value));
+  });
+  return ctl;
+}
+
+// 切替ボタン（aria-pressed で状態を示す）
+function segmented({ label, options, value, onChange }) {
+  const group = h('div', { class: 'seg', role: 'group', 'aria-label': label });
+  const btns = options.map((o) =>
+    h('button', { type: 'button', 'aria-pressed': o.value === value ? 'true' : 'false', onclick: () => ctl.set(o.value) }, o.label),
+  );
+  group.append(...btns);
+  const ctl = {
+    el: h('div', null, label ? h('div', { class: 'small muted', 'aria-hidden': 'true' }, label) : null, group),
+    value,
+    set(v, silent) {
+      ctl.value = v;
+      btns.forEach((b, i) => b.setAttribute('aria-pressed', options[i].value === v ? 'true' : 'false'));
+      if (!silent && onChange) onChange(v);
+    },
+  };
+  return ctl;
+}
+
+// 「いま何が起きているか」欄。文章はスライダーの値に応じて書き換える
+function explainBox() {
+  const el = h('div', { class: 'explain', 'aria-live': 'polite' });
+  return {
+    el,
+    set(paragraphs) {
+      el.replaceChildren(...paragraphs.filter(Boolean).map((t) => h('p', null, t)));
+    },
+  };
+}
+
+function panel(title, ...children) {
+  return h('section', { class: 'panel' }, title ? h('h2', null, title) : null, ...children);
+}
+
+function modelNote(text = 'モデルによる模式図') {
+  return h('span', { class: 'badge-model' }, text);
+}
+return { slider, segmented, explainBox, panel, modelNote };
+})();
+
+// ---- models/cellcycle.js ----
+__m["models/cellcycle.js"] = (function () {
+// B1 細胞周期とDNA量のモデル
+// 細胞1個あたりのDNA量（相対値）：G1期=2、S期で2→4へ直線的に増加、G2期=4、
+// M期は4のまま、M期の終わり（細胞質分裂）で2に戻る。
+const PHASES = ['G1', 'S', 'G2', 'M'];
+const PHASE_NAMES = {
+  G1: 'G1期（DNA合成準備期）',
+  S: 'S期（DNA合成期）',
+  G2: 'G2期（分裂準備期）',
+  M: 'M期（分裂期）',
+};
+const M_SUBPHASES = ['前期', '中期', '後期', '終期'];
+
+function cycleLength(p) {
+  return p.G1 + p.S + p.G2 + p.M;
+}
+
+// t（時間）に対する周期内の位置
+function phaseAt(t, p) {
+  const T = cycleLength(p);
+  let u = ((t % T) + T) % T;
+  for (const ph of PHASES) {
+    if (u < p[ph]) return { phase: ph, elapsed: u, frac: u / p[ph] };
+    u -= p[ph];
+  }
+  return { phase: 'M', elapsed: p.M, frac: 1 };
+}
+
+function dnaAt(t, p) {
+  const { phase, frac } = phaseAt(t, p);
+  if (phase === 'G1') return 2;
+  if (phase === 'S') return 2 + 2 * frac;
+  return 4; // G2・M
+}
+
+// M期をさらに前期・中期・後期・終期に分ける（模式的に等分）
+function mSubphase(frac) {
+  return M_SUBPHASES[Math.min(3, Math.floor(frac * 4))];
+}
+
+// グラフ用の点列（細胞質分裂での急な減少を垂直線として描く）
+function dnaSeries(p, cycles = 2, t0 = 0) {
+  const pts = [];
+  const T = cycleLength(p);
+  for (let c = 0; c < cycles; c++) {
+    const b = t0 + c * T;
+    pts.push([b, 2], [b + p.G1, 2], [b + p.G1 + p.S, 4], [b + p.G1 + p.S + p.G2, 4], [b + T, 4], [b + T, 2]);
+  }
+  return pts;
+}
+
+// 観察した細胞数の割合から各期の長さを求める：各期の時間 = 全周期 × その期の細胞数の割合
+function phaseLengthsFromCounts(total, counts) {
+  const n = PHASES.reduce((a, k) => a + (counts[k] || 0), 0);
+  const out = {};
+  for (const k of PHASES) out[k] = n > 0 ? (total * (counts[k] || 0)) / n : 0;
+  return out;
+}
+return { PHASES, PHASE_NAMES, M_SUBPHASES, cycleLength, phaseAt, dnaAt, mSubphase, dnaSeries, phaseLengthsFromCounts };
+})();
+
+// ---- dojo/b1.js ----
+__m["dojo/b1.js"] = (function () {
+// B1 細胞周期とDNA量 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, tokenColor } = __m["lib/chart.js"];
+const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { cycleLength, phaseAt, dnaAt, dnaSeries, mSubphase, phaseLengthsFromCounts, PHASES, PHASE_NAMES } = __m["models/cellcycle.js"];
+
+const TEXT = {
+  G1: 'DNAを複製する準備をしている。DNA量は2（複製前）。',
+  S: 'DNAを複製している最中。DNA量が2から4へしだいに増える。',
+  G2: 'DNAの複製が終わり、分裂の準備をしている。DNA量は4。',
+};
+const M_TEXT = {
+  前期: '前期：核の中で染色体が凝縮し、太く短いひも状に見えるようになる。',
+  中期: '中期：染色体が細胞の中央（赤道面）に並ぶ。染色体の観察に適した時期。',
+  後期: '後期：各染色体が縦に裂けるように分かれ、両極へ移動する。',
+  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。分裂が終わるとDNA量は4から2に戻る。',
+};
+
+// 細胞の模式図
+function drawCell(canvas, phase, frac) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const S = 120;
+  canvas.width = S * dpr;
+  canvas.height = S * dpr;
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, S, S);
+  const fg = tokenColor('fg');
+  const c1 = tokenColor('c1');
+  const c2 = tokenColor('c2');
+  const muted = tokenColor('muted');
+  g.lineWidth = 2;
+  g.strokeStyle = fg;
+  const sub = phase === 'M' ? mSubphase(frac) : null;
+
+  // 細胞膜
+  g.beginPath();
+  if (sub === '終期') {
+    const pinch = 20 * Math.min(1, (frac - 0.75) / 0.25);
+    g.moveTo(60, 14 + pinch);
+    g.bezierCurveTo(10, 0, 10, 120, 60, 106 - pinch);
+    g.bezierCurveTo(110, 120, 110, 0, 60, 14 + pinch);
+  } else {
+    g.ellipse(60, 60, 50, 46, 0, 0, Math.PI * 2);
+  }
+  g.stroke();
+
+  const chrom = (x, y, ang, color, doubled) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(ang);
+    g.strokeStyle = color;
+    g.lineWidth = 4;
+    g.lineCap = 'round';
+    g.beginPath();
+    if (doubled) {
+      g.moveTo(-3, -9); g.lineTo(-1, 0); g.lineTo(-3, 9);
+      g.moveTo(3, -9); g.lineTo(1, 0); g.lineTo(3, 9);
+    } else {
+      g.moveTo(0, -9); g.lineTo(0, 9);
+    }
+    g.stroke();
+    g.restore();
+  };
+
+  if (!sub || sub === '前期') {
+    // 核
+    g.setLineDash(sub === '前期' ? [4, 4] : []);
+    g.strokeStyle = muted;
+    g.beginPath();
+    g.arc(60, 60, phase === 'G2' ? 28 : 24, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+    if (sub === '前期') {
+      chrom(50, 52, 0.4, c1, true);
+      chrom(68, 56, -0.5, c2, true);
+      chrom(58, 70, 1.3, c1, true);
+      chrom(66, 70, 0.2, c2, true);
+    } else {
+      // クロマチン（細い糸）
+      const n = phase === 'G1' ? 1 : phase === 'S' ? 1 + frac : 2;
+      g.lineWidth = 1.2;
+      for (let k = 0; k < Math.round(n * 4); k++) {
+        g.strokeStyle = k % 2 ? c1 : c2;
+        g.beginPath();
+        const a = (k * 1.7) % (Math.PI * 2);
+        g.moveTo(60 + 14 * Math.cos(a), 60 + 14 * Math.sin(a));
+        g.quadraticCurveTo(60 + 4 * Math.cos(a + 1), 60 + 4 * Math.sin(a + 2), 60 + 16 * Math.cos(a + 2.4), 60 + 14 * Math.sin(a + 2.4));
+        g.stroke();
+      }
+    }
+  } else if (sub === '中期') {
+    g.setLineDash([3, 4]);
+    g.strokeStyle = muted;
+    g.lineWidth = 1;
+    g.beginPath(); g.moveTo(60, 20); g.lineTo(60, 100); g.stroke();
+    g.setLineDash([]);
+    [38, 52, 66, 80].forEach((y, i) => chrom(60, y, Math.PI / 2, i % 2 ? c2 : c1, true));
+  } else {
+    const sep = sub === '後期' ? 8 + 24 * ((frac - 0.5) / 0.25) : 32;
+    [42, 56, 66, 78].forEach((y, i) => {
+      const col = i % 2 ? c2 : c1;
+      chrom(60 - sep, y, Math.PI / 2 + 0.2, col, false);
+      chrom(60 + sep, y, Math.PI / 2 - 0.2, col, false);
+    });
+    if (sub === '終期') {
+      g.strokeStyle = muted;
+      g.setLineDash([4, 4]);
+      g.lineWidth = 1.5;
+      g.beginPath(); g.arc(28, 60, 18, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(92, 60, 18, 0, Math.PI * 2); g.stroke();
+      g.setLineDash([]);
+    }
+  }
+}
+
+const dojo = {
+  tasks: [
+    { id: 'play', text: '再生ボタンで、細胞周期を1周以上ながめよう。', short: '1周を再生' },
+    { id: 'dna3', text: 'DNA量がちょうど3（複製の途中）になる時刻に「現在時刻」を合わせよう。', short: 'DNA量3を発見' },
+    { id: 'metaphase', text: '染色体が赤道面に並ぶ時期（M期の中期）を表示させよう。', short: '中期を表示' },
+    { id: 'calc', text: '計算ツールで、観察した細胞数から各期の長さを求めよう。', short: '各期の長さを計算' },
+  ],
+  mount(root, ctx) {
+    const p = { G1: 10, S: 8, G2: 4, M: 2 };
+    let t = 3;
+    let playing = false;
+    let played = 0;
+    let raf = 0;
+    let last = 0;
+    const flags = { calc: false };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'DNA量の変化 ', modelNote()));
+    const chart = createChart(top, { label: '細胞1個あたりのDNA量の変化のグラフ' });
+    top.append(legend([{ label: 'DNA量（細胞1個あたり）', color: 'c1' }, { label: '現在時刻', color: 'c2', dash: 'dash' }]));
+
+    const cellCanvas = h('canvas', { role: 'img', 'aria-label': '細胞の模式図' });
+    const cellCaption = h('div', { class: 'small' });
+    const exp = explainBox();
+    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)));
+
+    const playBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => toggle() }, '▶ 再生');
+
+    const sT = slider({ label: '現在時刻', min: 0, max: 48, step: 0.1, value: t, format: (v) => fmt(v, 1) + ' 時間', onInput: (v) => { t = v; update(); } });
+    const mk = (key, label, min, max, step) =>
+      slider({ label, min, max, step, value: p[key], format: (v) => fmt(v, 1) + ' 時間', onInput: (v) => { p[key] = v; update(); } });
+    const sl = { G1: mk('G1', 'G1期の長さ', 2, 20, 0.5), S: mk('S', 'S期の長さ', 2, 12, 0.5), G2: mk('G2', 'G2期の長さ', 1, 8, 0.5), M: mk('M', 'M期の長さ', 0.5, 4, 0.5) };
+
+    root.append(
+      panel('操作', h('div', { class: 'row' }, playBtn), sT.el, sl.G1.el, sl.S.el, sl.G2.el, sl.M.el),
+      panel('いま何が起きているか', exp.el),
+    );
+
+    // 計算ツール
+    const inputs = {};
+    const totalIn = h('input', { type: 'number', inputmode: 'decimal', min: 1, step: 'any', value: 24 });
+    const defaults = { G1: 40, S: 32, G2: 16, M: 12 };
+    const grid = h('div', { class: 'calc-grid' }, h('label', null, '全周期（時間）', totalIn));
+    for (const k of PHASES) {
+      inputs[k] = h('input', { type: 'number', inputmode: 'numeric', min: 0, step: 1, value: defaults[k] });
+      grid.append(h('label', null, `${k}期の細胞数`, inputs[k]));
+    }
+    const result = h('div', { 'aria-live': 'polite' });
+    const applyBtn = h('button', { type: 'button', class: 'btn', onclick: () => applyCalc() }, '求めた長さをグラフに反映');
+    root.append(
+      panel('計算ツール：細胞数の割合から各期の長さを求める',
+        h('p', { class: 'small muted' }, '体細胞分裂が盛んな組織を固定・染色して観察すると、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。'),
+        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 観察した細胞の総数）')),
+        grid,
+        h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => calc(true) }, '計算する'), applyBtn),
+        result,
+      ),
+    );
+
+    let lastCalc = null;
+    function calc(byUser) {
+      const total = Number(totalIn.value);
+      const counts = {};
+      for (const k of PHASES) counts[k] = Math.max(0, Math.floor(Number(inputs[k].value) || 0));
+      const n = PHASES.reduce((a, k) => a + counts[k], 0);
+      if (!(total > 0) || n === 0) {
+        result.replaceChildren(h('p', { class: 'small' }, '全周期の時間と、細胞数（合計1個以上）を入力してください。'));
+        lastCalc = null;
+        return;
+      }
+      const L = phaseLengthsFromCounts(total, counts);
+      lastCalc = L;
+      result.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '時期'), h('th', null, '細胞数'), h('th', null, '割合'), h('th', null, '長さ'))),
+          h('tbody', null, ...PHASES.map((k) => h('tr', null, h('td', null, k + '期'), h('td', null, counts[k]), h('td', null, fmt(counts[k] / n, 3)), h('td', null, fmt(L[k], 2) + ' 時間')))),
+        ),
+        h('p', { class: 'small' }, `例：M期 ＝ ${fmt(total, 2)} × ${counts.M}/${n} ＝ ${fmt(L.M, 2)} 時間。間期（G1＋S＋G2）は ${fmt(L.G1 + L.S + L.G2, 2)} 時間で、観察される細胞の大部分が間期なのは、間期が長いからである。`),
+      );
+      if (byUser) {
+        flags.calc = true;
+        ctx.update(state());
+      }
+    }
+    function applyCalc() {
+      if (!lastCalc) calc(true);
+      if (!lastCalc) return;
+      for (const k of PHASES) {
+        const s = sl[k];
+        const v = Math.min(Number(s.input.max), Math.max(Number(s.input.min), Math.round(lastCalc[k] * 2) / 2));
+        p[k] = v;
+        s.set(v, true);
+      }
+      update();
+    }
+
+    function toggle() {
+      playing = !playing;
+      playBtn.textContent = playing ? '❚❚ 一時停止' : '▶ 再生';
+      if (playing) {
+        played = 0;
+        last = performance.now();
+        raf = requestAnimationFrame(tick);
+      } else cancelAnimationFrame(raf);
+    }
+    function tick(now) {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const T = cycleLength(p);
+      const adv = (T / 8) * dt; // 1周期を約8秒で
+      t += adv;
+      played += adv;
+      if (t > 2 * T) t -= 2 * T;
+      sT.set(Math.round(t * 10) / 10, true);
+      update();
+      if (playing) raf = requestAnimationFrame(tick);
+    }
+
+    function state() {
+      const info = phaseAt(t, p);
+      return { t, p: { ...p }, info, dna: dnaAt(t, p), playedFull: played >= cycleLength(p), calc: flags.calc };
+    }
+
+    function update() {
+      const T = cycleLength(p);
+      const tMax = 2 * T;
+      sT.setRange(0, Math.round(tMax * 10) / 10);
+      if (t > tMax) t = sT.value;
+      const info = phaseAt(t, p);
+      const dna = dnaAt(t, p);
+      const regions = [];
+      for (let c = 0; c < 2; c++) {
+        let b = c * T;
+        PHASES.forEach((k, i) => {
+          regions.push({ x0: b, x1: b + p[k], label: k, fill: i % 2 ? 'region-2' : 'region' });
+          b += p[k];
+        });
+      }
+      chart.draw({
+        alt: `横軸は時間、縦軸はDNA量。現在 ${fmt(t, 1)} 時間で ${info.phase}期、DNA量 ${fmt(dna, 2)}`,
+        x: { min: 0, max: tMax, label: '時間（時間）', step: tMax > 60 ? 10 : 5 },
+        y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
+        regions,
+        series: [{ points: dnaSeries(p, 2), color: 'c1', width: 3 }],
+        vlines: [{ x: t, color: 'c2', dash: 'dash', width: 2 }],
+        markers: [{ x: t, y: dna, color: 'c2', label: `DNA量 ${fmt(dna, 2)}` }],
+      });
+      drawCell(cellCanvas, info.phase, info.frac);
+      const sub = info.phase === 'M' ? mSubphase(info.frac) : null;
+      cellCaption.replaceChildren(h('b', null, PHASE_NAMES[info.phase] + (sub ? '・' + sub : '')), h('br'), `DNA量 ${fmt(dna, 2)}（相対値）`);
+      cellCanvas.setAttribute('aria-label', `細胞の模式図：${info.phase}期${sub ? sub : ''}`);
+      const lines = [
+        `現在 ${fmt(t, 1)} 時間：${PHASE_NAMES[info.phase]}${sub ? 'の' + sub : ''}。` + (info.phase === 'M' ? M_TEXT[sub] : TEXT[info.phase]),
+        `この設定では1周期が ${fmt(T, 1)} 時間。そのうち間期（G1＋S＋G2）が ${fmt(p.G1 + p.S + p.G2, 1)} 時間（${Math.round(((p.G1 + p.S + p.G2) / T) * 100)}%）を占めるので、観察するとほとんどの細胞が間期に見える。`,
+        'DNA量がS期で2倍（2→4）になり、分裂で2つの細胞に等しく分けられるから、分裂後の細胞のDNA量は分裂前（G1期）と同じ2に戻る。',
+      ];
+      exp.set(lines);
+      ctx.update(state());
+    }
+
+    calc(false);
+    update();
+    return () => cancelAnimationFrame(raf);
+  },
+};
+
+// 課題の判定
+dojo.tasks[0].check = (s) => s.playedFull;
+dojo.tasks[1].check = (s) => s.info.phase === 'S' && Math.abs(s.dna - 3) <= 0.06;
+dojo.tasks[2].check = (s) => s.info.phase === 'M' && mSubphase(s.info.frac) === '中期';
+dojo.tasks[3].check = (s) => s.calc;
+return { dojo };
+})();
+
+// ---- models/glucose.js ----
+__m["models/glucose.js"] = (function () {
+// B2 血糖値の調節モデル（定性的な形を保証する簡単な微分方程式）
+// 状態：Q＝消化管内の糖, G＝血糖値[mg/100mL], I＝インスリン（相対値）, N＝グルカゴン（相対値）
+//   dQ/dt = −ka·Q
+//   dG/dt = ka·Q（吸収）＋ 肝臓からの放出 − 組織への取り込み
+//           肝臓からの放出   = (p0 + pg·N) / (1 + hi·I)   …グルカゴンで増え、インスリンで抑えられる
+//           組織への取り込み = (u0 + si·S·I)·G             …インスリンが効くほど増える
+//   dI/dt = kI·(cap·sec(G) − I)      sec(G) は血糖値が高いほど大きい
+//   dN/dt = kN·(low(G) − N)          low(G) は血糖値が低いほど大きい
+//   dX/dt = kX·(I − X)               X＝インスリンの作用（血中インスリンより少し遅れて効く）
+// 上式の I のはたらき（放出の抑制・取り込みの促進）は X を通して効かせる。時間の単位は分。
+const PRESETS = {
+  healthy: { label: '健康', meal: 1, cap: 1, sens: 1 },
+  type1: { label: '1型糖尿病', meal: 1, cap: 0.03, sens: 1 },
+  type2: { label: '2型糖尿病', meal: 1, cap: 0.5, sens: 0.2 },
+};
+
+const P = {
+  ka: 1 / 50, // 消化管からの吸収速度
+  dose: 150, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
+  u0: 0.0028, // インスリンによらない取り込み（脳など）
+  si: 0.07, // インスリンによる取り込み
+  p0: 0.75, // 肝臓からの基礎的な放出
+  pg: 1.8, // グルカゴンによる肝臓からの放出（グリコーゲンの分解）
+  hi: 1.5, // インスリンによる肝臓からの放出の抑制
+  kI: 1 / 20,
+  kN: 1 / 15,
+  kX: 1 / 20,
+  gHalf: 140,
+  gLow: 80,
+};
+
+function sec(G) {
+  const r = Math.pow(G / P.gHalf, 6);
+  return r / (1 + r);
+}
+
+function low(G) {
+  return 1 / (1 + Math.pow(G / P.gLow, 6));
+}
+
+const KEYS = ['Q', 'G', 'I', 'N', 'X'];
+
+function deriv(s, prm) {
+  const { Q, G, I, N, X } = s;
+  const absorb = P.ka * Q;
+  const liver = (P.p0 + P.pg * N) / (1 + P.hi * X);
+  const uptake = (P.u0 + P.si * prm.sens * X) * G;
+  return {
+    Q: -absorb,
+    G: absorb + liver - uptake,
+    I: P.kI * (prm.cap * sec(G) - I),
+    N: P.kN * (low(G) - N),
+    X: P.kX * (I - X),
+  };
+}
+
+function step(s, prm, dt) {
+  const add = (a, d, k) => {
+    const o = {};
+    for (const n of KEYS) o[n] = a[n] + d[n] * k;
+    return o;
+  };
+  const k1 = deriv(s, prm);
+  const k2 = deriv(add(s, k1, dt / 2), prm);
+  const k3 = deriv(add(s, k2, dt / 2), prm);
+  const k4 = deriv(add(s, k3, dt), prm);
+  const o = {};
+  for (const n of KEYS) o[n] = s[n] + (dt / 6) * (k1[n] + 2 * k2[n] + 2 * k3[n] + k4[n]);
+  return o;
+}
+
+// 食事前の安定状態（食事なしで十分長く計算する）
+function fasting(prm) {
+  let s = { Q: 0, G: 100, I: prm.cap * sec(100), N: low(100), X: prm.cap * sec(100) };
+  for (let i = 0; i < 3000; i++) s = step(s, prm, 1);
+  return s;
+}
+
+// 食事（t=0）から minutes 分後までを計算。prm = { meal, cap, sens }
+function simulate(prm, minutes = 300, dt = 1) {
+  const s0 = fasting(prm);
+  let s = { ...s0, Q: P.dose * prm.meal };
+  const out = [{ t: 0, ...s }];
+  for (let t = dt; t <= minutes + 1e-9; t += dt) {
+    s = step(s, prm, dt);
+    out.push({ t, ...s });
+  }
+  return out;
+}
+
+function summarize(run) {
+  let peak = run[0];
+  for (const r of run) if (r.G > peak.G) peak = r;
+  let iPeak = run[0];
+  for (const r of run) if (r.I > iPeak.I) iPeak = r;
+  const at = (min) => run.reduce((b, r) => (Math.abs(r.t - min) < Math.abs(b.t - min) ? r : b), run[0]);
+  return { fastingG: run[0].G, peakG: peak.G, peakT: peak.t, insulinPeakT: iPeak.t, insulinPeak: iPeak.I, g120: at(120).G, gEnd: run[run.length - 1].G, minG: Math.min(...run.map((r) => r.G)) };
+}
+
+// 表示用の基準（健康な人の空腹時を 1 とする相対値）
+let ref = null;
+function hormoneRef() {
+  if (!ref) {
+    const f = fasting(PRESETS.healthy);
+    ref = { I: f.I, N: f.N };
+  }
+  return ref;
+}
+return { PRESETS, P, sec, low, fasting, simulate, summarize, hormoneRef };
+})();
+
+// ---- dojo/b2.js ----
+__m["dojo/b2.js"] = (function () {
+// B2 血糖値の調節 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { PRESETS, simulate, summarize, hormoneRef } = __m["models/glucose.js"];
+
+const MINUTES = 300;
+
+function at(run, minute) {
+  const i = Math.max(0, Math.min(run.length - 1, Math.round(minute)));
+  return run[i];
+}
+
+const dojo = {
+  tasks: [
+    { id: 'peak', text: '「健康」で、血糖値が最も高くなる時刻に「時刻」スライダーを合わせよう。', short: '血糖値のピークを発見' },
+    { id: 'glucagon', text: '「健康」で、血糖値が空腹時より下がってグルカゴンが増えている時刻を探そう。', short: 'グルカゴンの出番を発見' },
+    { id: 'type1', text: '「1型糖尿病」に切り替えて、インスリンがほとんど増えないことを確かめよう。', short: '1型を確認' },
+    { id: 'sens', text: 'インスリンの分泌能力はそのまま（1.0倍以上）で、効きやすさを0.3倍以下にしてみよう。', short: '効きにくさを体験' },
+  ],
+  mount(root, ctx) {
+    let prm = { ...PRESETS.healthy };
+    let preset = 'healthy';
+    let cursor = 90;
+    const ref = hormoneRef();
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '食後の血糖値とホルモン ', modelNote()));
+    const chart = createChart(top, { label: '食後の血糖値・インスリン・グルカゴンのグラフ', aspect: 0.72 });
+    top.append(
+      legend([
+        { label: '血糖値（左の目盛り）', color: 'c2' },
+        { label: 'インスリン（右の目盛り）', color: 'c1', dash: 'dash' },
+        { label: 'グルカゴン（右の目盛り）', color: 'c3', dash: 'dot' },
+        { label: '健康な人の血糖値（比較）', color: 'muted', dash: 'long' },
+      ]),
+      h('p', { class: 'small muted' }, 'ホルモン量は「健康な人の空腹時＝1」とした相対値。食事は時刻0にとる。'),
+    );
+
+    const seg = segmented({
+      label: 'プリセット',
+      options: [
+        { value: 'healthy', label: '健康' },
+        { value: 'type1', label: '1型糖尿病' },
+        { value: 'type2', label: '2型糖尿病' },
+      ],
+      value: preset,
+      onChange: (v) => {
+        preset = v;
+        prm = { ...prm, cap: PRESETS[v].cap, sens: PRESETS[v].sens };
+        sCap.set(prm.cap, true);
+        sSens.set(prm.sens, true);
+        update();
+      },
+    });
+    const custom = () => {
+      const m = Object.keys(PRESETS).find((k) => Math.abs(PRESETS[k].cap - prm.cap) < 1e-9 && Math.abs(PRESETS[k].sens - prm.sens) < 1e-9);
+      preset = m || 'custom';
+      seg.set(m || null, true);
+    };
+    const sMeal = slider({ label: '食事量', min: 0, max: 2, step: 0.1, value: prm.meal, format: (v) => fmt(v, 1) + ' 倍', onInput: (v) => { prm.meal = v; update(); } });
+    const sCap = slider({ label: 'インスリン分泌能力（B細胞のはたらき）', min: 0, max: 1.5, step: 0.05, value: prm.cap, format: (v) => fmt(v, 2) + ' 倍', onInput: (v) => { prm.cap = v; custom(); update(); } });
+    const sSens = slider({ label: 'インスリンの効きやすさ（受け取る細胞側）', min: 0.1, max: 1.5, step: 0.05, value: prm.sens, format: (v) => fmt(v, 2) + ' 倍', onInput: (v) => { prm.sens = v; custom(); update(); } });
+    const sCur = slider({ label: '時刻（値を読む）', min: 0, max: MINUTES, step: 1, value: cursor, format: (v) => `食後 ${Math.floor(v / 60)}時間${v % 60}分`, onInput: (v) => { cursor = v; update(); } });
+    const readout = h('div', { class: 'small', 'aria-live': 'polite' });
+    const exp = explainBox();
+
+    root.append(panel('操作', seg.el, sMeal.el, sCap.el, sSens.el, sCur.el, readout), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const run = simulate(prm, MINUTES);
+      const sm = summarize(run);
+      const healthyRun = preset === 'healthy' ? null : simulate({ ...PRESETS.healthy, meal: prm.meal }, MINUTES);
+      const cur = at(run, cursor);
+      const toH = (pts) => pts.map(([m, v]) => [m / 60, v]);
+      const gMax = Math.max(300, Math.ceil(sm.peakG / 50) * 50);
+      chart.draw({
+        alt: `血糖値は空腹時 ${fmt(sm.fastingG, 0)}、最大 ${fmt(sm.peakG, 0)} mg/100mL（食後${fmt(sm.peakT, 0)}分）`,
+        x: { min: 0, max: MINUTES / 60, label: '食事からの時間（時間）', step: 1 },
+        y: { min: 0, max: gMax, label: '血糖値（mg/100mL）', step: 50 },
+        y2: { min: 0, max: 8, label: 'ホルモン量（相対値）', step: 2 },
+        hlines: [{ y: 100, color: 'muted', dash: 'dot', label: '空腹時の目安 約100', align: 'right' }],
+        vlines: [{ x: cursor / 60, color: 'fg', dash: 'dash', width: 1.2 }],
+        series: [
+          !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
+          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値' },
+          { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
+          { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
+        ].filter(Boolean),
+        markers: [{ x: cursor / 60, y: cur.G, color: 'c2' }],
+      });
+
+      const Irel = cur.I / ref.I;
+      const Nrel = cur.N / ref.N;
+      readout.replaceChildren(
+        h('b', null, `食後 ${cursor} 分：`),
+        `血糖値 ${fmt(cur.G, 0)} mg/100mL、インスリン ${fmt(Irel, 1)}、グルカゴン ${fmt(Nrel, 1)}（相対値）`,
+      );
+
+      const lines = [];
+      const fast = sm.fastingG;
+      if (cursor < sm.peakT && cur.G > fast + 3) {
+        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が感知し、インスリンの分泌が増えはじめる。');
+      } else if (cur.G > fast + 3) {
+        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。');
+      } else if (cur.G < fast - 3) {
+        lines.push('血糖値が空腹時より下がったので、ランゲルハンス島のA細胞からグルカゴンの分泌が増えている。グルカゴンは肝臓のグリコーゲンの分解を促し、血糖値を元に戻す。');
+      } else {
+        lines.push('血糖値はほぼ一定に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
+      }
+      lines.push(`空腹時 ${fmt(fast, 0)} → 最大 ${fmt(sm.peakG, 0)} mg/100mL（食後 ${fmt(sm.peakT, 0)} 分）。食後2時間で ${fmt(sm.g120, 0)} mg/100mL。`);
+      if (prm.cap < 0.15) {
+        lines.push('インスリンがほとんど分泌されないので（1型糖尿病のような状態）、取り込みが進まず、血糖値が高いまま下がりにくい。1型糖尿病は、免疫のはたらきでB細胞が破壊されることなどで起こり、治療にはインスリンの注射が必要になる。');
+      } else if (sm.peakG >= 180 || sm.fastingG >= 126) {
+        lines.push(`インスリンは分泌されている（最大 ${fmt(sm.insulinPeak / ref.I, 1)}）のに血糖値が高いままになりやすい。インスリンが効きにくい、または分泌量が少ないから（2型糖尿病のような状態）。生活習慣などが関係する。`);
+      } else if (prm.meal === 0) {
+        lines.push('食事をしていないので、血糖値は空腹時の値のまま保たれる。');
+      } else {
+        lines.push('血糖値が上がるとインスリンが増え、下がるとインスリンが減ってグルカゴンが増える。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
+      }
+      exp.set(lines);
+      ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && Math.abs(s.cursor - s.sm.peakT) <= 4;
+dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cur.G < s.sm.fastingG - 3 && s.cur.N / s.ref.N > 1.15;
+dojo.tasks[2].check = (s) => s.preset === 'type1';
+dojo.tasks[3].check = (s) => s.prm.cap >= 1 && s.prm.sens <= 0.3 && s.prm.meal >= 0.5;
+return { dojo };
+})();
+
+// ---- models/immune.js ----
+__m["models/immune.js"] = (function () {
+// B3 免疫の一次応答・二次応答のモデル（抗体量は相対値）
+// 抗原が侵入するたびに、その抗原に対する抗体の産生が起こる。
+//   一次応答：潜伏期が長く（約1週間）、量が少ない
+//   二次応答：同じ抗原の記憶細胞があるとき。立ち上がりが速く、量が非常に多く、長く続く
+// 記憶細胞は抗原ごとに特異的なので、別の抗原Bでは一次応答になる。
+const PRIMARY = { lag: 4, rise: 8, decay: 9, amp: 1 };
+const SECONDARY = { lag: 1.5, rise: 4.5, decay: 30, amp: 100 };
+const FLOOR = 0.01; // 検出限界程度の基礎量
+const MEMORY_DAYS = 7; // 記憶細胞ができるまでの日数（これより前の再侵入は一次応答として扱う）
+
+// 侵入からの経過日数 tau に対する応答の形（最大値1）
+function responseShape(tau, k) {
+  const s = tau - k.lag;
+  if (s <= 0) return 0;
+  if (s < k.rise) return (1 - Math.cos((Math.PI * s) / k.rise)) / 2;
+  return Math.exp(-(s - k.rise) / k.decay);
+}
+
+// exposures: [{ day, antigen: 'A' | 'B' }]
+// 返り値：抗原ごとの抗体量を返す関数
+function antibodyModel(exposures) {
+  const sorted = exposures.slice().sort((a, b) => a.day - b.day);
+  const events = sorted.map((e, i) => {
+    const memory = sorted.slice(0, i).some((p) => p.antigen === e.antigen && e.day - p.day >= MEMORY_DAYS);
+    return { ...e, kind: memory ? 'secondary' : 'primary', k: memory ? SECONDARY : PRIMARY };
+  });
+  return {
+    events,
+    level(antigen, t) {
+      let v = FLOOR;
+      for (const e of events) if (e.antigen === antigen) v += e.k.amp * responseShape(t - e.day, e.k);
+      return v;
+    },
+  };
+}
+
+// 侵入後、抗体量が最大になるまでの日数
+function peakDelay(k) {
+  return k.lag + k.rise;
+}
+return { PRIMARY, SECONDARY, FLOOR, MEMORY_DAYS, responseShape, antibodyModel, peakDelay };
+})();
+
+// ---- lib/series.js ----
+__m["lib/series.js"] = (function () {
+// グラフ用の点列を作る純粋関数（DOM に依存しないので Node の検証でも使える）
+function sample(f, x0, x1, n = 160) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const xv = x0 + ((x1 - x0) * i) / n;
+    pts.push([xv, f(xv)]);
+  }
+  return pts;
+}
+
+// 点列を間引く（表示用）
+function thin(points, maxN = 240) {
+  if (points.length <= maxN) return points;
+  const step = (points.length - 1) / (maxN - 1);
+  const out = [];
+  for (let i = 0; i < maxN; i++) out.push(points[Math.round(i * step)]);
+  return out;
+}
+return { sample, thin };
+})();
+
+// ---- dojo/b3.js ----
+__m["dojo/b3.js"] = (function () {
+// B3 免疫の一次応答・二次応答 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { antibodyModel, peakDelay, PRIMARY, SECONDARY, MEMORY_DAYS } = __m["models/immune.js"];
+const { sample } = __m["lib/series.js"];
+
+const DAYS = 100;
+const MIN_GAP = 10;
+
+const dojo = {
+  tasks: [
+    { id: 'log', text: '縦軸を「対数目盛り」に切り替えて、普通の目盛りでは見えにくい一次応答の山を確かめよう。', short: '対数目盛りで一次応答を確認' },
+    { id: 'diff', text: '2回目を「別の抗原B」にして、抗原Bに対しては一次応答になることを確かめよう。', short: '抗原Bは一次応答' },
+    { id: 'long', text: '2回目の侵入を1回目の50日以上あとにしても、同じ抗原Aなら二次応答が起こることを確かめよう。', short: '記憶は長く残る' },
+  ],
+  mount(root, ctx) {
+    const st = { d1: 5, d2: 40, antigen2: 'A', log: false };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '血液中の抗体量の変化 ', modelNote()));
+    const chart = createChart(top, { label: '抗体量の変化のグラフ' });
+    top.append(legend([
+      { label: '抗原Aに対する抗体', color: 'c1' },
+      { label: '抗原Bに対する抗体', color: 'c2', dash: 'dash' },
+      { label: '抗原の侵入', color: 'muted', dash: 'dash' },
+    ]));
+
+    const segAx = segmented({ label: '縦軸', options: [{ value: false, label: '普通の目盛り' }, { value: true, label: '対数目盛り' }], value: st.log, onChange: (v) => { st.log = v; update(); } });
+    const s1 = slider({ label: '1回目の侵入日（抗原A）', min: 0, max: 30, step: 1, value: st.d1, format: (v) => v + ' 日目', onInput: (v) => {
+      st.d1 = v;
+      if (st.d2 < v + MIN_GAP) { st.d2 = v + MIN_GAP; s2.set(st.d2, true); }
+      update();
+    } });
+    const s2 = slider({ label: '2回目の侵入日', min: MIN_GAP, max: 80, step: 1, value: st.d2, format: (v) => v + ' 日目', onInput: (v) => {
+      st.d2 = Math.max(v, st.d1 + MIN_GAP);
+      if (st.d2 !== v) s2.set(st.d2, true);
+      update();
+    } });
+    const segAg = segmented({ label: '2回目の抗原', options: [{ value: 'A', label: '同じ抗原A' }, { value: 'B', label: '別の抗原B' }], value: st.antigen2, onChange: (v) => { st.antigen2 = v; update(); } });
+    const exp = explainBox();
+    root.append(
+      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あとに設定できる（記憶細胞ができるまでの時間を考えて）。`)),
+      panel('いま何が起きているか', exp.el),
+    );
+
+    function update() {
+      const m = antibodyModel([{ day: st.d1, antigen: 'A' }, { day: st.d2, antigen: st.antigen2 }]);
+      const fA = (t) => m.level('A', t);
+      const fB = (t) => m.level('B', t);
+      const pA1 = fA(st.d1 + peakDelay(PRIMARY));
+      const second = m.events[1];
+      const k2 = second.k;
+      const p2 = second.antigen === 'A' ? fA(st.d2 + peakDelay(k2)) : fB(st.d2 + peakDelay(k2));
+      const y = st.log
+        ? { min: 0.01, max: 1000, log: true, label: '抗体量（相対値・対数）' }
+        : { min: 0, max: 120, step: 20, label: '抗体量（相対値）' };
+      const series = [{ points: sample(fA, 0, DAYS, 400), color: 'c1', width: 3, label: '抗原Aに対する抗体' }];
+      if (st.antigen2 === 'B') series.push({ points: sample(fB, 0, DAYS, 400), color: 'c2', dash: 'dash', width: 3, label: '抗原Bに対する抗体', labelAt: Math.min(DAYS - 8, st.d2 + 14) });
+      chart.draw({
+        alt: `1回目の山 ${fmt(pA1, 1)}、2回目の山 ${fmt(p2, 1)}（相対値）`,
+        x: { min: 0, max: DAYS, label: '日数', step: 10 },
+        y,
+        series,
+        vlines: [
+          { x: st.d1, color: 'muted', label: '1回目 A' },
+          { x: st.d2, color: 'muted', label: `2回目 ${st.antigen2}`, dy: 18 },
+        ],
+      });
+
+      const lines = [];
+      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約${PRIMARY.lag}日かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
+      if (second.kind === 'secondary') {
+        lines.push(`2回目（同じ抗原A）：1回目にできた記憶細胞がすぐに増殖して形質細胞（抗体産生細胞）になるので、約${peakDelay(SECONDARY)}日で最大になり、量は約${fmt(p2 / pA1, 0)}倍（${fmt(p2, 0)}）。これが二次応答で、一次応答より速く、多量の抗体がつくられる。`);
+      } else {
+        lines.push(`2回目（別の抗原B）：抗原Bの記憶細胞はないので、抗原Bに対しては一次応答になる（約${peakDelay(PRIMARY)}日後に最大 ${fmt(p2, 1)}）。記憶細胞は抗原ごとに特異的だから、抗原Aの記憶は抗原Bには役立たない。`);
+      }
+      lines.push(st.log
+        ? '対数目盛りでは、目盛り1つで10倍になる。一次応答と二次応答の差が100倍ほどあることが読み取れる。'
+        : '普通の目盛りでは、二次応答に比べて一次応答の山はとても小さく見える。対数目盛りに切り替えると両方の形がわかる。');
+      lines.push('ワクチンは、無毒化・弱毒化した病原体や抗原を前もって接種して記憶細胞をつくらせ、本物の病原体が侵入したときに二次応答をすばやく起こさせるしくみである。');
+      exp.set(lines);
+      ctx.update({ ...st, kind2: second.kind });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.log;
+dojo.tasks[1].check = (s) => s.antigen2 === 'B';
+dojo.tasks[2].check = (s) => s.antigen2 === 'A' && s.d2 - s.d1 >= 50 && s.kind2 === 'secondary';
+// MEMORY_DAYS（7日）より MIN_GAP（10日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
+if (MIN_GAP < MEMORY_DAYS) throw new Error('MIN_GAP must be >= MEMORY_DAYS');
+return { dojo };
+})();
+
+// ---- models/photosynthesis.js ----
+__m["models/photosynthesis.js"] = (function () {
+// B4 光の強さと光合成
+// 光合成速度 P(I) = Pmax·I / (K + I)、見かけの光合成速度 = P(I) − R（R：呼吸速度）
+// 単位：光の強さ［キロルクス］、速度［CO₂吸収速度の相対値］
+const PLANTS = {
+  sun: { name: '陽生植物', Pmax: 20, K: 6, R: 4 },
+  shade: { name: '陰生植物', Pmax: 6, K: 1.5, R: 0.6 },
+};
+const SAT_FRACTION = 0.9; // 光飽和点の目安：光合成速度が Pmax の90%に達する光の強さ
+
+function gross(p, I) {
+  return (p.Pmax * I) / (p.K + I);
+}
+
+function apparent(p, I) {
+  return gross(p, I) - p.R;
+}
+
+// 補償点：見かけの光合成速度 = 0（光合成速度 = 呼吸速度）
+function compensationPoint(p) {
+  return (p.R * p.K) / (p.Pmax - p.R);
+}
+
+// 光飽和点（このモデルでは Pmax の90%に達する光の強さ）
+function saturationPoint(p) {
+  return (SAT_FRACTION * p.K) / (1 - SAT_FRACTION);
+}
+
+// 2本の見かけの光合成曲線の交点（二分法）
+function crossingPoint(a, b, lo = 0, hi = 100) {
+  const f = (I) => apparent(a, I) - apparent(b, I);
+  let fl = f(lo);
+  if (fl * f(hi) > 0) return null;
+  for (let i = 0; i < 80; i++) {
+    const m = (lo + hi) / 2;
+    const fm = f(m);
+    if (fl * fm <= 0) hi = m;
+    else {
+      lo = m;
+      fl = fm;
+    }
+  }
+  return (lo + hi) / 2;
+}
+return { PLANTS, SAT_FRACTION, gross, apparent, compensationPoint, saturationPoint, crossingPoint };
+})();
+
+// ---- dojo/b4.js ----
+__m["dojo/b4.js"] = (function () {
+// B4 光の強さと光合成（陽生植物・陰生植物）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { PLANTS, apparent, gross, compensationPoint, saturationPoint, crossingPoint } = __m["models/photosynthesis.js"];
+const { sample } = __m["lib/series.js"];
+
+const STYLE = { sun: { color: 'c2', dash: 'solid' }, shade: { color: 'c1', dash: 'dash' } };
+
+function status(p, I) {
+  const a = apparent(p, I);
+  const ic = compensationPoint(p);
+  if (Math.abs(I - ic) < Math.max(0.02, ic * 0.04)) return 'ほぼ補償点：光合成速度と呼吸速度が等しく、見かけ上CO₂の出入りがない';
+  if (a < 0) return '補償点より弱い光：呼吸速度が光合成速度を上回り、CO₂を放出している（光合成は行っている）';
+  if (I >= saturationPoint(p)) return '光飽和点以上：光を強くしても速度はほとんど増えない（CO₂濃度や温度が限定要因）';
+  return '補償点と光飽和点の間：光を強くするほど見かけの光合成速度が大きくなる';
+}
+
+const dojo = {
+  tasks: [
+    { id: 'sunComp', text: '「陽生植物」で、光の強さを補償点（見かけの光合成速度＝0）に合わせよう。', short: '陽生植物の補償点' },
+    { id: 'shadeComp', text: '「陰生植物」で、補償点を探そう（「弱光を拡大」が便利）。', short: '陰生植物の補償点' },
+    { id: 'cross', text: '「両方」で、陰生植物のほうが見かけの光合成速度が大きい光の強さを見つけよう。', short: '弱光では陰生植物が有利' },
+    { id: 'sat', text: '「陽生植物」で、光の強さを光飽和点に合わせよう。', short: '陽生植物の光飽和点' },
+  ],
+  mount(root, ctx) {
+    const st = { show: 'both', I: 10, zoom: false };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '光の強さとCO₂吸収速度 ', modelNote()));
+    const chart = createChart(top, { label: '光の強さと見かけの光合成速度のグラフ', aspect: 0.75 });
+    const leg = h('div');
+    top.append(leg, h('p', { class: 'small muted' }, '光合成速度 P ＝ Pmax·I/(K＋I)、見かけの光合成速度 ＝ P − 呼吸速度。光飽和点は、ここでは光合成速度が最大値の90%に達する光の強さとした。'));
+
+    const segShow = segmented({ label: '表示する植物', options: [{ value: 'sun', label: '陽生植物' }, { value: 'shade', label: '陰生植物' }, { value: 'both', label: '両方' }], value: st.show, onChange: (v) => { st.show = v; update(); } });
+    const segZoom = segmented({ label: '横軸の範囲', options: [{ value: false, label: '全体（0〜60）' }, { value: true, label: '弱光を拡大（0〜6）' }], value: st.zoom, onChange: (v) => {
+      st.zoom = v;
+      sI.input.step = v ? '0.01' : '0.05';
+      sI.setRange(0, v ? 6 : 60);
+      st.I = sI.value;
+      update();
+    } });
+    const sI = slider({ label: '光の強さ', min: 0, max: 60, step: 0.05, value: st.I, format: (v) => fmt(v, 2) + ' キロルクス', onInput: (v) => { st.I = v; update(); } });
+    const readout = h('div', { class: 'small', 'aria-live': 'polite' });
+    const exp = explainBox();
+    root.append(panel('操作', segShow.el, segZoom.el, sI.el, readout), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const xMax = st.zoom ? 6 : 60;
+      const keys = st.show === 'both' ? ['sun', 'shade'] : [st.show];
+      const series = [];
+      const markers = [];
+      const hlines = [];
+      for (const k of keys) {
+        const p = PLANTS[k];
+        series.push({ points: sample((I) => apparent(p, I), 0, xMax, 300), color: STYLE[k].color, dash: STYLE[k].dash, width: 3, label: p.name, legendLabel: p.name + '（見かけの光合成速度）' });
+        const ic = compensationPoint(p);
+        const is = saturationPoint(p);
+        const single = keys.length === 1;
+        markers.push({ x: ic, y: 0, color: STYLE[k].color, label: single || st.zoom ? (single ? '補償点' : `補償点（${p.name.slice(0, 2)}）`) : null, dy: k === 'shade' ? -18 : 0 });
+        if (is <= xMax) markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+        if (keys.length === 1) {
+          series.push({ points: sample((I) => gross(p, I), 0, xMax, 300), color: 'muted', dash: 'dot', width: 2, label: '光合成速度', legendLabel: '光合成速度（見かけ＋呼吸）' });
+          hlines.push({ y: -p.R, color: 'muted', dash: 'dot', label: `呼吸速度 ${fmt(p.R, 1)}（光がなくても続く）` });
+        }
+      }
+      const yMin = keys.includes('sun') ? -6 : -2;
+      const yMax = st.zoom ? (keys.includes('sun') ? 8 : 6) : keys.length === 1 && keys[0] === 'shade' ? 8 : 22;
+      chart.draw({
+        alt: `光の強さ ${fmt(st.I, 2)} キロルクス`,
+        x: { min: 0, max: xMax, label: '光の強さ（キロルクス）', step: st.zoom ? 1 : 10 },
+        y: { min: yMin, max: yMax, label: 'CO₂吸収速度（相対値）', step: 2 },
+        series,
+        markers,
+        hlines,
+        vlines: [{ x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
+      });
+      leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
+
+      const vals = keys.map((k) => ({ k, p: PLANTS[k], a: apparent(PLANTS[k], st.I) }));
+      readout.replaceChildren(...vals.map((v) => h('div', null, h('b', null, v.p.name), `：見かけ ${fmt(v.a, 2)}、光合成 ${fmt(gross(v.p, st.I), 2)}、呼吸 ${fmt(v.p.R, 1)}`)));
+
+      const lines = vals.map((v) => `${v.p.name}：${status(v.p, st.I)}。`);
+      const cross = crossingPoint(PLANTS.sun, PLANTS.shade);
+      if (keys.length === 2) {
+        lines.push(`2本の曲線は約 ${fmt(cross, 1)} キロルクスで交わる。これより弱い光では陰生植物のほうが見かけの光合成速度が大きい。陰生植物は呼吸速度が小さく補償点が低いので、弱い光でも成長できるからである。`);
+      }
+      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 1)} キロルクス。`);
+      if (st.I < 3) {
+        lines.push('森林の林床はこのくらい暗い。陽樹の芽生えは補償点が高く育ちにくいが、陰樹の芽生えは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
+      }
+      exp.set(lines);
+      ctx.update({ ...st, cross });
+    }
+    update();
+    return null;
+  },
+};
+
+const near = (I, x, tol) => Math.abs(I - x) <= tol;
+dojo.tasks[0].check = (s) => s.show !== 'shade' && near(s.I, compensationPoint(PLANTS.sun), 0.1);
+dojo.tasks[1].check = (s) => s.show !== 'sun' && near(s.I, compensationPoint(PLANTS.shade), 0.03);
+dojo.tasks[2].check = (s) => s.show === 'both' && s.I > 0 && s.I < s.cross - 0.05;
+dojo.tasks[3].check = (s) => s.show !== 'shade' && near(s.I, saturationPoint(PLANTS.sun), 1);
+return { dojo };
+})();
+
+// ---- models/keystone.js ----
+__m["models/keystone.js"] = (function () {
+// B5 生態系のバランス（ラッコ・ウニ・ケルプ）
+// ケルプ k：ロジスティック成長し、ウニに食べられる
+// ウニ u ：ケルプを食べて増え、ラッコに食べられる
+// ラッコ o：人間による乱獲（スライダー）で外から決める
+//   dk/dt = rk·k(1 − k) − a·k·u
+//   du/dt = b·a·k·u − c·u·o − m·u
+// 量はすべて相対値。ラッコの数が変わる時刻 tHunt 以降、ラッコは新しい値へなめらかに移る。
+const K = { rk: 0.5, a: 1, b: 0.6, c: 0.4, m: 0.1 };
+
+function otterAt(t, o0, o1, tHunt, tau = 3) {
+  if (t <= tHunt) return o0;
+  return o1 + (o0 - o1) * Math.exp(-(t - tHunt) / tau);
+}
+
+// 平衡状態（ラッコの量 o のとき）
+function equilibrium(o) {
+  let k = (K.c * o + K.m) / (K.b * K.a);
+  if (k >= 1) return { k: 1, u: 0 };
+  return { k, u: (K.rk * (1 - k)) / K.a };
+}
+
+function simulate({ o0 = 1, o1 = 1, tHunt = 20, tEnd = 150, dt = 0.1 } = {}) {
+  const e = equilibrium(o0);
+  let k = e.k;
+  let u = Math.max(e.u, 0.02);
+  const out = [];
+  const f = (t, k_, u_) => {
+    const o = otterAt(t, o0, o1, tHunt);
+    return [K.rk * k_ * (1 - k_) - K.a * k_ * u_, K.b * K.a * k_ * u_ - K.c * u_ * o - K.m * u_];
+  };
+  const every = Math.round(0.5 / dt);
+  let i = 0;
+  for (let t = 0; t <= tEnd + 1e-9; t += dt, i++) {
+    if (i % every === 0) out.push({ t, k, u, o: otterAt(t, o0, o1, tHunt) });
+    const [a1, b1] = f(t, k, u);
+    const [a2, b2] = f(t + dt / 2, k + (a1 * dt) / 2, u + (b1 * dt) / 2);
+    const [a3, b3] = f(t + dt / 2, k + (a2 * dt) / 2, u + (b2 * dt) / 2);
+    const [a4, b4] = f(t + dt, k + a3 * dt, u + b3 * dt);
+    k += (dt / 6) * (a1 + 2 * a2 + 2 * a3 + a4);
+    u += (dt / 6) * (b1 + 2 * b2 + 2 * b3 + b4);
+    k = Math.max(k, 1e-6);
+    u = Math.max(u, 1e-6);
+  }
+  return out;
+}
+
+// 表示用の相対値（0〜100）
+const SCALE = { k: 100, u: 150, o: 100 };
+return { K, otterAt, equilibrium, simulate, SCALE };
+})();
+
+// ---- dojo/b5.js ----
+__m["dojo/b5.js"] = (function () {
+// B5 生態系のバランス（キーストーン種）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { simulate, SCALE } = __m["models/keystone.js"];
+
+const T_HUNT = 20;
+const T_END = 150;
+
+const dojo = {
+  tasks: [
+    { id: 'half', text: '乱獲でラッコを半分以下に減らし、ウニが増えることを確かめよう。', short: 'ウニの増加を確認' },
+    { id: 'collapse', text: 'ラッコをほぼ0（10%以下）にして、ケルプが元の半分以下になるのを見よう。', short: 'ケルプの森の消失' },
+    { id: 'restore', text: 'いったん減らしたあと、ラッコを元（100%）に戻して、ケルプの森が保たれることを確かめよう。', short: 'バランスの回復' },
+  ],
+  mount(root, ctx) {
+    const st = { o1: 0.7, changed: true };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'ラッコ・ウニ・ケルプの個体数 ', modelNote()));
+    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの個体数の変化のグラフ' });
+    top.append(
+      legend([
+        { label: 'ラッコ', color: 'c4', dash: 'dashdot' },
+        { label: 'ウニ', color: 'c2', dash: 'dash' },
+        { label: 'ケルプ（海藻）', color: 'c3' },
+      ]),
+      h('p', { class: 'small muted' }, `個体数は相対値。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
+    );
+    const sO = slider({ label: '乱獲後のラッコの数（元を100%として）', min: 0, max: 100, step: 5, value: 70, format: (v) => v + '%', onInput: (v) => {
+      st.o1 = v / 100;
+      if (v < 100) st.changed = true;
+      update();
+    } });
+    const exp = explainBox();
+    root.append(panel('操作', sO.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const run = simulate({ o0: 1, o1: st.o1, tHunt: T_HUNT, tEnd: T_END });
+      const before = run.find((r) => r.t >= T_HUNT - 1);
+      const end = run[run.length - 1];
+      const series = [
+        { points: run.map((r) => [r.t, r.o * SCALE.o]), color: 'c4', dash: 'dashdot', width: 3, label: 'ラッコ' },
+        { points: run.map((r) => [r.t, r.u * SCALE.u]), color: 'c2', dash: 'dash', width: 3, label: 'ウニ' },
+        { points: run.map((r) => [r.t, r.k * SCALE.k]), color: 'c3', width: 3, label: 'ケルプ' },
+      ];
+      chart.draw({
+        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}`,
+        x: { min: 0, max: T_END, label: '時間（年）', step: 25 },
+        y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+        series,
+        vlines: st.o1 < 1 ? [{ x: T_HUNT, color: 'muted', label: '乱獲' }] : [],
+      });
+      const du = end.u / before.u;
+      const dk = end.k / before.k;
+      const lines = [];
+      if (st.o1 >= 0.999) {
+        lines.push('ラッコがウニを食べているので、ウニは少なく保たれ、ケルプ（海藻）の森が豊かに保たれている。');
+        lines.push('ラッコの数は多くないが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
+      } else {
+        lines.push(`ラッコが ${fmt(st.o1 * 100, 0)}% に減ると、食べられる量が減ったウニが増え（約${fmt(du, 1)}倍）、そのウニに食べられてケルプが減る（約${fmt(dk * 100, 0)}%に）。`);
+        lines.push('ラッコはケルプを直接食べないのに、ウニを介してケルプの量に影響している。このような影響を間接効果という。ケルプの森をすみかや産卵場所にする魚などにも影響が広がる。');
+        if (st.o1 <= 0.1) lines.push('ラッコがほとんどいなくなると、ケルプの森は大きく失われ、ウニばかりの海（磯焼けのような状態）になる。');
+      }
+      exp.set(lines);
+      ctx.update({ ...st, du, dk });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.o1 <= 0.5 && s.du > 1;
+dojo.tasks[1].check = (s) => s.o1 <= 0.1 && s.dk <= 0.5;
+dojo.tasks[2].check = (s) => s.changed && s.o1 >= 1;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
-const DOJOS = {};
+const { dojo: b1 } = __m["dojo/b1.js"];
+const { dojo: b2 } = __m["dojo/b2.js"];
+const { dojo: b3 } = __m["dojo/b3.js"];
+const { dojo: b4 } = __m["dojo/b4.js"];
+const { dojo: b5 } = __m["dojo/b5.js"];
+
+const DOJOS = { b1, b2, b3, b4, b5 };
 return { DOJOS };
 })();
 
@@ -1254,109 +2452,6 @@ function renderHome(app) {
   select(tab);
 }
 return { renderHome };
-})();
-
-// ---- dojo/common.js ----
-__m["dojo/common.js"] = (function () {
-// 図解道場の共通部品（スライダー・切替ボタン・解説欄）
-const { h } = __m["lib/dom.js"];
-
-let uid = 0;
-
-// キーボード操作できるネイティブのスライダー
-function slider({ label, min, max, step = 1, value, format = (v) => String(v), onInput }) {
-  const id = 'sl-' + ++uid;
-  const out = h('output', { for: id, 'aria-live': 'off' }, format(value));
-  const input = h('input', { type: 'range', id, min, max, step, value });
-  const el = h('div', { class: 'control' }, h('label', { for: id }, label), out, input);
-  const ctl = {
-    el,
-    input,
-    get value() {
-      return Number(input.value);
-    },
-    set(v, silent) {
-      input.value = String(v);
-      out.textContent = format(Number(input.value));
-      input.setAttribute('aria-valuetext', out.textContent);
-      if (!silent && onInput) onInput(Number(input.value));
-    },
-    setRange(lo, hi) {
-      input.min = String(lo);
-      input.max = String(hi);
-      ctl.set(Math.min(hi, Math.max(lo, ctl.value)), true);
-    },
-  };
-  input.setAttribute('aria-valuetext', out.textContent);
-  input.addEventListener('input', () => {
-    out.textContent = format(Number(input.value));
-    input.setAttribute('aria-valuetext', out.textContent);
-    if (onInput) onInput(Number(input.value));
-  });
-  return ctl;
-}
-
-// 切替ボタン（aria-pressed で状態を示す）
-function segmented({ label, options, value, onChange }) {
-  const group = h('div', { class: 'seg', role: 'group', 'aria-label': label });
-  const btns = options.map((o) =>
-    h('button', { type: 'button', 'aria-pressed': o.value === value ? 'true' : 'false', onclick: () => ctl.set(o.value) }, o.label),
-  );
-  group.append(...btns);
-  const ctl = {
-    el: h('div', null, label ? h('div', { class: 'small muted', 'aria-hidden': 'true' }, label) : null, group),
-    value,
-    set(v, silent) {
-      ctl.value = v;
-      btns.forEach((b, i) => b.setAttribute('aria-pressed', options[i].value === v ? 'true' : 'false'));
-      if (!silent && onChange) onChange(v);
-    },
-  };
-  return ctl;
-}
-
-// 「いま何が起きているか」欄。文章はスライダーの値に応じて書き換える
-function explainBox() {
-  const el = h('div', { class: 'explain', 'aria-live': 'polite' });
-  return {
-    el,
-    set(paragraphs) {
-      el.replaceChildren(...paragraphs.filter(Boolean).map((t) => h('p', null, t)));
-    },
-  };
-}
-
-function panel(title, ...children) {
-  return h('section', { class: 'panel' }, title ? h('h2', null, title) : null, ...children);
-}
-
-function modelNote(text = 'モデルによる模式図') {
-  return h('span', { class: 'badge-model' }, text);
-}
-return { slider, segmented, explainBox, panel, modelNote };
-})();
-
-// ---- lib/series.js ----
-__m["lib/series.js"] = (function () {
-// グラフ用の点列を作る純粋関数（DOM に依存しないので Node の検証でも使える）
-function sample(f, x0, x1, n = 160) {
-  const pts = [];
-  for (let i = 0; i <= n; i++) {
-    const xv = x0 + ((x1 - x0) * i) / n;
-    pts.push([xv, f(xv)]);
-  }
-  return pts;
-}
-
-// 点列を間引く（表示用）
-function thin(points, maxN = 240) {
-  if (points.length <= maxN) return points;
-  const step = (points.length - 1) / (maxN - 1);
-  const out = [];
-  for (let i = 0; i < maxN; i++) out.push(points[Math.round(i * step)]);
-  return out;
-}
-return { sample, thin };
 })();
 
 // ---- ui/dojo.js ----
