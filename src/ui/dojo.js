@@ -4,14 +4,14 @@ import { stageById } from '../stages.js';
 import { getProgress, markVisited, markTask } from '../progress.js';
 import { DOJOS } from '../dojo/index.js';
 import { GENERATORS } from '../questions/index.js';
-import { createChart, legendFromSpec } from '../lib/chart.js';
 import { panel, modelNote } from '../dojo/common.js';
-import { sample } from '../lib/series.js';
+import { checkBadges } from '../badges.js';
 
 export function renderDojo(app, stageId, ...args) {
   const stage = stageById(stageId);
   const dojo = DOJOS[stageId];
   markVisited(stageId);
+  checkBadges();
 
   app.append(
     h('div', { class: 'hero' },
@@ -21,19 +21,7 @@ export function renderDojo(app, stageId, ...args) {
   );
 
   if (!dojo) {
-    const p = panel('準備中', h('p', { class: 'muted' }, 'このステージの図解道場は準備中です。グラフ部品の表示確認用の図を示します。'));
-    app.append(p);
-    const chart = createChart(p, { label: '表示確認用グラフ' });
-    const spec = {
-      x: { min: 0, max: 10, label: 'x' },
-      y: { min: 0, max: 1.2, label: 'y', step: 0.2, digits: 1 },
-      series: [
-        { points: sample((x) => x / (2 + x), 0, 10), color: 'c1', label: '系列1' },
-        { points: sample((x) => 0.5 * x / (0.6 + x), 0, 10), color: 'c2', dash: 'dash', label: '系列2' },
-      ],
-    };
-    chart.draw(spec);
-    p.append(legendFromSpec(spec));
+    app.append(panel('準備中', h('p', { class: 'muted' }, 'このステージの図解道場は準備中です。')));
     return null;
   }
 
@@ -63,6 +51,7 @@ export function renderDojo(app, stageId, ...args) {
           li.classList.add('done');
           li.querySelector('.task-mark').textContent = '✓';
           toast('やってみよう達成：' + (t.short || t.text));
+          checkBadges();
         }
       }
     },

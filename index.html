@@ -5215,6 +5215,73 @@ function renderHome(app) {
 return { renderHome };
 })();
 
+// ---- badges.js ----
+__m["badges.js"] = (function () {
+// 実績バッジ
+const { getProgress, saveProgress } = __m["progress.js"];
+const { STAGES } = __m["stages.js"];
+const { DOJOS } = __m["dojo/index.js"];
+const { toast } = __m["lib/dom.js"];
+
+const sum = (p, k) => Object.values(p.stages).reduce((a, s) => a + s[k], 0);
+const tasksDone = (p, ids) => ids.reduce((a, id) => a + Object.keys(p.stages[id].tasks).filter((t) => DOJOS[id] && DOJOS[id].tasks.some((x) => x.id === t)).length, 0);
+const tasksTotal = (ids) => ids.reduce((a, id) => a + (DOJOS[id] ? DOJOS[id].tasks.length : 0), 0);
+const ids = (course) => STAGES.filter((s) => !course || s.course === course).map((s) => s.id);
+
+// progress(p) は [現在値, 目標値]
+const BADGES = [
+  { id: 'first', icon: '🌱', name: 'はじめの一問', desc: '4択ラッシュで1問解答する', progress: (p) => [sum(p, 'answered'), 1] },
+  { id: 'dojo-all', icon: '🧭', name: '道場めぐり', desc: '全8ステージの図解道場をひらく', progress: (p) => [STAGES.filter((s) => p.stages[s.id].visited > 0).length, STAGES.length] },
+  { id: 'task-10', icon: '🔬', name: 'やってみよう10', desc: '「やってみよう」課題を10個達成する', progress: (p) => [tasksDone(p, ids()), 10] },
+  { id: 'task-basic', icon: '🧪', name: '生物基礎の探究者', desc: '生物基礎（B1〜B5）の「やってみよう」をすべて達成する', progress: (p) => [tasksDone(p, ids('basic')), tasksTotal(ids('basic'))] },
+  { id: 'task-adv', icon: '🧬', name: '生物の探究者', desc: '生物発展（A1〜A3）の「やってみよう」をすべて達成する', progress: (p) => [tasksDone(p, ids('advanced')), tasksTotal(ids('advanced'))] },
+  { id: 'all-stages', icon: '🗺️', name: '全ステージ挑戦', desc: '8ステージすべての4択ラッシュで解答する', progress: (p) => [STAGES.filter((s) => p.stages[s.id].answered > 0).length, STAGES.length] },
+  { id: 'streak-10', icon: '🔥', name: '10連続正解', desc: '4択で10問連続正解する', progress: (p) => [p.bestStreak, 10] },
+  { id: 'streak-30', icon: '⚡', name: '30連続正解', desc: '4択で30問連続正解する', progress: (p) => [p.bestStreak, 30] },
+  { id: 'perfect', icon: '💯', name: 'パーフェクト', desc: '4択ラッシュの1ラウンドを全問正解する', progress: (p) => [p.perfect, 1] },
+  { id: 'hard-10', icon: '⛰️', name: '発展の壁', desc: '★★★発展の問題に10問正解する', progress: (p) => [sum(p, 'hard'), 10] },
+  { id: 'correct-100', icon: '📗', name: '正解100', desc: '4択で通算100問正解する', progress: (p) => [sum(p, 'correct'), 100] },
+  { id: 'correct-500', icon: '📚', name: '正解500', desc: '4択で通算500問正解する', progress: (p) => [sum(p, 'correct'), 500] },
+  {
+    id: 'rate-80',
+    icon: '🏅',
+    name: '安定した理解',
+    desc: '全8ステージでそれぞれ10問以上解答し、どのステージも正答率80%以上にする',
+    progress: (p) => [STAGES.filter((s) => p.stages[s.id].answered >= 10 && p.stages[s.id].correct / p.stages[s.id].answered >= 0.8).length, STAGES.length],
+  },
+  { id: 'summary', icon: '📝', name: '提出の準備', desc: 'ミスサマリーを画像として保存する', progress: (p) => [p.flags.savedSummary ? 1 : 0, 1] },
+  { id: 'transfer', icon: '🔑', name: '引き継ぎの鍵', desc: '引き継ぎコードを作成する、または読み込む', progress: (p) => [p.flags.transfer ? 1 : 0, 1] },
+];
+
+function earned(p, b) {
+  const [cur, goal] = b.progress(p);
+  return goal > 0 && cur >= goal;
+}
+
+// 新しく獲得したバッジを記録して返す（DOM がない環境ではトーストを出さない）
+function evaluate(p, now = Date.now()) {
+  const fresh = [];
+  for (const b of BADGES) {
+    if (!p.badges[b.id] && earned(p, b)) {
+      p.badges[b.id] = now;
+      fresh.push(b);
+    }
+  }
+  return fresh;
+}
+
+function checkBadges() {
+  const p = getProgress();
+  const fresh = evaluate(p);
+  if (fresh.length) {
+    saveProgress();
+    toast('🏅 バッジ獲得：' + fresh.map((b) => b.name).join('、'), 3600);
+  }
+  return fresh;
+}
+return { BADGES, earned, evaluate, checkBadges };
+})();
+
 // ---- ui/dojo.js ----
 __m["ui/dojo.js"] = (function () {
 // 図解道場の画面枠：シミュレーター本体＋「やってみよう」課題
@@ -5223,14 +5290,14 @@ const { stageById } = __m["stages.js"];
 const { getProgress, markVisited, markTask } = __m["progress.js"];
 const { DOJOS } = __m["dojo/index.js"];
 const { GENERATORS } = __m["questions/index.js"];
-const { createChart, legendFromSpec } = __m["lib/chart.js"];
 const { panel, modelNote } = __m["dojo/common.js"];
-const { sample } = __m["lib/series.js"];
+const { checkBadges } = __m["badges.js"];
 
 function renderDojo(app, stageId, ...args) {
   const stage = stageById(stageId);
   const dojo = DOJOS[stageId];
   markVisited(stageId);
+  checkBadges();
 
   app.append(
     h('div', { class: 'hero' },
@@ -5240,19 +5307,7 @@ function renderDojo(app, stageId, ...args) {
   );
 
   if (!dojo) {
-    const p = panel('準備中', h('p', { class: 'muted' }, 'このステージの図解道場は準備中です。グラフ部品の表示確認用の図を示します。'));
-    app.append(p);
-    const chart = createChart(p, { label: '表示確認用グラフ' });
-    const spec = {
-      x: { min: 0, max: 10, label: 'x' },
-      y: { min: 0, max: 1.2, label: 'y', step: 0.2, digits: 1 },
-      series: [
-        { points: sample((x) => x / (2 + x), 0, 10), color: 'c1', label: '系列1' },
-        { points: sample((x) => 0.5 * x / (0.6 + x), 0, 10), color: 'c2', dash: 'dash', label: '系列2' },
-      ],
-    };
-    chart.draw(spec);
-    p.append(legendFromSpec(spec));
+    app.append(panel('準備中', h('p', { class: 'muted' }, 'このステージの図解道場は準備中です。')));
     return null;
   }
 
@@ -5282,6 +5337,7 @@ function renderDojo(app, stageId, ...args) {
           li.classList.add('done');
           li.querySelector('.task-mark').textContent = '✓';
           toast('やってみよう達成：' + (t.short || t.text));
+          checkBadges();
         }
       }
     },
@@ -5301,15 +5357,6 @@ function renderDojo(app, stageId, ...args) {
   return cleanup;
 }
 return { renderDojo };
-})();
-
-// ---- badges.js ----
-__m["badges.js"] = (function () {
-// 実績バッジ（M5 で実装）
-function checkBadges() {
-  return [];
-}
-return { checkBadges };
 })();
 
 // ---- ui/rush.js ----
@@ -5840,6 +5887,224 @@ function renderGlossary(app, stageId) {
 return { renderGlossary };
 })();
 
+// ---- ui/badges.js ----
+__m["ui/badges.js"] = (function () {
+// 実績バッジ一覧
+const { h } = __m["lib/dom.js"];
+const { getProgress } = __m["progress.js"];
+const { BADGES, checkBadges } = __m["badges.js"];
+
+function dateText(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function renderBadges(app) {
+  checkBadges();
+  const p = getProgress();
+  const got = BADGES.filter((b) => p.badges[b.id]).length;
+  app.append(
+    h('div', { class: 'hero' }, h('h1', null, '実績バッジ'), h('p', { class: 'small muted' }, `${got} / ${BADGES.length} 個獲得`)),
+    h('div', { class: 'badges' }, ...BADGES.map((b) => {
+      const on = !!p.badges[b.id];
+      const [cur, goal] = b.progress(p);
+      return h('div', { class: 'badge' + (on ? '' : ' locked'), role: 'group', 'aria-label': `${b.name}：${on ? '獲得済み' : '未獲得'}` },
+        h('span', { class: 'icon', 'aria-hidden': 'true' }, b.icon),
+        h('span', { class: 'name' }, b.name),
+        h('span', { class: 'small muted' }, b.desc),
+        h('span', { class: 'state' }, on ? `✓ 獲得（${dateText(p.badges[b.id])}）` : `未獲得（${Math.min(cur, goal)} / ${goal}）`),
+      );
+    })),
+    h('div', { class: 'row', style: { marginTop: '12px' } }, h('a', { class: 'btn grow', href: '#/transfer' }, '引き継ぎコード・設定'), h('a', { class: 'btn grow', href: '#/home' }, 'ホーム')),
+  );
+  return null;
+}
+return { renderBadges };
+})();
+
+// ---- transfer.js ----
+__m["transfer.js"] = (function () {
+// 引き継ぎコード：端末内の進捗を文字列にして、別の端末で読み込めるようにする
+// （通信はしない。コードを自分で書き写す・コピーする）
+const { normalize, emptyProgress } = __m["progress.js"];
+const { STAGES } = __m["stages.js"];
+
+const PREFIX = 'BIO1';
+const KEYS = ['visited', 'answered', 'correct', 'hard', 'best'];
+
+function checksum(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) % 0x10000).toString(16).toUpperCase().padStart(4, '0');
+}
+
+function toBase64Url(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(s) {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function encodeProgress(p) {
+  const data = {
+    s: Object.fromEntries(STAGES.map((st) => {
+      const x = p.stages[st.id];
+      return [st.id, [...KEYS.map((k) => x[k]), Object.keys(x.tasks)]];
+    })),
+    k: [p.streak, p.bestStreak, p.rounds, p.perfect],
+    m: p.misses.slice(-30).map((m) => [m.g, m.s, m.c]),
+    b: Object.keys(p.badges),
+    f: Object.keys(p.flags),
+  };
+  const body = toBase64Url(JSON.stringify(data));
+  return `${PREFIX}-${checksum(body)}-${body}`;
+}
+
+// 失敗したときは Error（メッセージは画面にそのまま出せる日本語）を投げる
+function decodeProgress(code) {
+  const clean = String(code || '').replace(/\s+/g, '');
+  const m = clean.match(/^BIO1-([0-9A-F]{4})-([A-Za-z0-9_-]+)$/);
+  if (!m) throw new Error('引き継ぎコードの形式が正しくありません（BIO1- で始まるコードを全部貼り付けてください）。');
+  if (checksum(m[2]) !== m[1]) throw new Error('コードの一部が欠けているか、まちがっています。もう一度コピーしてください。');
+  let data;
+  try {
+    data = JSON.parse(fromBase64Url(m[2]));
+  } catch (e) {
+    throw new Error('コードを読み取れませんでした。');
+  }
+  const p = emptyProgress();
+  for (const st of STAGES) {
+    const row = data.s && data.s[st.id];
+    if (!Array.isArray(row)) continue;
+    KEYS.forEach((k, i) => (p.stages[st.id][k] = Number(row[i]) || 0));
+    const tasks = Array.isArray(row[KEYS.length]) ? row[KEYS.length] : [];
+    for (const t of tasks) p.stages[st.id].tasks[String(t)] = 1;
+  }
+  const k = Array.isArray(data.k) ? data.k : [];
+  [p.streak, p.bestStreak, p.rounds, p.perfect] = [0, 1, 2, 3].map((i) => Number(k[i]) || 0);
+  const now = Date.now();
+  p.misses = (Array.isArray(data.m) ? data.m : []).map(([g, s, c]) => ({ g: String(g), s: Number(s) >>> 0, c: Number(c) || 0, st: String(g).split('-')[0], t: now }));
+  for (const b of Array.isArray(data.b) ? data.b : []) p.badges[String(b)] = now;
+  for (const f of Array.isArray(data.f) ? data.f : []) p.flags[String(f)] = 1;
+  return normalize(p);
+}
+return { encodeProgress, decodeProgress };
+})();
+
+// ---- ui/transfer.js ----
+__m["ui/transfer.js"] = (function () {
+// 引き継ぎコード・設定
+const { h, toast } = __m["lib/dom.js"];
+const { getProgress, replaceProgress, setFlag, emptyProgress } = __m["progress.js"];
+const { encodeProgress, decodeProgress } = __m["transfer.js"];
+const { checkBadges } = __m["badges.js"];
+const { storageAvailable } = __m["lib/storage.js"];
+const { currentTheme, setTheme, themeName } = __m["lib/theme.js"];
+const { segmented } = __m["dojo/common.js"];
+
+async function copyText(text, area) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    try {
+      area.focus();
+      area.select();
+      return document.execCommand('copy');
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+
+function renderTransfer(app) {
+  const outArea = h('textarea', { class: 'code', readonly: true, 'aria-label': 'あなたの引き継ぎコード', id: 'code-out' });
+  const inArea = h('textarea', { class: 'code', 'aria-label': '読み込む引き継ぎコード', id: 'code-in', placeholder: 'BIO1- で始まるコードを貼り付ける' });
+  const msg = h('div', { 'aria-live': 'polite', class: 'small' });
+  const build = window.__BIOLOGY_BUILD__ || {};
+
+  const theme = segmented({
+    label: '表示テーマ',
+    options: ['auto', 'light', 'dark'].map((t) => ({ value: t, label: themeName(t).replace('（端末の設定に合わせる）', '') })),
+    value: currentTheme(),
+    onChange: (v) => {
+      setTheme(v);
+      toast('表示：' + themeName(v));
+    },
+  });
+
+  app.append(
+    h('div', { class: 'hero' }, h('h1', null, '引き継ぎ・設定')),
+    storageAvailable() ? null : h('div', { class: 'panel' }, h('b', null, 'この端末（ブラウザ）では学習記録を保存できません。'), h('p', { class: 'small' }, 'プライベートモードなどでは、画面を閉じると記録が消えます。引き継ぎコードを作ってメモしておくと、あとで続きから再開できます。')),
+    h('section', { class: 'panel' },
+      h('h2', null, '引き継ぎコードを作る'),
+      h('p', { class: 'small muted' }, '進捗・やってみよう・バッジ・ミスサマリー（最新30問）をコードにする。コードは通信せず、この画面に表示するだけ。別の端末の「読み込む」に貼り付けると続きから使える。'),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'btn primary grow', onclick: () => {
+          outArea.value = encodeProgress(getProgress());
+          setFlag('transfer');
+          checkBadges();
+        } }, 'コードを作成'),
+        h('button', { type: 'button', class: 'btn grow', onclick: async () => {
+          if (!outArea.value) outArea.value = encodeProgress(getProgress());
+          toast((await copyText(outArea.value, outArea)) ? 'コピーしました' : 'コピーできませんでした。手で選択してコピーしてください');
+        } }, 'コピー'),
+      ),
+      h('div', { class: 'field' }, outArea),
+    ),
+    h('section', { class: 'panel' },
+      h('h2', null, '引き継ぎコードを読み込む'),
+      h('p', { class: 'small muted' }, '読み込むと、この端末の記録はコードの内容に置きかわる。'),
+      h('div', { class: 'field' }, inArea),
+      h('button', { type: 'button', class: 'btn primary block', onclick: () => {
+        let p;
+        try {
+          p = decodeProgress(inArea.value);
+        } catch (e) {
+          msg.textContent = e.message;
+          return;
+        }
+        if (!window.confirm('この端末の記録を、引き継ぎコードの内容に置きかえますか？')) return;
+        p.flags.transfer = 1;
+        replaceProgress(p);
+        checkBadges();
+        const ans = Object.values(p.stages).reduce((a, s) => a + s.answered, 0);
+        msg.textContent = `読み込みました（解答 ${ans}問、バッジ ${Object.keys(p.badges).length}個）。`;
+        inArea.value = '';
+      } }, '読み込む'),
+      msg,
+    ),
+    h('section', { class: 'panel' }, h('h2', null, '表示'), theme.el, h('p', { class: 'small muted' }, '右上の ◐ ボタンでも切り替えられる。')),
+    h('section', { class: 'panel' },
+      h('h2', null, '記録の消去'),
+      h('button', { type: 'button', class: 'btn ghost block', onclick: () => {
+        if (!window.confirm('この端末の学習記録（進捗・バッジ・ミスサマリー）をすべて消去しますか？\n元に戻せません。')) return;
+        replaceProgress(emptyProgress());
+        toast('記録を消去しました');
+      } }, 'すべての記録を消去'),
+    ),
+    h('section', { class: 'panel small muted' },
+      h('h2', null, 'このアプリについて'),
+      h('p', null, `BIOLOGY 生物シミュレーター　バージョン ${build.version || '-'}（${build.date || '-'}）`),
+      h('p', null, '完全オフラインで動作し、成績・氏名などをどこにも送信しない。学習記録はこの端末のブラウザ内（localStorage）にだけ保存される。グラフはすべてモデルによる模式図で、定性的な形を示すものである。'),
+    ),
+  );
+  return null;
+}
+return { renderTransfer };
+})();
+
 // ---- main.js ----
 __m["main.js"] = (function () {
 // エントリーポイント：画面の切替（ハッシュルーター）
@@ -5850,6 +6115,8 @@ const { renderDojo } = __m["ui/dojo.js"];
 const { renderRush } = __m["ui/rush.js"];
 const { renderMiss } = __m["ui/miss.js"];
 const { renderGlossary } = __m["ui/glossary.js"];
+const { renderBadges } = __m["ui/badges.js"];
+const { renderTransfer } = __m["ui/transfer.js"];
 const { stageById } = __m["stages.js"];
 
 const app = document.getElementById('app');
@@ -5866,6 +6133,8 @@ const ROUTES = {
   rush: (id) => renderRush(app, id || ''),
   miss: () => renderMiss(app),
   glossary: (id) => renderGlossary(app, id),
+  badges: () => renderBadges(app),
+  transfer: () => renderTransfer(app),
 };
 
 function route() {

@@ -6,6 +6,8 @@ import { renderDojo } from './ui/dojo.js';
 import { renderRush } from './ui/rush.js';
 import { renderMiss } from './ui/miss.js';
 import { renderGlossary } from './ui/glossary.js';
+import { renderBadges } from './ui/badges.js';
+import { renderTransfer } from './ui/transfer.js';
 import { stageById } from './stages.js';
 
 const app = document.getElementById('app');
@@ -22,6 +24,8 @@ const ROUTES = {
   rush: (id) => renderRush(app, id || ''),
   miss: () => renderMiss(app),
   glossary: (id) => renderGlossary(app, id),
+  badges: () => renderBadges(app),
+  transfer: () => renderTransfer(app),
 };
 
 function route() {
