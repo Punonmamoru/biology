@@ -268,7 +268,7 @@ section('B8 バイオーム');
   check('図の区画（多角形）と判定（classify）が一致する（格子点で重なり・すき間なし）', agree === total, `${agree}/${total} ${bad}`);
   // 森林と草原の境界がなめらか（気温0.1℃ごとに、森林になる最小の降水量の変化が小さい）
   const forestFrom = (T) => {
-    for (let P = 0; P <= bi.pEnvelope(T); P += 5) {
+    for (let P = 0; P <= bi.pEnvelope(T); P += 1) {
       const c = bi.classify(T, P);
       if (c && bi.BIOMES[c].kind === '森林') return P;
     }
@@ -284,6 +284,17 @@ section('B8 バイオーム');
     prev = cur;
   }
   check('森林と草原の境界は連続（気温0.1℃あたりの変化が15 mm以下。20℃付近でも段差がない）', maxJump <= 15, `最大の変化 ${maxJump} mm（${f(jumpAt, 1)}℃付近）、20℃で ${forestFrom(19.9)} → ${forestFrom(20.1)} mm`);
+  // 折れ曲がりがない（0.5℃ごとの区間の傾きの変化が小さい）＝なめらかな曲線
+  const gc = bi.GRASS_CURVE;
+  let maxBend = 0;
+  let bendAt = 0;
+  for (let i = 1; i < gc.length - 1; i++) {
+    const s0 = (gc[i][1] - gc[i - 1][1]) / (gc[i][0] - gc[i - 1][0]);
+    const s1 = (gc[i + 1][1] - gc[i][1]) / (gc[i + 1][0] - gc[i][0]);
+    if (Math.abs(s1 - s0) > maxBend) { maxBend = Math.abs(s1 - s0); bendAt = gc[i][0]; }
+  }
+  const mono = gc.every((p, i) => i === 0 || p[1] >= gc[i - 1][1]);
+  check('森林と草原の境界はなめらかな曲線（0.5℃ごとの傾きの変化が 25 mm/℃ 以下で折れ曲がりがなく、気温とともに単調に増える）', maxBend <= 25 && mono, `傾きの変化の最大 ${f(maxBend, 1)} mm/℃（${f(bendAt, 1)}℃付近）`);
   let agree2 = 0;
   let total2 = 0;
   for (let T = 19.05; T < 21; T += 0.1) {

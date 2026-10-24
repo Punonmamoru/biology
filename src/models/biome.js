@@ -21,20 +21,51 @@ export const BIOMES = {
 // 境界線（気温 T の関数）
 export const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂漠
 // 森林と草原の境界（これより少ないと草原）。気温が高いほど蒸発が多いので、森林に必要な降水量が多くなる。
-// 折れ線の頂点を結ぶ連続した境界にする（20℃付近でも段差なく、なめらかに上がる）。
+// 目安の点（GRASS_KNOTS）を単調な3次曲線（フリッチュ・カールソン法）でなめらかにつなぐ。
+// 段差も折れ曲がりもない曲線を 0.5℃ ごとの点（GRASS_CURVE）にして、判定と図の両方がこの点列を使う（図と判定が必ず一致する）。
 // 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
 export const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
-export function pGrass(T) {
-  const k = GRASS_KNOTS;
-  if (T <= k[0][0]) return k[0][1];
-  for (let i = 1; i < k.length; i++) {
-    if (T <= k[i][0]) {
-      const [t0, p0] = k[i - 1];
-      const [t1, p1] = k[i];
-      return p0 + ((p1 - p0) * (T - t0)) / (t1 - t0);
+function monotoneCubic(knots) {
+  const n = knots.length;
+  const h = [];
+  const d = [];
+  for (let i = 0; i < n - 1; i++) {
+    h.push(knots[i + 1][0] - knots[i][0]);
+    d.push((knots[i + 1][1] - knots[i][1]) / h[i]);
+  }
+  const m = [d[0]];
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) m.push(0);
+    else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      m.push((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]));
     }
   }
-  return k[k.length - 1][1];
+  m.push(d[n - 2]);
+  return (T) => {
+    let i = 0;
+    while (i < n - 2 && T > knots[i + 1][0]) i++;
+    const t = (T - knots[i][0]) / h[i];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * knots[i][1] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * knots[i + 1][1] + (t3 - t2) * h[i] * m[i + 1];
+  };
+}
+const grassSmooth = monotoneCubic(GRASS_KNOTS);
+export const GRASS_STEP = 0.5;
+export const GRASS_CURVE = [];
+for (let T = GRASS_KNOTS[0][0]; T <= GRASS_KNOTS[GRASS_KNOTS.length - 1][0] + 1e-9; T += GRASS_STEP) {
+  GRASS_CURVE.push([Math.round(T * 10) / 10, Math.round(grassSmooth(T) * 10) / 10]);
+}
+export function pGrass(T) {
+  const k = GRASS_CURVE;
+  if (T <= k[0][0]) return k[0][1];
+  if (T >= k[k.length - 1][0]) return k[k.length - 1][1];
+  const i = Math.min(k.length - 2, Math.floor((T - k[0][0]) / GRASS_STEP));
+  const [t0, p0] = k[i];
+  const [t1, p1] = k[i + 1];
+  return p0 + ((p1 - p0) * (T - t0)) / (t1 - t0);
 }
 export const P_SCLERO = 1200; // 13〜20℃で、これより少ない森林は硬葉樹林
 export const P_RAIN = 2000; // 20℃以上で、これ以上なら多雨林
@@ -62,8 +93,8 @@ export function classify(T, P) {
 
 // 図に描く多角形（classify と同じ境界）。[気温, 降水量] の点列
 const line = (f, t0, t1) => [[t0, f(t0)], [t1, f(t1)]];
-// 森林と草原の境界の折れ線（t0〜t1 の間の頂点を含む）
-const grassLine = (t0, t1) => [t0, ...GRASS_KNOTS.map((k) => k[0]).filter((t) => t > t0 && t < t1), t1].map((t) => [t, pGrass(t)]);
+// 森林と草原の境界の曲線（t0〜t1 の間の 0.5℃ ごとの点を含む）
+const grassLine = (t0, t1) => [t0, ...GRASS_CURVE.map((k) => k[0]).filter((t) => t > t0 && t < t1), t1].map((t) => [t, pGrass(t)]);
 export function polygons() {
   const env = (t0, t1) => line(pEnvelope, t0, t1);
   const rev = (pts) => pts.slice().reverse();

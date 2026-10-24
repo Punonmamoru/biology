@@ -38,7 +38,7 @@ export const dojo = {
     root.append(top);
     top.append(h('h2', null, '年平均気温・年降水量とバイオーム ', modelNote()));
     const chart = createChart(top, { label: 'バイオームの分布図', aspect: 0.95, maxHeight: 540 });
-    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安を直線でつないだ模式。濃い塗りが森林、中間が草原、うすい塗りが荒原。左上の白い部分は、そのような気候の地域がほとんどないことを表す。'));
+    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安をつないだ模式（森林と草原の境界は、気温が高いほど多くの降水量が必要になるなめらかな曲線）。濃い塗りが森林、中間が草原、うすい塗りが荒原。左上の白い部分は、そのような気候の地域がほとんどないことを表す。'));
     const sT = slider({ label: '年平均気温', min: T_MIN, max: T_MAX, step: 0.5, value: st.T, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.T = v; st.city = null; segCity.set(null, true); update(); } });
     const sP = slider({ label: '年降水量', min: 0, max: P_MAX, step: 50, value: st.P, format: (v) => v + ' mm', onInput: (v) => { st.P = v; st.city = null; segCity.set(null, true); update(); } });
     const segCity = segmented({ label: '都市の気候（平年値の概数）', options: CITIES.map((c) => ({ value: c.name, label: c.name })), value: st.city, onChange: (v) => {
