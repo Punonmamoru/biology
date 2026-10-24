@@ -24,7 +24,7 @@ export const dojo = {
   tasks: [
     { id: 'tokyo', text: '都市のボタンで「東京」を選び、東京が照葉樹林の区画に入ることを確かめよう。', short: '東京は照葉樹林' },
     { id: 'dry', text: '年平均気温を24℃以上にしたまま年降水量を減らし、熱帯多雨林 → 雨緑樹林 → サバンナ → 砂漠 と変わるのを確かめよう。', short: '降水量でバイオームが変わる' },
-    { id: 'cold', text: '年降水量を1500 mm以上にしたまま気温を下げ、照葉樹林 → 夏緑樹林 → 針葉樹林 → ツンドラ と変わるのを確かめよう。', short: '気温でバイオームが変わる' },
+    { id: 'cold', text: '年降水量を1200 mm以上にしたまま気温を下げ、照葉樹林 → 夏緑樹林 → 針葉樹林 → ツンドラ と変わるのを確かめよう。', short: '気温でバイオームが変わる' },
     { id: 'alpine', text: '垂直分布で、標高を森林限界より上（高山帯）に合わせよう。', short: '森林限界をこえる' },
   ],
   mount(root, ctx) {
@@ -72,7 +72,7 @@ export const dojo = {
     jp.append(sElev.el, sBase.el, vResult);
 
     // ---- 暖かさの指数 ----
-    const wiPanel = panel('計算：暖かさの指数');
+    const wiPanel = panel('計算：暖かさの指数（発展）');
     root.append(wiPanel);
     const segWI = segmented({ label: '都市', options: Object.keys(MONTHLY).map((k) => ({ value: k, label: k })), value: st.wiCity, onChange: (v) => { st.wiCity = v; update(); } });
     const wiBox = h('div', { 'aria-live': 'polite' });
@@ -103,10 +103,10 @@ export const dojo = {
       else if (BIOMES[b].kind === '森林') lines.push(`年降水量が十分に多いので森林が成立する。森林の種類（${BIOMES[b].name}）は主に気温で決まる。`);
       else if (BIOMES[b].kind === '草原') lines.push(`年降水量が少なく森林が成立しないので、草原（${BIOMES[b].name}）になる。熱帯の草原がサバンナ、温帯の草原がステップで、サバンナには樹木がまばらに生える。`);
       else lines.push(b === 'tundra' ? '年平均気温が非常に低いので、樹木が育たず、コケ植物・地衣類などがまばらに生える荒原（ツンドラ）になる。' : '年降水量が非常に少ないので、乾燥に強い植物がまばらに生える荒原（砂漠）になる。');
-      lines.push('バイオームは、その地域の気候（気温と降水量）に応じて成立する植生と、そこにすむ動物などをまとめたものである。陸上のバイオームは、まず降水量で森林・草原・荒原に分かれ、さらに気温によって分かれる。');
+      lines.push('バイオームは、その地域の気候（気温と降水量）に応じて成立する植生と、そこにすむ動物などをまとめたものである。陸上では、降水量が多いと森林、少ないと草原、非常に少ないか気温が非常に低いと荒原になり、森林や草原の種類は主に気温で決まる。');
       exp.set(lines);
       if (b && st.T >= 24) seenDry.add(b);
-      if (b && st.P >= 1500) seenCold.add(b);
+      if (b && st.P >= 1200) seenCold.add(b);
 
       // 垂直分布
       const bands = VERTICAL.map((v) => {

@@ -295,9 +295,11 @@ section('B9 DNAとタンパク質合成');
   check('図解道場の遺伝子：AUG から翻訳が始まり終止コドンで終わる（アミノ酸8個）', dn.translate(m).stopped && before.length === 8 && before[0] === 'Met');
   const kinds = new Set();
   for (let i = 2; i < 29; i++) for (const b of 'ATGC') if (b !== B9_TEMPLATE[i]) kinds.add(dn.compareProteins(before, dn.aminoSequence(dn.transcribe(dn.substitute(B9_TEMPLATE, i, b)))).kind);
+  const ns = [2, 3, 4].every((i) => [...'ATGC'].filter((b) => b !== B9_TEMPLATE[i]).every((b) => dn.compareProteins(before, dn.aminoSequence(dn.transcribe(dn.substitute(B9_TEMPLATE, i, b)))).kind === 'nostart'));
+  check('開始コドン（AUG）をこわす置換は「翻訳が始まらない」で、「途中で終止」とは区別される', ns);
   check('置換では「変わらない」「1つだけ変わる」「途中で終止」のどれも起こりうる', ['same', 'one', 'shorter'].every((k) => kinds.has(k)), [...kinds].join('・'));
   let shiftOk = true;
-  for (let i = 3; i < 22; i++) {
+  for (let i = 5; i < 22; i++) {
     const c = dn.compareProteins(before, dn.aminoSequence(dn.transcribe(dn.deleteAt(B9_TEMPLATE, i))));
     if (!(c.kind === 'many' || c.kind === 'shorter')) shiftOk = false;
   }

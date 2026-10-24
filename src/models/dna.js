@@ -75,7 +75,9 @@ export function insertAt(seq, pos, base) {
 }
 
 // 2つのアミノ酸配列を比べて、変異の影響を分類する
+// kind：same（変わらない）／one（1つだけ変わる）／shorter（短くなる）／longer（長くなる）／many（2つ以上変わる）／nostart（翻訳が始まらない）
 export function compareProteins(before, after) {
+  if (before.length > 0 && after.length === 0) return { kind: 'nostart', first: 0 };
   const n = Math.min(before.length, after.length);
   let first = -1;
   for (let i = 0; i < n; i++) if (before[i] !== after[i]) { first = i; break; }

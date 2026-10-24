@@ -17,10 +17,10 @@ export const B6 = [
     level: 2,
     kind: 'calc',
     make(rng) {
-      const sL = rng.int(90, 98);
+      const sL = rng.int(90, 95);
       const sT = rng.pick([20, 25, 30, 35, 40, 45, 50]);
       const ans = ((sL - sT) / sL) * 100;
-      const d = distinctNumbers(ans, [sL - sT, (sT / sL) * 100, 100 - sT, ans + 10, ans - 10].filter((v) => v < 100), '%', 0);
+      const d = distinctNumbers(ans, [sL - sT, (sT / sL) * 100, ans + 10, ans - 10, 100 - sT].filter((v) => v < 100 && Math.abs(v - ans) >= 2), '%', 0);
       return {
         text: `肺胞では酸素ヘモグロビンの割合が ${sL}%、ある組織では ${sT}% であった。肺で酸素と結合していたヘモグロビンのうち、この組織で酸素を放出したものは何%か（小数第1位を四捨五入）。`,
         correct: d.correct,
@@ -70,7 +70,7 @@ export const B6 = [
     level: 1,
     kind: 'graph',
     make(rng) {
-      const p = rng.pick([20, 30, 40, 50, 70, 100]);
+      const p = rng.pick([20, 30, 40, 50, 60]);
       const v = saturation(p, LUNG.pCO2);
       const r = Math.round(v / 5) * 5;
       const opts = [r - 40, r - 25, r + 25, r - 15, r + 15].filter((x) => x >= 5 && x <= 100);
@@ -205,7 +205,7 @@ export const B6 = [
       const curve = (shift) => (p) => saturation(p, LUNG.pCO2 + shift);
       const fns = fetalFirst ? [curve(-22), curve(0)] : [curve(0), curve(-22)];
       return {
-        text: '図のア・イは、同じ条件で測定した母親（おとな）のヘモグロビンと胎児のヘモグロビンの酸素解離曲線である。胎盤で母親の血液から胎児の血液へ酸素が渡されることから考えて、胎児のヘモグロビンの曲線はどちらか。',
+        text: '【発展】図のア・イは、同じ条件で測定した母親（おとな）のヘモグロビンと胎児のヘモグロビンの酸素解離曲線である。胎盤で母親の血液から胎児の血液へ酸素が渡されることから考えて、胎児のヘモグロビンの曲線はどちらか。',
         chart: {
           x: { min: 0, max: 100, label: 'O₂分圧（mmHg）', step: 10 },
           y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },

@@ -21,7 +21,7 @@ export const dojo = {
     root.append(top);
     top.append(h('h2', null, '原尿中の量と尿中の量（1日あたり） ', modelNote()));
     const chart = createChart(top, { label: '原尿中と尿中の物質量の棒グラフ', aspect: 0.62 });
-    top.append(h('p', { class: 'small muted' }, '濃度は質量パーセント（%）で、血しょう・原尿・尿の1 mL を 1 g とみなして計算する。数値は教科書の表の目安。'));
+    top.append(h('p', { class: 'small muted' }, '濃度は質量パーセント（%）で、血しょう・原尿・尿の1 mL を 1 g とみなして計算する。数値は教科書の表の目安。尿量とイヌリン濃度は計算の練習のために別々に動かせるが、実際のヒトの原尿量は1日約170〜180 L で、尿量が増えると尿は薄くなる。'));
 
     const sU = slider({ label: '1日の尿量', min: 0.5, max: 3, step: 0.1, value: st.U, format: (v) => fmt(v, 1) + ' L', onInput: (v) => { st.U = v; update(); } });
     const sIn = slider({ label: `尿中のイヌリン濃度（血しょう中は ${DEFAULT.inulinPlasma}%）`, min: 8, max: 24, step: 0.5, value: st.cInUrine, format: (v) => fmt(v, 1) + '%', onInput: (v) => { st.cInUrine = v; update(); } });
@@ -79,7 +79,7 @@ export const dojo = {
           lines.push(`${s.name}：${s.note}。そのため健康な人の原尿・尿にはほとんど含まれない。`);
         }
         if (st.sub === 'glucose') lines.push('グルコースは体に必要な物質なので、細尿管ですべて再吸収される。血糖値が非常に高いと再吸収しきれず、尿中にグルコースが出る（糖尿病で尿糖が出る理由）。');
-        if (st.sub === 'urea') lines.push('尿素は肝臓でアンモニアからつくられる不要な物質である。再吸収されにくく、水が多く再吸収されるので、尿中では血しょう中の約70倍に濃縮される。');
+        if (st.sub === 'urea') lines.push('尿素は肝臓でアンモニアからつくられる不要な物質である。一部は再吸収されるが、水のほうがはるかに多く再吸収されるので、尿中では血しょう中の約67倍に濃縮される。');
       }
       lines.push(`イヌリンはろ過されるが再吸収も分泌もされないので、尿中のイヌリンはすべて原尿に由来する。だから、原尿量 ＝ 尿量 × イヌリンの濃縮率 で原尿量を求められる（いまの設定で ${fmt(F, 0)} L／日）。`);
 
@@ -109,7 +109,7 @@ export const dojo = {
           h('td', null, r.water ? '—' : r.filtrate + '%'),
           h('td', null, r.water ? '—' : (r.inulin ? fmt(st.cInUrine, 1) : r.urine) + '%'),
           h('td', null, r.water ? '—' : r.inulin ? fmt(ratioIn, 0) : fmt(r.ratio, r.ratio < 10 ? 1 : 0)),
-          h('td', null, r.inulin ? '0%（定義）' : r.rate == null ? 'ろ過されない' : pctText(r.rate)),
+          h('td', null, r.inulin ? '0%（再吸収されない）' : r.rate == null ? 'ろ過されない' : pctText(r.rate)),
         ))),
       ));
       exp.set(lines);

@@ -9,7 +9,7 @@ export const BIOMES = {
   desert: { name: '砂漠', kind: '荒原', plants: 'サボテン類など乾燥に強い植物' },
   steppe: { name: 'ステップ', kind: '草原', plants: 'イネのなかまの草本' },
   savanna: { name: 'サバンナ', kind: '草原', plants: 'イネのなかまの草本と、まばらな樹木（アカシアなど）' },
-  taiga: { name: '針葉樹林', kind: '森林', plants: 'トウヒ・モミ・カラマツなどの針葉樹' },
+  taiga: { name: '針葉樹林', kind: '森林', plants: 'トウヒ類・モミ類などの常緑針葉樹（落葉針葉樹のカラマツ類も見られる）' },
   temperate: { name: '夏緑樹林', kind: '森林', plants: 'ブナ・ミズナラなどの落葉広葉樹' },
   laurel: { name: '照葉樹林', kind: '森林', plants: 'スダジイ・タブノキ・アラカシなどの常緑広葉樹' },
   sclerophyll: { name: '硬葉樹林', kind: '森林', plants: 'オリーブ・コルクガシなど（夏に乾燥し冬に雨が多い地域）' },

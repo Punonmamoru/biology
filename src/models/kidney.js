@@ -6,9 +6,9 @@
 export const SUBSTANCES = [
   { id: 'protein', name: 'タンパク質', plasma: 7.2, filtrate: 0, urine: 0, note: '分子が大きく、糸球体からボーマンのうへろ過されない' },
   { id: 'glucose', name: 'グルコース', plasma: 0.1, filtrate: 0.1, urine: 0, note: 'ろ過されるが、細尿管ですべて再吸収される' },
-  { id: 'urea', name: '尿素', plasma: 0.03, filtrate: 0.03, urine: 2, note: '不要な物質。再吸収されにくく、尿中で濃縮される' },
+  { id: 'urea', name: '尿素', plasma: 0.03, filtrate: 0.03, urine: 2, note: '不要な物質だが、一部（この表では約4割）は再吸収される。水が大量に再吸収されるので、尿中で濃縮される' },
   { id: 'uric', name: '尿酸', plasma: 0.004, filtrate: 0.004, urine: 0.05, note: '不要な物質' },
-  { id: 'creatinine', name: 'クレアチニン', plasma: 0.001, filtrate: 0.001, urine: 0.075, note: '筋肉でできる不要な物質。ほとんど再吸収されない' },
+  { id: 'creatinine', name: 'クレアチニン', plasma: 0.001, filtrate: 0.001, urine: 0.075, note: '筋肉でできる不要な物質。濃縮率（75）はイヌリン（120）より小さく、表の数値からは一部が再吸収されたと計算される' },
   { id: 'na', name: 'ナトリウムイオン', plasma: 0.3, filtrate: 0.3, urine: 0.35, note: '大部分が再吸収される（鉱質コルチコイドが促進）' },
   { id: 'k', name: 'カリウムイオン', plasma: 0.02, filtrate: 0.02, urine: 0.15, note: '' },
   { id: 'inulin', name: 'イヌリン', plasma: 0.1, filtrate: 0.1, urine: 12, note: '静脈に注射する多糖類。ろ過されるが再吸収されない' },

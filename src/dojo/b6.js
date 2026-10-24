@@ -21,9 +21,15 @@ export const dojo = {
     top.append(h('h2', null, '酸素分圧と酸素ヘモグロビンの割合 ', modelNote()));
     const chart = createChart(top, { label: '酸素解離曲線のグラフ', aspect: 0.75 });
     const leg = h('div');
-    top.append(leg, h('p', { class: 'small muted' }, `肺胞のCO₂分圧は ${LUNG.pCO2} mmHg とした。分圧の単位 mmHg は、教科書によっては相対値で示される。`));
+    top.append(leg, h('p', { class: 'small muted' }, `肺胞のCO₂分圧は ${LUNG.pCO2} mmHg とした。組織のO₂分圧は肺胞より低い範囲で動かせる。分圧の単位 mmHg は、教科書によっては相対値で示される。`));
 
-    const sLung = slider({ label: '肺（肺胞）のO₂分圧', min: 40, max: 100, step: 1, value: st.lungO2, format: (v) => v + ' mmHg', onInput: (v) => { st.lungO2 = v; update(); } });
+    const sLung = slider({ label: '肺（肺胞）のO₂分圧', min: 40, max: 100, step: 1, value: st.lungO2, format: (v) => v + ' mmHg', onInput: (v) => {
+      st.lungO2 = v;
+      // 組織のO₂分圧は肺胞より低い（肺胞より10 mmHg以上低い範囲で動かせる）
+      sTis.setRange(5, Math.min(60, v - 10));
+      st.tisO2 = sTis.value;
+      update();
+    } });
     const sTis = slider({ label: '組織のO₂分圧', min: 5, max: 60, step: 1, value: st.tisO2, format: (v) => v + ' mmHg', onInput: (v) => { st.tisO2 = v; update(); } });
     const sCO2 = slider({ label: '組織のCO₂分圧', min: 40, max: 80, step: 1, value: st.tisCO2, format: (v) => v + ' mmHg', onInput: (v) => { st.tisCO2 = v; update(); } });
     const readout = h('div', { class: 'small', 'aria-live': 'polite' });

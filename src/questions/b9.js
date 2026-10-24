@@ -41,10 +41,11 @@ export const B9 = [
       const wrongDNA = complement(tpl); // U ではなく T を使う誤り
       const same = tpl.replace(/T/g, 'U'); // 相補にしない誤り
       const swapAU = [...tpl].map((b) => ({ A: 'T', T: 'A', G: 'C', C: 'G' })[b]).join('').replace(/A/g, 'U').replace(/T/g, 'A');
+      const r = (x) => `5′-${x}-3′`;
       return {
-        text: `DNAの鋳型となる鎖の塩基配列が ${tpl} であるとき、転写によってつくられるmRNAの塩基配列はどれか。`,
-        correct: mrna,
-        wrong: [wrongDNA, same, swapAU, mrna.split('').reverse().join(''), substitute(mrna, 4, mrna[4] === 'G' ? 'C' : 'G'), substitute(mrna, 1, mrna[1] === 'A' ? 'U' : 'A')],
+        text: `DNAの鋳型となる鎖の塩基配列が 3′-${tpl}-5′ であるとき、転写によってつくられるmRNAの塩基配列はどれか。ただし、mRNAは鋳型鎖と塩基どうしが向かい合うように、左からそろえて書くものとする。`,
+        correct: r(mrna),
+        wrong: [wrongDNA, same, swapAU, substitute(mrna, 4, mrna[4] === 'G' ? 'C' : 'G'), substitute(mrna, 1, mrna[1] === 'A' ? 'U' : 'A')].map(r),
         explanation: `鋳型鎖の A・T・G・C に対して、mRNAには U・A・C・G が対応するので ${mrna} となる。RNAはT（チミン）の代わりにU（ウラシル）をもつから、DNAのAに対応するのはUである。`,
       };
     },
@@ -98,7 +99,7 @@ export const B9 = [
         aaNames([g.keys[1], g.keys[2], 'Met']),
       ];
       return {
-        text: `DNAの鋳型となる鎖の塩基配列が ${tpl} である。この部分から転写されたmRNAが翻訳されるとき、指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...asIs.match(/.{3}/g)], 1)}）。`,
+        text: `DNAの鋳型となる鎖の塩基配列が 3′-${tpl}-5′ である（左端から転写されるmRNAの塩基と向かい合う）。この部分から転写されたmRNAが翻訳されるとき、指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...asIs.match(/.{3}/g)], 1)}）。`,
         correct,
         wrong,
         explanation: `鋳型鎖に相補的なmRNAは ${g.codons.join('｜')} で、これを開始コドンから読むと ${correct} となる。鋳型鎖の塩基配列をそのまま読むのではなく、相補的な塩基をもつmRNAに直してからコドンを読むからである。`,
@@ -166,14 +167,14 @@ export const B9 = [
     make(rng) {
       if (rng.chance(0.5)) {
         return {
-          text: '遺伝子の途中で1塩基が欠失したとき、つくられるタンパク質への影響として最も適当なものはどれか。',
+          text: '【生物の内容】遺伝子の途中で1塩基が欠失したとき、つくられるタンパク質への影響として最も適当なものはどれか。',
           correct: 'それより後ろのコドンの読み枠がずれ、多くのアミノ酸が変わったり途中で翻訳が止まったりする',
           wrong: ['欠失した塩基を含むコドンのアミノ酸が1つだけ変わる', 'アミノ酸が1つだけ減り、ほかはすべて同じになる', 'タンパク質にはまったく影響しない'],
           explanation: '1塩基の欠失では、それより後ろのコドンの区切りが1つずつずれる（フレームシフト）。そのため後ろのアミノ酸が次々に変わったり、途中に終止コドンが現れたりするから、タンパク質のはたらきが失われやすい。',
         };
       }
       return {
-        text: '遺伝子の1塩基が別の塩基に置換されても、つくられるタンパク質のアミノ酸配列が変わらないことがある。その理由として最も適当なものはどれか。',
+        text: '【生物の内容】遺伝子の1塩基が別の塩基に置換されても、つくられるタンパク質のアミノ酸配列が変わらないことがある。その理由として最も適当なものはどれか。',
         correct: '1つのアミノ酸を指定するコドンが複数あり、置換後のコドンも同じアミノ酸を指定することがあるから',
         wrong: ['置換された塩基はすぐに元の塩基に戻されるから', 'mRNAは3つ目ごとの塩基しか読まれないから', '置換が起こるとその遺伝子は転写されなくなるから'],
         explanation: '遺伝暗号は64通りで、20種類のアミノ酸より多いので、1つのアミノ酸を複数のコドンが指定することが多い。置換によってコドンが変わっても、同じアミノ酸を指定するコドンになれば、アミノ酸配列は変わらないからである。',
@@ -216,7 +217,7 @@ export const B9 = [
       const wrongs = [aaNames(inFrame), del ? oneChanged : shifted, del ? subst : oneChanged, swap, aaNames([inFrame[0], inFrame[1], inFrame[3], inFrame[2]]), aaNames(inFrame.slice().reverse())];
       const codonsAfter = after.slice(0, Math.min(12, Math.floor(after.length / 3) * 3)).match(/.{3}/g);
       return {
-        text: `DNAの鋳型鎖 ${tpl} から転写・翻訳されると ${aaNames(g.keys)} のアミノ酸配列ができる。この鋳型鎖の左から${pos + 1}番目の塩基が${del ? '欠失' : `${mut[pos]}に置換`}したとき、開始コドン（左端のAUG）から4つ目のコドンまでに指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...codonsAfter], 0)}）。`,
+        text: `【生物の内容】DNAの鋳型鎖 3′-${tpl}-5′ から転写・翻訳されると ${aaNames(g.keys)} のアミノ酸配列ができる。この鋳型鎖の左から${pos + 1}番目の塩基が${del ? '欠失' : `${mut[pos]}に置換`}したとき、開始コドン（左端のAUG）から4つ目のコドンまでに指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...codonsAfter], 0)}）。`,
         correct,
         wrong: wrongs.filter((w) => w !== correct),
         explanation: `変異後の鋳型鎖から転写されるmRNAは ${codonsAfter.join('｜')}… で、開始コドンから読むと ${correct} となる。${del ? '欠失では変異した位置より後ろの読み枠が1塩基ずれるので、後ろのアミノ酸が次々に変わりやすいからである。' : '置換では変異したコドンだけが変わり、ほかのコドンの読み方は変わらないからである。'}`,

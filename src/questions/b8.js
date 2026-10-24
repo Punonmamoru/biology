@@ -48,7 +48,7 @@ export const B8 = [
         chart: biomeChart({ labels: true, point: [T, P] }),
         correct: B.name,
         wrong: rng.shuffle(ALL.filter((k) => k !== id)).map((k) => BIOMES[k].name),
-        explanation: `図の◆は${B.name}の区画に入る。陸上のバイオームは、まず年降水量によって森林・草原・荒原に分かれ、さらに年平均気温によって分かれるから、2つの値の組合せで決まる。`,
+        explanation: id === 'tundra' ? '図の◆はツンドラの区画に入る。年平均気温が非常に低いので樹木が育たず、コケ植物・地衣類などがまばらに生える荒原になるからである。' : `図の◆は${B.name}の区画に入る。陸上では降水量が多いと森林、少ないと草原、非常に少ないと荒原になり、森林や草原の種類は主に気温で決まるから、2つの値の組合せでバイオームが決まる。`,
       };
     },
   },
@@ -72,7 +72,7 @@ export const B8 = [
         steppe: '温帯で降水量が少ない地域の、イネのなかまの草本が中心の草原',
         desert: '降水量が非常に少なく、乾燥に強い植物がまばらに生える荒原',
         tundra: '年平均気温が非常に低く、コケ植物・地衣類が中心の荒原',
-        taiga: '冬の寒さがきびしい地域の、トウヒ・モミなどの常緑針葉樹が中心の森林',
+        taiga: '冬の寒さがきびしい地域の、トウヒ・モミなどの針葉樹が中心の森林',
         temperate: '冬に葉を落とすブナ・ミズナラなどの落葉広葉樹が中心の森林',
         laurel: 'スダジイ・タブノキなど、葉の表面に光沢のある常緑広葉樹が中心の森林',
         sclerophyll: '夏に乾燥し冬に雨が多い地域の、オリーブ・コルクガシなど硬く小さい葉をもつ常緑樹の森林',
@@ -96,7 +96,7 @@ export const B8 = [
         { trees: 'ブナ・ミズナラ', a: '夏緑樹林', why: '冬に葉を落とす落葉広葉樹で、冷温帯に分布する' },
         { trees: 'スダジイ・タブノキ・アラカシ', a: '照葉樹林', why: '葉の表面にクチクラ層が発達して光沢のある常緑広葉樹で、暖温帯に分布する' },
         { trees: 'エゾマツ・トドマツ', a: '針葉樹林', why: '寒さに強い常緑針葉樹で、亜寒帯（北海道の東北部など）に分布する' },
-        { trees: 'ガジュマル・アコウ・ヘゴ', a: '亜熱帯多雨林', why: '亜熱帯の南西諸島に分布する常緑の樹木やシダ植物だ' },
+        { trees: 'ガジュマル・アコウ・ヘゴ', a: '亜熱帯多雨林', why: 'ガジュマル・アコウは常緑広葉樹、ヘゴは木生シダで、亜熱帯の南西諸島に分布する' },
       ];
       const x = rng.pick(Q);
       return {
@@ -150,7 +150,7 @@ export const B8 = [
         const elev = rng.pick([1000, 1500, 2000, 2500, 3000]);
         const ans = baseT - (rate * elev) / 100;
         const d = distinctNumbers(ans + 100, [baseT - rate * elev + 100, baseT - (rate * elev) / 1000 + 100, baseT + (rate * elev) / 100 + 100, ans + 102, ans + 99], '', 1);
-        const un = (s) => fmt(Number(s) - 100, 1) + ' ℃';
+        const un = (s) => fmt(Number(s) - 100, 1).replace('-', '−') + ' ℃';
         return {
           text: `標高0 m の地点の年平均気温が ${baseT}℃ の山がある。標高が100 m 高くなるごとに気温が ${rate}℃ 下がるとすると、標高 ${elev} m の地点の年平均気温は何℃か。`,
           correct: un(d.correct),
@@ -190,7 +190,7 @@ export const B8 = [
       const z = WI_ZONES.find((zz) => wi >= zz.lo && wi < zz.hi);
       const zoneText = Number.isFinite(z.hi) ? `${z.lo}〜${z.hi}` : `${z.lo}以上`;
       return {
-        text: `ある地点の月平均気温（℃）は、1月から順に ${months.join('、')} である。この地点の暖かさの指数はいくらか。ただし、暖かさの指数は月平均気温が5℃をこえる月について（月平均気温 − 5）を合計した値である。`,
+        text: `【発展】ある地点の月平均気温（℃）は、1月から順に ${months.map((t) => String(t).replace('-', '−')).join('、')} である。この地点の暖かさの指数はいくらか。ただし、暖かさの指数は月平均気温が5℃をこえる月について（月平均気温 − 5）を合計した値である。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
