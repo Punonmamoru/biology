@@ -9,6 +9,11 @@ import * as ks from '../src/models/keystone.js';
 import * as en from '../src/models/enzyme.js';
 import * as ge from '../src/models/genetics.js';
 import * as po from '../src/models/population.js';
+import * as ox from '../src/models/oxygen.js';
+import * as kd from '../src/models/kidney.js';
+import * as bi from '../src/models/biome.js';
+import * as dn from '../src/models/dna.js';
+import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
 
 const results = [];
 let current = '';
@@ -192,6 +197,127 @@ section('B5 生態系のバランス');
   const half = (key) => run.find((r) => r.t > 20 && Math.abs(r[key] - pre[key]) >= Math.abs(end[key] - pre[key]) / 2).t;
   check('ウニの増加がケルプの減少より先に起こる（ラッコ → ウニ → ケルプの順に影響が伝わる）', half('u') < half('k'), `変化の半分に達する時刻 ウニ ${f(half('u'), 1)}年 ＜ ケルプ ${f(half('k'), 1)}年`);
   check('個体数が負にならない', run.every((r) => r.u > 0 && r.k > 0));
+}
+
+// ---------- B6 ----------
+section('B6 酸素解離曲線');
+{
+  const S = (p, c = 40) => ox.saturation(p, c);
+  let mono = true;
+  for (let p = 0; p < 100; p += 0.5) if (!(S(p + 0.5) > S(p))) mono = false;
+  check('O₂分圧が高いほど酸素ヘモグロビンの割合が大きい（0%〜100%の範囲、単調増加）', mono && S(0) === 0 && S(100) < 100);
+  let maxSlope = 0;
+  let pMax = 0;
+  for (let p = 0.5; p < 100; p += 0.5) {
+    const sl = S(p + 0.5) - S(p);
+    if (sl > maxSlope) { maxSlope = sl; pMax = p; }
+  }
+  check('S字形：傾きが最大になる点がO₂分圧の中ほど（10〜50 mmHg）にあり、低い側・高い側では傾きが小さい', pMax > 10 && pMax < 50 && S(5) - S(0) < maxSlope && S(100) - S(99.5) < maxSlope, `傾き最大 ${pMax} mmHg`);
+  let right = true;
+  for (let p = 1; p < 100; p += 1) if (!(S(p, 70) < S(p, 40))) right = false;
+  check('CO₂分圧が高いと右へずれる（同じO₂分圧で割合が小さい、P50が大きい）', right && ox.p50(70) > ox.p50(40), `P50 ${f(ox.p50(40), 0)} → ${f(ox.p50(70), 0)} mmHg`);
+  const ex = ox.exchange();
+  check('教科書の目安：肺胞（O₂100・CO₂40）で約95〜98%、組織（O₂30・CO₂70）で約30%', ex.sLung >= 95 && ex.sLung <= 98 && near(ex.sTissue, 30, 3), `${f(ex.sLung, 1)}%・${f(ex.sTissue, 1)}%`);
+  check('放出した割合 ＝（肺 − 組織）÷ 肺 × 100（95%・30% → 68.4%）', near(ox.releaseFraction(95, 30), 68.42, 0.01));
+  check('組織のCO₂分圧が高いほど、放出される酸素の割合が大きい', ox.exchange(ox.LUNG, { pO2: 30, pCO2: 70 }).fraction > ox.exchange(ox.LUNG, { pO2: 30, pCO2: 40 }).fraction);
+}
+
+// ---------- B7 ----------
+section('B7 腎臓のはたらき');
+{
+  const F = kd.filtrateVolume(1.5, kd.concentrationRatio(0.1, 12));
+  check('原尿量 ＝ 尿量 × イヌリンの濃縮率（1.5 L × 120 ＝ 180 L）', near(F, 180, 1e-9));
+  const rate = (id) => {
+    const s0 = kd.substanceById(id);
+    return kd.reabsorption(F * 1000, 1500, s0.filtrate, s0.urine);
+  };
+  check('グルコースは再吸収率100%（尿中に出ない）', near(rate('glucose').rate, 1, 1e-12));
+  check('タンパク質はろ過されない（原尿中0）', rate('protein').filtered === 0);
+  check('イヌリンは再吸収率0%', near(rate('inulin').rate, 0, 1e-9));
+  check('水の再吸収率は約99%（1 − 1.5/180）', near(kd.waterReabsorption(F, 1.5), 0.99167, 1e-4), `${f(kd.waterReabsorption(F, 1.5) * 100, 1)}%`);
+  check('尿素の再吸収率は水・グルコースよりずっと小さい（約44%）', rate('urea').rate < 0.6 && rate('urea').rate > 0.3, `${f(rate('urea').rate * 100, 1)}%`);
+  const all = kd.SUBSTANCES.filter((x) => x.filtrate > 0).every((x) => { const r = rate(x.id).rate; return r >= -1e-9 && r <= 1 + 1e-9; });
+  check('どの物質も再吸収率が0〜100%に入る（濃縮率がイヌリンを超える物質がない）', all);
+}
+
+// ---------- B8 ----------
+section('B8 バイオーム');
+{
+  const inside = (pt, poly) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i];
+      const [xj, yj] = poly[j];
+      if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const polys = bi.polygons();
+  let agree = 0;
+  let total = 0;
+  let bad = '';
+  for (let T = bi.T_MIN + 0.13; T < bi.T_MAX; T += 0.71) {
+    for (let P = 7; P < bi.P_MAX; P += 43) {
+      const c = bi.classify(T, P);
+      const hits = polys.filter((pg) => inside([T, P], pg.points)).map((pg) => pg.id);
+      total++;
+      if ((c === null && hits.length === 0) || (hits.length === 1 && hits[0] === c)) agree++;
+      else if (!bad) bad = `T=${f(T, 2)}, P=${P}: 判定 ${c} / 図 ${hits.join(',')}`;
+    }
+  }
+  check('図の区画（多角形）と判定（classify）が一致する（格子点で重なり・すき間なし）', agree === total, `${agree}/${total} ${bad}`);
+  const cities = { 東京: 'laurel', 札幌: 'temperate', 那覇: 'subtropical', シンガポール: 'tropical', カイロ: 'desert', ローマ: 'sclerophyll' };
+  check('代表的な都市の判定が教科書と合う（東京＝照葉樹林、札幌＝夏緑樹林、那覇＝亜熱帯多雨林、シンガポール＝熱帯多雨林、カイロ＝砂漠、ローマ＝硬葉樹林）', Object.entries(cities).every(([n, b]) => { const c = bi.CITIES.find((x) => x.name === n); return bi.classify(c.T, c.P) === b; }));
+  let dryOk = true;
+  const seq = [];
+  for (let P = 4000; P >= 0; P -= 50) { const b = bi.classify(27, P); if (seq[seq.length - 1] !== b) seq.push(b); }
+  dryOk = seq.join('>') === 'tropical>monsoon>savanna>desert';
+  check('熱帯（27℃）で降水量を減らすと 熱帯多雨林→雨緑樹林→サバンナ→砂漠', dryOk, seq.join('→'));
+  const seq2 = [];
+  for (let T = 19.5; T >= -10; T -= 0.5) { const b = bi.classify(T, 1550); if (b && seq2[seq2.length - 1] !== b) seq2.push(b); }
+  check('降水量が多い地域（1550 mm）で気温を下げると 照葉樹林→夏緑樹林→針葉樹林→ツンドラ', seq2.join('>') === 'laurel>temperate>taiga>tundra', seq2.join('→'));
+  check('垂直分布：丘陵帯→山地帯→亜高山帯→高山帯（森林限界 約2500 m）', bi.verticalZone(300).zone === '丘陵帯' && bi.verticalZone(1000).zone === '山地帯' && bi.verticalZone(2000).zone === '亜高山帯' && bi.verticalZone(2800).zone === '高山帯' && bi.TREE_LINE === 2500);
+  check('気温の減率：100 m で 0.6℃（16℃ → 2500 m で 1℃）', near(bi.tempAt(16, 0, 2500), 1, 1e-9));
+  const tokyo = [5.4, 6.1, 9.4, 14.3, 18.8, 21.9, 25.7, 26.9, 23.3, 18.0, 12.5, 7.7];
+  check('暖かさの指数：東京 約130 → 照葉樹林（85〜180）', near(bi.warmthIndex(tokyo), 130, 0.05) && bi.biomeByWI(bi.warmthIndex(tokyo)) === 'laurel', `${f(bi.warmthIndex(tokyo), 1)}`);
+}
+
+// ---------- B9 ----------
+section('B9 DNAとタンパク質合成');
+{
+  const codons = Object.keys(dn.CODON_TABLE);
+  const stops = codons.filter((c) => dn.CODON_TABLE[c] === null);
+  const aas = new Set(codons.map((c) => dn.CODON_TABLE[c]).filter(Boolean));
+  check('遺伝暗号表：64コドン、終止コドン3つ（UAA・UAG・UGA）、アミノ酸20種類、AUG＝メチオニン', codons.length === 64 && stops.sort().join() === 'UAA,UAG,UGA' && aas.size === 20 && dn.CODON_TABLE.AUG === 'Met');
+  check('転写：鋳型鎖 A・T・G・C → mRNA U・A・C・G', dn.transcribe('ATGC') === 'UACG');
+  const m = dn.transcribe(B9_TEMPLATE);
+  const before = dn.aminoSequence(m);
+  check('図解道場の遺伝子：AUG から翻訳が始まり終止コドンで終わる（アミノ酸8個）', dn.translate(m).stopped && before.length === 8 && before[0] === 'Met');
+  const kinds = new Set();
+  for (let i = 2; i < 29; i++) for (const b of 'ATGC') if (b !== B9_TEMPLATE[i]) kinds.add(dn.compareProteins(before, dn.aminoSequence(dn.transcribe(dn.substitute(B9_TEMPLATE, i, b)))).kind);
+  check('置換では「変わらない」「1つだけ変わる」「途中で終止」のどれも起こりうる', ['same', 'one', 'shorter'].every((k) => kinds.has(k)), [...kinds].join('・'));
+  let shiftOk = true;
+  for (let i = 3; i < 22; i++) {
+    const c = dn.compareProteins(before, dn.aminoSequence(dn.transcribe(dn.deleteAt(B9_TEMPLATE, i))));
+    if (!(c.kind === 'many' || c.kind === 'shorter')) shiftOk = false;
+  }
+  check('翻訳される部分での1塩基の欠失は、2つ以上のアミノ酸を変えるか途中で終止させる（フレームシフト）', shiftOk);
+}
+
+// ---------- B10 ----------
+section('B10 DNAの塩基組成');
+{
+  let ok = true;
+  for (let a = 5; a <= 45; a += 0.5) {
+    const c = dn.compositionFromA(a);
+    if (!(c.A === c.T && c.G === c.C && near(c.A + c.T + c.G + c.C, 100, 1e-9))) ok = false;
+  }
+  check('2本鎖DNA：A＝T、G＝C、合計100%（シャルガフの規則）', ok);
+  const r = dn.strandComposition({ A: 35, T: 20, G: 15, C: 30 });
+  check('1本鎖の組成から相補鎖と2本鎖全体を求める：鎖2のA＝鎖1のT、2本鎖全体はA＝T・G＝C', r.s2.A === 20 && r.s2.G === 30 && near(r.both.A, r.both.T, 1e-9) && near(r.both.G, r.both.C, 1e-9) && near(r.both.A, 27.5, 1e-9));
+  check('10塩基対で3.4 nm（1塩基対 0.34 nm）', near(dn.lengthNm(10), 3.4, 1e-9));
+  const human = dn.lengthNm(dn.GENOMES[0].bp * 2) * 1e-9;
+  check('ヒトの体細胞のDNA（30億塩基対×2）の全長は約2 m', near(human, 2.04, 0.01), `${f(human, 2)} m`);
 }
 
 // ---------- A1 ----------

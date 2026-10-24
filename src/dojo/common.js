@@ -38,7 +38,7 @@ export function slider({ label, min, max, step = 1, value, format = (v) => Strin
 
 // 切替ボタン（aria-pressed で状態を示す）
 export function segmented({ label, options, value, onChange }) {
-  const group = h('div', { class: 'seg', role: 'group', 'aria-label': label });
+  const group = h('div', { class: options.length > 4 ? 'seg many' : 'seg', role: 'group', 'aria-label': label });
   const btns = options.map((o) =>
     h('button', { type: 'button', 'aria-pressed': o.value === value ? 'true' : 'false', onclick: () => ctl.set(o.value) }, o.label),
   );
