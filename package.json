@@ -1,0 +1,11 @@
+{
+  "name": "biology",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BIOLOGY ― 生物基礎・生物 シミュレーター学習アプリ（単一HTML・完全オフライン）",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node tests/validate.mjs && node tests/models.mjs"
+  }
+}

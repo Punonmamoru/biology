@@ -1,0 +1,24 @@
+// ステージ定義
+export const COURSES = [
+  { id: 'basic', name: '生物基礎', short: '基礎' },
+  { id: 'advanced', name: '生物（発展）', short: '発展' },
+];
+
+export const STAGES = [
+  { id: 'b1', code: 'B1', course: 'basic', title: '細胞周期とDNA量', unit: '遺伝子とそのはたらき', lead: 'S期でDNAが複製され、M期の終わりに2つの細胞へ分配される。' },
+  { id: 'b2', code: 'B2', course: 'basic', title: '血糖値の調節', unit: 'ヒトの体の調節', lead: 'インスリンとグルカゴンが負のフィードバックで血糖値を一定に保つ。' },
+  { id: 'b3', code: 'B3', course: 'basic', title: '免疫の一次応答・二次応答', unit: 'ヒトの体の調節', lead: '記憶細胞があると、2回目は速く・多く抗体がつくられる。' },
+  { id: 'b4', code: 'B4', course: 'basic', title: '光の強さと光合成', unit: '生物の多様性と生態系', lead: '陽生植物と陰生植物で、補償点・光飽和点が違う。' },
+  { id: 'b5', code: 'B5', course: 'basic', title: '生態系のバランス（キーストーン種）', unit: '生物の多様性と生態系', lead: 'ラッコ→ウニ→ケルプ。1種の変化が間接効果で広がる。' },
+  { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
+  { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
+  { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
+];
+
+export function stageById(id) {
+  return STAGES.find((s) => s.id === id) || null;
+}
+
+export function stagesOf(course) {
+  return STAGES.filter((s) => s.course === course);
+}

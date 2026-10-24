@@ -1,0 +1,1512 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14171a" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+<title>BIOLOGY 生物シミュレーター</title>
+<style>
+/* ===== テーマ（色はすべてトークン経由。グラフも同じトークンを読む） ===== */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f4;
+  --surface: #ffffff;
+  --surface-2: #eef1ec;
+  --fg: #1b1f1d;
+  --muted: #59625d;
+  --line: #cdd4cf;
+  --grid: #e3e8e4;
+  --accent: #1f7a4d;
+  --accent-fg: #ffffff;
+  --accent-soft: #dcefe3;
+  --ok: #1b7a3a;
+  --ok-soft: #dff3e5;
+  --ng: #b3261e;
+  --ng-soft: #fbe3e1;
+  --warn: #8a5a00;
+  --c1: #1f5fbf;   /* 系列1：青 */
+  --c2: #c4441a;   /* 系列2：朱 */
+  --c3: #1e7f45;   /* 系列3：緑 */
+  --c4: #7a3fb0;   /* 系列4：紫 */
+  --c5: #8a6a00;   /* 系列5：黄土 */
+  --region: rgba(31, 95, 191, 0.08);
+  --region-2: rgba(196, 68, 26, 0.08);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #14171a;
+    --surface: #1d2125;
+    --surface-2: #262b30;
+    --fg: #eef1ef;
+    --muted: #a9b3ad;
+    --line: #3d454c;
+    --grid: #2c3238;
+    --accent: #5fd09a;
+    --accent-fg: #0d1a13;
+    --accent-soft: #1f3a2c;
+    --ok: #6fdc95;
+    --ok-soft: #1c3826;
+    --ng: #ff8a80;
+    --ng-soft: #42211f;
+    --warn: #f0c060;
+    --c1: #7fb2ff;
+    --c2: #ff9a6b;
+    --c3: #6fdc95;
+    --c4: #d3a6ff;
+    --c5: #f0c95a;
+    --region: rgba(127, 178, 255, 0.12);
+    --region-2: rgba(255, 154, 107, 0.12);
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14171a;
+  --surface: #1d2125;
+  --surface-2: #262b30;
+  --fg: #eef1ef;
+  --muted: #a9b3ad;
+  --line: #3d454c;
+  --grid: #2c3238;
+  --accent: #5fd09a;
+  --accent-fg: #0d1a13;
+  --accent-soft: #1f3a2c;
+  --ok: #6fdc95;
+  --ok-soft: #1c3826;
+  --ng: #ff8a80;
+  --ng-soft: #42211f;
+  --warn: #f0c060;
+  --c1: #7fb2ff;
+  --c2: #ff9a6b;
+  --c3: #6fdc95;
+  --c4: #d3a6ff;
+  --c5: #f0c95a;
+  --region: rgba(127, 178, 255, 0.12);
+  --region-2: rgba(255, 154, 107, 0.12);
+  --shadow: none;
+}
+
+/* ===== 基本 ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { line-height: 1.35; margin: 0 0 0.5em; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+p { margin: 0 0 0.75em; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[hidden] { display: none !important; }
+
+/* ===== トップバー ===== */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 4px;
+  padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-weight: 800; letter-spacing: 0.12em; text-decoration: none;
+  color: var(--fg); padding: 0 8px; min-height: 44px; display: inline-flex; align-items: center;
+}
+.topbar-spacer { flex: 1; }
+.icon-btn {
+  min-width: 44px; min-height: 44px; border: 0; background: transparent;
+  font-size: 1.25rem; border-radius: 10px; cursor: pointer;
+}
+.icon-btn:hover { background: var(--surface-2); }
+
+/* ===== レイアウト ===== */
+main:focus, main:focus-visible { outline: none; }
+main { display: block; max-width: 760px; margin: 0 auto; padding: 12px 16px 48px; outline: none; }
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px; margin: 0 0 12px; box-shadow: var(--shadow);
+}
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stack > * + * { margin-top: 8px; }
+.grow { flex: 1 1 auto; }
+
+/* ===== ボタン ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 8px 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--fg);
+  font-weight: 600; text-decoration: none; cursor: pointer; text-align: center;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.ghost { background: transparent; }
+.btn.block { width: 100%; }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* タブ・セグメント */
+.tabs, .seg { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.tabs [role="tab"], .seg button {
+  flex: 1 1 0; min-height: 44px; padding: 6px 10px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface); font-weight: 600; cursor: pointer;
+}
+.tabs [role="tab"][aria-selected="true"], .seg button[aria-pressed="true"] {
+  background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
+}
+
+/* ===== ホーム ===== */
+.hero { margin: 4px 0 12px; }
+.hero h1 { font-size: 1.5rem; margin-bottom: 2px; }
+.stage-card { display: grid; gap: 8px; }
+.stage-head { display: flex; gap: 10px; align-items: baseline; }
+.stage-code {
+  font-weight: 800; font-size: 0.85rem; padding: 2px 8px; border-radius: 8px;
+  background: var(--accent-soft); color: var(--fg); white-space: nowrap;
+}
+.stage-title { font-weight: 700; font-size: 1.05rem; }
+.stage-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.stage-actions .btn { padding: 6px 4px; font-size: 0.9rem; }
+.progress { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
+.progress > span { display: block; height: 100%; background: var(--accent); }
+.home-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ===== 図解道場 ===== */
+.badge-model {
+  display: inline-block; font-size: 0.78rem; padding: 1px 8px; border-radius: 99px;
+  border: 1px dashed var(--muted); color: var(--muted); margin-left: 4px; vertical-align: middle;
+}
+.chart-wrap { position: relative; width: 100%; }
+.chart-wrap canvas { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 0.875rem; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.legend canvas { width: 34px; height: 12px; }
+.control { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; margin: 10px 0; }
+.control label { font-weight: 600; font-size: 0.95rem; }
+.control output { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 4.5em; text-align: right; }
+.control input[type="range"] { grid-column: 1 / -1; width: 100%; min-height: 44px; accent-color: var(--accent); margin: 0; }
+.explain { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 12px; border-radius: 0 10px 10px 0; }
+.explain p:last-child { margin-bottom: 0; }
+.tasks { list-style: none; margin: 0; padding: 0; }
+.tasks li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); }
+.tasks li:first-child { border-top: 0; }
+.task-mark {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 800;
+}
+.tasks li.done .task-mark { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.tasks li.done .task-text::after { content: "（達成）"; color: var(--ok); font-weight: 700; }
+.calc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.calc-grid label { display: grid; gap: 2px; font-size: 0.9rem; font-weight: 600; }
+.calc-grid input, .field input, .field textarea {
+  min-height: 44px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); width: 100%;
+}
+table.data { width: 100%; border-collapse: collapse; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: right; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+.cell-view { display: flex; gap: 12px; align-items: center; }
+.cell-view canvas { width: 120px; height: 120px; flex: 0 0 auto; }
+
+/* ===== 4択ラッシュ ===== */
+.q-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 0.9rem; color: var(--muted); }
+.stars { color: var(--warn); letter-spacing: 1px; font-weight: 700; }
+.q-text { font-size: 1.05rem; font-weight: 600; white-space: pre-line; }
+.q-chart { margin: 8px 0; }
+.choices { display: grid; gap: 8px; margin: 10px 0 0; }
+.choice {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left;
+  min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--line);
+  background: var(--surface); cursor: pointer; font-weight: 500;
+}
+.choice .key { flex: 0 0 auto; font-weight: 800; color: var(--muted); }
+.choice.correct { border-color: var(--ok); background: var(--ok-soft); }
+.choice.wrong { border-color: var(--ng); background: var(--ng-soft); }
+.choice .verdict { margin-left: auto; font-weight: 800; white-space: nowrap; }
+.choice.correct .verdict { color: var(--ok); }
+.choice.wrong .verdict { color: var(--ng); }
+.feedback { margin-top: 12px; padding: 12px; border-radius: 12px; border: 2px solid var(--line); }
+.feedback.ok { border-color: var(--ok); }
+.feedback.ng { border-color: var(--ng); }
+.feedback .verdict-title { font-weight: 800; font-size: 1.1rem; }
+.feedback.ok .verdict-title { color: var(--ok); }
+.feedback.ng .verdict-title { color: var(--ng); }
+.score-big { font-size: 2.4rem; font-weight: 800; text-align: center; margin: 4px 0; }
+
+/* ===== ミスサマリー ===== */
+.miss-item { border-top: 1px solid var(--line); padding: 10px 0; }
+.miss-item:first-child { border-top: 0; }
+.miss-item .q-text { font-size: 0.98rem; }
+.ans-line { font-size: 0.92rem; }
+.ans-line b.ng { color: var(--ng); }
+.ans-line b.ok { color: var(--ok); }
+.field { display: grid; gap: 4px; margin: 8px 0; }
+.field label { font-weight: 600; }
+.preview-img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; }
+
+/* ===== 用語帳 ===== */
+.term { border-top: 1px solid var(--line); padding: 10px 0; }
+.term:first-child { border-top: 0; }
+.term dt { font-weight: 800; }
+.term dd { margin: 2px 0 0; }
+.search { width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+
+/* ===== バッジ ===== */
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.badge {
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--surface);
+  display: grid; gap: 2px; align-content: start;
+}
+.badge .icon { font-size: 1.6rem; line-height: 1.2; }
+.badge .name { font-weight: 800; }
+.badge.locked { opacity: 0.55; }
+.badge.locked .icon { filter: grayscale(1); }
+.badge .state { font-size: 0.8rem; font-weight: 700; }
+.badge:not(.locked) .state { color: var(--ok); }
+textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; word-break: break-all; }
+
+/* ===== トースト ===== */
+.toast {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  max-width: min(92vw, 520px); background: var(--fg); color: var(--bg);
+  padding: 10px 16px; border-radius: 12px; font-weight: 600; z-index: 20; box-shadow: var(--shadow);
+}
+
+@media (min-width: 640px) {
+  main { padding-top: 20px; }
+  .home-links { grid-template-columns: repeat(4, 1fr); }
+  .calc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button type="button" class="icon-btn" id="btn-back" aria-label="戻る" hidden>←</button>
+  <a class="brand" href="#/home" aria-label="ホームへ">BIOLOGY</a>
+  <span class="topbar-spacer"></span>
+  <button type="button" class="icon-btn" id="btn-theme" aria-label="表示テーマの切替">◐</button>
+</header>
+<main id="app" tabindex="-1">
+  <noscript><p class="panel">このアプリを使うには JavaScript を有効にしてください。</p></noscript>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script>
+(function () {
+const __BUILD__ = {"version":"1.0.0","date":"2026-10-24"};
+window.__BIOLOGY_BUILD__ = __BUILD__;
+'use strict';
+
+const __m = Object.create(null);
+
+// ---- lib/dom.js ----
+__m["lib/dom.js"] = (function () {
+// 小さな DOM ヘルパー
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'html') el.innerHTML = v;
+      else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (v === true) el.setAttribute(k, '');
+      else el.setAttribute(k, String(v));
+    }
+  }
+  append(el, children);
+  return el;
+}
+
+function append(el, children) {
+  for (const c of children) {
+    if (c == null || c === false) continue;
+    if (Array.isArray(c)) append(el, c);
+    else el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+}
+
+function clear(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+  return el;
+}
+
+// requestAnimationFrame で間引いて実行
+function rafThrottle(fn) {
+  let pending = false;
+  return () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      fn();
+    });
+  };
+}
+
+let toastTimer = 0;
+function toast(msg, ms = 2600) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.hidden = true;
+  }, ms);
+}
+return { h, clear, rafThrottle, toast };
+})();
+
+// ---- lib/storage.js ----
+__m["lib/storage.js"] = (function () {
+// localStorage の安全なラッパー。使えない環境（プライベートモード等）ではメモリ上に保持する。
+const memory = new Map();
+const PREFIX = 'biology.';
+
+function ls() {
+  try {
+    const s = globalThis.localStorage;
+    if (!s) return null;
+    const k = PREFIX + '__probe__';
+    s.setItem(k, '1');
+    s.removeItem(k);
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+let cached;
+function store() {
+  if (cached === undefined) cached = ls();
+  return cached;
+}
+
+function storageAvailable() {
+  return !!store();
+}
+
+function loadJSON(key, fallback) {
+  try {
+    const s = store();
+    const raw = s ? s.getItem(PREFIX + key) : memory.get(key);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  const raw = JSON.stringify(value);
+  try {
+    const s = store();
+    if (s) s.setItem(PREFIX + key, raw);
+    else memory.set(key, raw);
+    return true;
+  } catch (e) {
+    memory.set(key, raw);
+    return false;
+  }
+}
+
+function removeKey(key) {
+  try {
+    const s = store();
+    if (s) s.removeItem(PREFIX + key);
+  } catch (e) {
+    /* 無視 */
+  }
+  memory.delete(key);
+}
+return { storageAvailable, loadJSON, saveJSON, removeKey };
+})();
+
+// ---- lib/chart.js ----
+__m["lib/chart.js"] = (function () {
+// 共通グラフ描画部品（Canvas・ライブラリ不使用）
+// グラフは「仕様オブジェクト（ただのデータ）」で記述し、ここで描画する。
+// 色はCSSトークン名（'c1' など）で指定し、描画のたびに現在のテーマから読み取るので
+// ダークモードでも線・文字が背景に溶けない。
+const { h } = __m["lib/dom.js"];
+
+const DASHES = {
+  solid: [],
+  dash: [9, 5],
+  dot: [2, 4],
+  dashdot: [10, 4, 2, 4],
+  long: [16, 6],
+};
+
+const live = new Set();
+
+function tokenColor(name) {
+  if (!name) name = 'fg';
+  if (name.startsWith('#') || name.startsWith('rgb')) return name;
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
+  return v || '#888';
+}
+
+function redrawAllCharts() {
+  for (const c of live) {
+    if (!c.canvas.isConnected) live.delete(c);
+    else c.redraw();
+  }
+}
+
+// きりのよい目盛り間隔
+function niceStep(range, target = 5) {
+  const raw = range / target;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / p;
+  const n = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
+  return n * p;
+}
+
+function ticksFor(ax) {
+  if (ax.ticks) return ax.ticks.map((t) => (typeof t === 'object' ? t : { v: t }));
+  if (ax.log) {
+    const out = [];
+    for (let e = Math.ceil(Math.log10(ax.min) - 1e-9); e <= Math.floor(Math.log10(ax.max) + 1e-9); e++) {
+      out.push({ v: Math.pow(10, e) });
+    }
+    return out;
+  }
+  const step = ax.step || niceStep(ax.max - ax.min);
+  const out = [];
+  const start = Math.ceil(ax.min / step - 1e-9) * step;
+  for (let v = start; v <= ax.max + step * 1e-6; v += step) out.push({ v: Number(v.toFixed(10)) });
+  return out;
+}
+
+function tickText(ax, v) {
+  if (ax.log) {
+    if (v >= 1) return String(Math.round(v));
+    return String(Number(v.toPrecision(1)));
+  }
+  const d = ax.digits != null ? ax.digits : 0;
+  const s = Number(v.toFixed(d));
+  return String(Object.is(s, -0) ? 0 : s);
+}
+
+function makeHatch(ctx, color, kind) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 8;
+  const g = c.getContext('2d');
+  g.strokeStyle = color;
+  g.lineWidth = 1.5;
+  g.beginPath();
+  if (kind === 'cross') {
+    g.moveTo(0, 4); g.lineTo(8, 4); g.moveTo(4, 0); g.lineTo(4, 8);
+  } else {
+    g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6);
+  }
+  g.stroke();
+  return ctx.createPattern(c, 'repeat');
+}
+
+function haloText(ctx, text, x, y, color, bg) {
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = bg;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+// spec を幅 W・高さ H（CSS px）で ctx に描く
+function drawSpec(ctx, W, H, spec) {
+  const fg = tokenColor('fg');
+  const muted = tokenColor('muted');
+  const grid = tokenColor('grid');
+  const bg = tokenColor('surface');
+  const font = getComputedStyle(document.body).fontFamily;
+  const small = W < 360;
+  const fs = small ? 11 : 12.5;
+  ctx.font = `${fs}px ${font}`;
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const x = spec.x;
+  const y = spec.y;
+  const y2 = spec.y2;
+  const pad = {
+    l: (y.label ? fs + 10 : 4) + Math.max(...ticksFor(y).map((t) => ctx.measureText(t.text || tickText(y, t.v)).width), 10) + 8,
+    r: y2 ? (y2.label ? fs + 10 : 4) + Math.max(...ticksFor(y2).map((t) => ctx.measureText(t.text || tickText(y2, t.v)).width), 10) + 8 : 14,
+    t: spec.title ? fs + 14 : 12,
+    b: (x.label ? fs + 10 : 4) + fs + 10,
+  };
+  const pw = Math.max(10, W - pad.l - pad.r);
+  const ph = Math.max(10, H - pad.t - pad.b);
+
+  const X = (v) => pad.l + ((v - x.min) / (x.max - x.min)) * pw;
+  const mkY = (ax) => (v) => {
+    if (ax.log) {
+      const lv = Math.log10(Math.max(v, ax.min * 1e-3));
+      return pad.t + ph - ((lv - Math.log10(ax.min)) / (Math.log10(ax.max) - Math.log10(ax.min))) * ph;
+    }
+    return pad.t + ph - ((v - ax.min) / (ax.max - ax.min)) * ph;
+  };
+  const Y = mkY(y);
+  const Y2 = y2 ? mkY(y2) : Y;
+  const yOf = (axis) => (axis === 'y2' ? Y2 : Y);
+
+  if (spec.title) {
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(spec.title, pad.l, 4);
+  }
+
+  // 区間の塗り
+  for (const r of spec.regions || []) {
+    const x0 = X(Math.max(r.x0, x.min));
+    const x1 = X(Math.min(r.x1, x.max));
+    if (x1 <= x0) continue;
+    ctx.fillStyle = tokenColor(r.fill || 'region');
+    ctx.fillRect(x0, pad.t, x1 - x0, ph);
+    if (r.label) {
+      ctx.fillStyle = fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = `bold ${fs}px ${font}`;
+      haloText(ctx, r.label, (x0 + x1) / 2, pad.t + 3, fg, bg);
+      ctx.font = `${fs}px ${font}`;
+    }
+  }
+
+  // 目盛り・グリッド
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'right';
+  for (const t of ticksFor(y)) {
+    if (t.v < y.min - 1e-9 || t.v > y.max + 1e-9) continue;
+    const py = Y(t.v);
+    ctx.strokeStyle = grid;
+    ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + pw, py); ctx.stroke();
+    ctx.fillStyle = muted;
+    ctx.fillText(t.text || tickText(y, t.v), pad.l - 6, py);
+  }
+  if (y2) {
+    ctx.textAlign = 'left';
+    for (const t of ticksFor(y2)) {
+      if (t.v < y2.min - 1e-9 || t.v > y2.max + 1e-9) continue;
+      ctx.fillStyle = muted;
+      ctx.fillText(t.text || tickText(y2, t.v), pad.l + pw + 6, Y2(t.v));
+    }
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  if (!spec.bars) {
+    for (const t of ticksFor(x)) {
+      if (t.v < x.min - 1e-9 || t.v > x.max + 1e-9) continue;
+      const px = X(t.v);
+      if (x.grid !== false) {
+        ctx.strokeStyle = grid;
+        ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + ph); ctx.stroke();
+      }
+      ctx.fillStyle = muted;
+      ctx.fillText(t.text || tickText(x, t.v), px, pad.t + ph + 5);
+    }
+  }
+
+  // 軸
+  ctx.strokeStyle = fg;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t);
+  ctx.lineTo(pad.l, pad.t + ph);
+  ctx.lineTo(pad.l + pw, pad.t + ph);
+  if (y2) ctx.lineTo(pad.l + pw, pad.t);
+  ctx.stroke();
+  // 0 の線（負の値があるとき）
+  if (!y.log && y.min < 0 && y.max > 0) {
+    ctx.strokeStyle = muted;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(pad.l + pw, Y(0)); ctx.stroke();
+  }
+
+  // 軸ラベル
+  ctx.fillStyle = fg;
+  ctx.font = `bold ${fs}px ${font}`;
+  if (x.label) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(x.label, pad.l + pw / 2, H - 2);
+  }
+  if (y.label) {
+    ctx.save();
+    ctx.translate(fs / 2 + 3, pad.t + ph / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(y.label, 0, 0);
+    ctx.restore();
+  }
+  if (y2 && y2.label) {
+    ctx.save();
+    ctx.translate(W - fs / 2 - 3, pad.t + ph / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(y2.label, 0, 0);
+    ctx.restore();
+  }
+  ctx.font = `${fs}px ${font}`;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.l - 1, pad.t - 1, pw + 2, ph + 2);
+  ctx.clip();
+
+  // 棒グラフ
+  if (spec.bars) {
+    const cats = spec.bars.categories;
+    const groups = spec.bars.groups;
+    const slot = pw / cats.length;
+    const bw = Math.min(56, (slot * 0.76) / groups.length);
+    groups.forEach((g, gi) => {
+      const col = tokenColor(g.color || 'c1');
+      const fill = gi === 0 ? col : makeHatch(ctx, col, gi === 2 ? 'cross' : 'diag');
+      g.values.forEach((v, ci) => {
+        const cx = pad.l + slot * (ci + 0.5) + (gi - (groups.length - 1) / 2) * bw;
+        const top = Y(Math.max(v, y.min));
+        ctx.fillStyle = fill;
+        ctx.fillRect(cx - bw / 2 + 1, top, bw - 2, Y(y.min) - top);
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.strokeRect(cx - bw / 2 + 1, top, bw - 2, Y(y.min) - top);
+      });
+    });
+    // 期待値の目印（横線）
+    for (const m of spec.bars.marks || []) {
+      const ci = m.index;
+      const cx = pad.l + slot * (ci + 0.5);
+      ctx.strokeStyle = tokenColor(m.color || 'fg');
+      ctx.lineWidth = 2;
+      ctx.setLineDash(DASHES.dash);
+      ctx.beginPath();
+      ctx.moveTo(cx - slot * 0.45, Y(m.y));
+      ctx.lineTo(cx + slot * 0.45, Y(m.y));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // 水平線・垂直線
+  for (const l of spec.hlines || []) {
+    const yy = yOf(l.axis)(l.y);
+    ctx.strokeStyle = tokenColor(l.color || 'muted');
+    ctx.lineWidth = l.width || 1.5;
+    ctx.setLineDash(DASHES[l.dash || 'dash']);
+    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(pad.l + pw, yy); ctx.stroke();
+  }
+  for (const l of spec.vlines || []) {
+    const xx = X(l.x);
+    ctx.strokeStyle = tokenColor(l.color || 'muted');
+    ctx.lineWidth = l.width || 1.5;
+    ctx.setLineDash(DASHES[l.dash || 'dash']);
+    ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, pad.t + ph); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // 折れ線
+  const endLabels = [];
+  for (const s of spec.series || []) {
+    const Ys = yOf(s.axis);
+    const col = tokenColor(s.color || 'c1');
+    ctx.strokeStyle = col;
+    ctx.lineWidth = s.width || 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.setLineDash(DASHES[s.dash || 'solid']);
+    ctx.beginPath();
+    let started = false;
+    for (const [px, py] of s.points) {
+      if (!Number.isFinite(px) || !Number.isFinite(py)) {
+        started = false;
+        continue;
+      }
+      const cx = X(px);
+      const cy = Ys(py);
+      if (!started) {
+        ctx.moveTo(cx, cy);
+        started = true;
+      } else ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (s.label && s.points.length) {
+      let p;
+      if (s.labelAt != null) {
+        p = s.points.reduce((best, q) => (Math.abs(q[0] - s.labelAt) < Math.abs(best[0] - s.labelAt) ? q : best), s.points[0]);
+      } else {
+        for (let i = s.points.length - 1; i >= 0; i--) {
+          const q = s.points[i];
+          if (q[0] <= x.max && Number.isFinite(q[1])) { p = q; break; }
+        }
+      }
+      if (p) {
+        const yv = Math.min(Math.max(Ys(p[1]), pad.t + 8), pad.t + ph - 8);
+        endLabels.push({ x: X(p[0]), y: yv, text: s.label, color: col, align: s.labelAt != null ? 'center' : 'right' });
+      }
+    }
+  }
+  ctx.restore();
+
+  // 点
+  for (const m of spec.markers || []) {
+    const cx = X(m.x);
+    const cy = yOf(m.axis)(m.y);
+    if (cx < pad.l - 2 || cx > pad.l + pw + 2 || cy < pad.t - 2 || cy > pad.t + ph + 2) continue;
+    ctx.fillStyle = tokenColor(m.color || 'fg');
+    ctx.strokeStyle = bg;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (m.shape === 'square') ctx.rect(cx - 5, cy - 5, 10, 10);
+    else if (m.shape === 'diamond') { ctx.moveTo(cx, cy - 6); ctx.lineTo(cx + 6, cy); ctx.lineTo(cx, cy + 6); ctx.lineTo(cx - 6, cy); ctx.closePath(); }
+    else ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (m.label) {
+      ctx.font = `bold ${fs}px ${font}`;
+      ctx.textBaseline = 'bottom';
+      const right = cx > pad.l + pw * 0.75;
+      ctx.textAlign = right ? 'right' : 'left';
+      const ly = Math.max(cy - 6, pad.t + fs + 2);
+      haloText(ctx, m.label, cx + (right ? -6 : 6), ly + (m.dy || 0), tokenColor(m.color || 'fg'), bg);
+      ctx.font = `${fs}px ${font}`;
+    }
+  }
+
+  // 線の直接ラベル（重なりを少しずらす）
+  ctx.font = `bold ${fs}px ${font}`;
+  ctx.textBaseline = 'middle';
+  endLabels.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < endLabels.length; i++) {
+    const prev = endLabels[i - 1];
+    const cur = endLabels[i];
+    if (Math.abs(cur.x - prev.x) < 120 && cur.y - prev.y < fs + 3) cur.y = prev.y + fs + 3;
+  }
+  for (const l of endLabels) {
+    ctx.textAlign = l.align;
+    const tx = l.align === 'right' ? Math.min(l.x - 4, pad.l + pw - 2) : l.x;
+    haloText(ctx, l.text, tx, l.y - (l.align === 'right' ? 10 : 12), l.color, bg);
+  }
+
+  // 自由テキスト・垂直線ラベル
+  for (const l of spec.vlines || []) {
+    if (!l.label) continue;
+    const xx = X(l.x);
+    ctx.textAlign = xx > pad.l + pw * 0.7 ? 'right' : 'left';
+    ctx.textBaseline = 'top';
+    haloText(ctx, l.label, xx + (ctx.textAlign === 'right' ? -4 : 4), pad.t + 2 + (l.dy || 0), tokenColor(l.color || 'muted'), bg);
+  }
+  for (const l of spec.hlines || []) {
+    if (!l.label) continue;
+    ctx.textAlign = l.align || 'left';
+    ctx.textBaseline = 'bottom';
+    const lx = l.align === 'right' ? pad.l + pw - 4 : pad.l + 4;
+    haloText(ctx, l.label, lx, yOf(l.axis)(l.y) - 3, tokenColor(l.color || 'muted'), bg);
+  }
+  for (const t of spec.texts || []) {
+    ctx.textAlign = t.align || 'center';
+    ctx.textBaseline = 'middle';
+    haloText(ctx, t.text, X(t.x), yOf(t.axis)(t.y), tokenColor(t.color || 'fg'), bg);
+  }
+  if (spec.bars) {
+    ctx.font = `bold ${fs}px ${font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = fg;
+    const slot = pw / spec.bars.categories.length;
+    spec.bars.categories.forEach((c, i) => ctx.fillText(c, pad.l + slot * (i + 0.5), pad.t + ph + 5));
+  }
+}
+
+// 親要素の幅に合わせて描くグラフ。返り値の draw(spec) で再描画する。
+function createChart(parent, { aspect = 0.68, maxHeight = 420, label = 'グラフ' } = {}) {
+  const canvas = h('canvas', { role: 'img', 'aria-label': label });
+  const wrap = h('div', { class: 'chart-wrap' }, canvas);
+  parent.append(wrap);
+  const chart = {
+    canvas,
+    spec: null,
+    draw(spec) {
+      chart.spec = spec;
+      chart.redraw();
+    },
+    redraw() {
+      if (!chart.spec) return;
+      const W = Math.max(200, wrap.clientWidth || 320);
+      const H = Math.round(Math.min(maxHeight, W * aspect));
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        canvas.style.height = H + 'px';
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawSpec(ctx, W, H, chart.spec);
+      if (chart.spec.alt) canvas.setAttribute('aria-label', chart.spec.alt);
+    },
+  };
+  live.add(chart);
+  if (typeof ResizeObserver !== 'undefined') {
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = wrap.clientWidth;
+      if (w && w !== lastW) {
+        lastW = w;
+        chart.redraw();
+      }
+    }).observe(wrap);
+  }
+  return chart;
+}
+
+// 凡例（線種のサンプル＋文字。色だけに頼らない）
+function legend(items) {
+  const ul = h('ul', { class: 'legend' });
+  for (const it of items) {
+    const c = h('canvas', { width: 68, height: 24, 'aria-hidden': 'true' });
+    const li = h('li', null, c, it.label);
+    ul.append(li);
+    const draw = () => {
+      const g = c.getContext('2d');
+      g.setTransform(2, 0, 0, 2, 0, 0);
+      g.clearRect(0, 0, 34, 12);
+      if (it.bar) {
+        const col = tokenColor(it.color);
+        g.fillStyle = it.hatch ? makeHatch(g, col, it.hatch) : col;
+        g.fillRect(8, 1, 18, 10);
+        g.strokeStyle = col;
+        g.lineWidth = 1;
+        g.strokeRect(8, 1, 18, 10);
+        return;
+      }
+      g.strokeStyle = tokenColor(it.color);
+      g.lineWidth = 2.5;
+      g.setLineDash((DASHES[it.dash || 'solid'] || []).map((d) => d * 0.8));
+      g.beginPath();
+      g.moveTo(1, 6);
+      g.lineTo(33, 6);
+      g.stroke();
+    };
+    draw();
+    live.add({ canvas: c, redraw: draw });
+  }
+  return ul;
+}
+
+// 仕様のseriesから凡例項目を作る
+function legendFromSpec(spec) {
+  const items = (spec.series || []).filter((s) => s.legend !== false && (s.legendLabel || s.label)).map((s) => ({
+    label: s.legendLabel || s.label,
+    color: s.color || 'c1',
+    dash: s.dash || 'solid',
+  }));
+  if (spec.bars) {
+    spec.bars.groups.forEach((g, i) => items.push({ label: g.label, color: g.color || 'c1', bar: true, hatch: i === 0 ? null : i === 2 ? 'cross' : 'diag' }));
+  }
+  return legend(items);
+}
+return { DASHES, tokenColor, redrawAllCharts, niceStep, drawSpec, createChart, legend, legendFromSpec };
+})();
+
+// ---- lib/theme.js ----
+__m["lib/theme.js"] = (function () {
+// 表示テーマ（自動 / ライト / ダーク）
+const { loadJSON, saveJSON } = __m["lib/storage.js"];
+const { redrawAllCharts } = __m["lib/chart.js"];
+
+const ORDER = ['auto', 'light', 'dark'];
+const NAMES = { auto: '自動（端末の設定に合わせる）', light: 'ライト', dark: 'ダーク' };
+
+function currentTheme() {
+  const t = loadJSON('theme', 'auto');
+  return ORDER.includes(t) ? t : 'auto';
+}
+
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', t);
+  redrawAllCharts();
+}
+
+function setTheme(t) {
+  saveJSON('theme', t);
+  applyTheme(t);
+}
+
+function cycleTheme() {
+  const t = ORDER[(ORDER.indexOf(currentTheme()) + 1) % ORDER.length];
+  setTheme(t);
+  return NAMES[t];
+}
+
+function themeName(t) {
+  return NAMES[t];
+}
+
+function initTheme() {
+  applyTheme(currentTheme());
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => redrawAllCharts();
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  } catch (e) {
+    /* 古いブラウザでは無視 */
+  }
+}
+return { currentTheme, applyTheme, setTheme, cycleTheme, themeName, initTheme };
+})();
+
+// ---- stages.js ----
+__m["stages.js"] = (function () {
+// ステージ定義
+const COURSES = [
+  { id: 'basic', name: '生物基礎', short: '基礎' },
+  { id: 'advanced', name: '生物（発展）', short: '発展' },
+];
+
+const STAGES = [
+  { id: 'b1', code: 'B1', course: 'basic', title: '細胞周期とDNA量', unit: '遺伝子とそのはたらき', lead: 'S期でDNAが複製され、M期の終わりに2つの細胞へ分配される。' },
+  { id: 'b2', code: 'B2', course: 'basic', title: '血糖値の調節', unit: 'ヒトの体の調節', lead: 'インスリンとグルカゴンが負のフィードバックで血糖値を一定に保つ。' },
+  { id: 'b3', code: 'B3', course: 'basic', title: '免疫の一次応答・二次応答', unit: 'ヒトの体の調節', lead: '記憶細胞があると、2回目は速く・多く抗体がつくられる。' },
+  { id: 'b4', code: 'B4', course: 'basic', title: '光の強さと光合成', unit: '生物の多様性と生態系', lead: '陽生植物と陰生植物で、補償点・光飽和点が違う。' },
+  { id: 'b5', code: 'B5', course: 'basic', title: '生態系のバランス（キーストーン種）', unit: '生物の多様性と生態系', lead: 'ラッコ→ウニ→ケルプ。1種の変化が間接効果で広がる。' },
+  { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
+  { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
+  { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
+];
+
+function stageById(id) {
+  return STAGES.find((s) => s.id === id) || null;
+}
+
+function stagesOf(course) {
+  return STAGES.filter((s) => s.course === course);
+}
+return { COURSES, STAGES, stageById, stagesOf };
+})();
+
+// ---- progress.js ----
+__m["progress.js"] = (function () {
+// 学習の進捗（端末内の localStorage にだけ保存。どこにも送信しない）
+const { loadJSON, saveJSON } = __m["lib/storage.js"];
+const { STAGES } = __m["stages.js"];
+
+const KEY = 'progress.v1';
+const MAX_MISSES = 60;
+
+function emptyStage() {
+  return { visited: 0, answered: 0, correct: 0, hard: 0, best: 0, tasks: {} };
+}
+
+function emptyProgress() {
+  const stages = {};
+  for (const s of STAGES) stages[s.id] = emptyStage();
+  return { v: 1, stages, streak: 0, bestStreak: 0, rounds: 0, perfect: 0, misses: [], badges: {}, flags: {} };
+}
+
+// 壊れたデータや古い形式でも動くように整える
+function normalize(p) {
+  const base = emptyProgress();
+  if (!p || typeof p !== 'object') return base;
+  const out = { ...base, ...p };
+  out.stages = {};
+  for (const s of STAGES) {
+    const src = (p.stages && p.stages[s.id]) || {};
+    const st = { ...emptyStage(), ...src };
+    for (const k of ['visited', 'answered', 'correct', 'hard', 'best']) st[k] = Math.max(0, Math.floor(Number(st[k]) || 0));
+    st.correct = Math.min(st.correct, st.answered);
+    st.tasks = st.tasks && typeof st.tasks === 'object' ? { ...st.tasks } : {};
+    out.stages[s.id] = st;
+  }
+  for (const k of ['streak', 'bestStreak', 'rounds', 'perfect']) out[k] = Math.max(0, Math.floor(Number(out[k]) || 0));
+  out.misses = Array.isArray(p.misses) ? p.misses.filter((m) => m && typeof m.g === 'string').slice(-MAX_MISSES) : [];
+  out.badges = p.badges && typeof p.badges === 'object' ? { ...p.badges } : {};
+  out.flags = p.flags && typeof p.flags === 'object' ? { ...p.flags } : {};
+  return out;
+}
+
+let state = null;
+const listeners = new Set();
+
+function getProgress() {
+  if (!state) state = normalize(loadJSON(KEY, null));
+  return state;
+}
+
+function saveProgress() {
+  saveJSON(KEY, getProgress());
+  for (const fn of listeners) fn(state);
+}
+
+function replaceProgress(p) {
+  state = normalize(p);
+  saveProgress();
+}
+
+function onProgress(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function markVisited(stageId) {
+  const p = getProgress();
+  p.stages[stageId].visited += 1;
+  saveProgress();
+}
+
+function markTask(stageId, taskId) {
+  const p = getProgress();
+  const st = p.stages[stageId];
+  if (st.tasks[taskId]) return false;
+  st.tasks[taskId] = 1;
+  saveProgress();
+  return true;
+}
+
+// 1問の解答を記録
+function recordAnswer(q, chosen) {
+  const p = getProgress();
+  const st = p.stages[q.stage];
+  const ok = chosen === q.answer;
+  st.answered += 1;
+  if (ok) {
+    st.correct += 1;
+    if (q.level === 3) st.hard += 1;
+    p.streak += 1;
+    p.bestStreak = Math.max(p.bestStreak, p.streak);
+  } else {
+    p.streak = 0;
+    p.misses.push({ g: q.gen, s: q.seed, c: chosen, st: q.stage, t: Date.now() });
+    if (p.misses.length > MAX_MISSES) p.misses.splice(0, p.misses.length - MAX_MISSES);
+  }
+  saveProgress();
+  return ok;
+}
+
+function recordRound(stageId, score, total) {
+  const p = getProgress();
+  p.rounds += 1;
+  if (score === total) p.perfect += 1;
+  if (p.stages[stageId]) p.stages[stageId].best = Math.max(p.stages[stageId].best, Math.round((score / total) * 10));
+  saveProgress();
+}
+
+function clearMisses() {
+  getProgress().misses = [];
+  saveProgress();
+}
+
+function setFlag(name) {
+  const p = getProgress();
+  if (p.flags[name]) return;
+  p.flags[name] = 1;
+  saveProgress();
+}
+return { emptyStage, emptyProgress, normalize, getProgress, saveProgress, replaceProgress, onProgress, markVisited, markTask, recordAnswer, recordRound, clearMisses, setFlag };
+})();
+
+// ---- dojo/index.js ----
+__m["dojo/index.js"] = (function () {
+// 図解道場の登録表
+const DOJOS = {};
+return { DOJOS };
+})();
+
+// ---- questions/index.js ----
+__m["questions/index.js"] = (function () {
+// 4択問題ジェネレーターの登録表
+const GENERATORS = [];
+return { GENERATORS };
+})();
+
+// ---- ui/home.js ----
+__m["ui/home.js"] = (function () {
+// ホーム：ステージ一覧（生物基礎 / 生物発展 の2タブ）と進捗
+const { h } = __m["lib/dom.js"];
+const { loadJSON, saveJSON } = __m["lib/storage.js"];
+const { COURSES, stagesOf } = __m["stages.js"];
+const { getProgress } = __m["progress.js"];
+const { DOJOS } = __m["dojo/index.js"];
+const { GENERATORS } = __m["questions/index.js"];
+
+function stageCard(stage, p) {
+  const st = p.stages[stage.id];
+  const dojo = DOJOS[stage.id];
+  const nTasks = dojo ? dojo.tasks.length : 0;
+  const done = dojo ? dojo.tasks.filter((t) => st.tasks[t.id]).length : 0;
+  const rate = st.answered ? Math.round((st.correct / st.answered) * 100) : null;
+  const nGen = GENERATORS.filter((g) => g.stage === stage.id).length;
+  return h(
+    'article',
+    { class: 'panel stage-card' },
+    h('div', { class: 'stage-head' }, h('span', { class: 'stage-code' }, stage.code), h('span', { class: 'stage-title' }, stage.title)),
+    h('div', { class: 'small muted' }, stage.unit, '　', stage.lead),
+    h(
+      'div',
+      { class: 'small' },
+      `やってみよう ${done}/${nTasks}`,
+      '　',
+      rate == null ? '4択 未挑戦' : `4択 正答率 ${rate}%（${st.correct}/${st.answered}）`,
+    ),
+    h('div', { class: 'progress', role: 'progressbar', 'aria-label': `${stage.code} やってみよう達成度`, 'aria-valuemin': 0, 'aria-valuemax': nTasks || 1, 'aria-valuenow': done },
+      h('span', { style: { width: (nTasks ? (done / nTasks) * 100 : 0) + '%' } })),
+    h(
+      'div',
+      { class: 'stage-actions' },
+      h('a', { class: 'btn primary', href: `#/dojo/${stage.id}` }, '図解道場'),
+      nGen ? h('a', { class: 'btn', href: `#/rush/${stage.id}` }, '4択ラッシュ') : h('span', { class: 'btn', 'aria-disabled': 'true' }, '準備中'),
+      h('a', { class: 'btn', href: `#/glossary/${stage.id}` }, '用語帳'),
+    ),
+  );
+}
+
+function renderHome(app) {
+  const p = getProgress();
+  let tab = loadJSON('homeTab', 'basic');
+  if (!COURSES.some((c) => c.id === tab)) tab = 'basic';
+
+  const list = h('div', { id: 'stage-list', role: 'tabpanel' });
+  const tabs = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'コース' });
+  const buttons = COURSES.map((c) =>
+    h('button', {
+      type: 'button',
+      role: 'tab',
+      id: 'tab-' + c.id,
+      'aria-controls': 'stage-list',
+      onclick: () => select(c.id),
+    }, c.name),
+  );
+  tabs.append(...buttons);
+
+  function select(id) {
+    tab = id;
+    saveJSON('homeTab', id);
+    buttons.forEach((b, i) => {
+      const on = COURSES[i].id === id;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    list.setAttribute('aria-labelledby', 'tab-' + id);
+    list.replaceChildren(...stagesOf(id).map((s) => stageCard(s, p)));
+    const mixN = GENERATORS.filter((g) => stagesOf(id).some((s) => s.id === g.stage)).length;
+    if (mixN) list.append(h('a', { class: 'btn block', href: `#/rush/mix-${id}` }, `${COURSES.find((c) => c.id === id).name} ミックス4択`));
+  }
+  tabs.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = COURSES.findIndex((c) => c.id === tab);
+    const j = (i + (e.key === 'ArrowRight' ? 1 : COURSES.length - 1)) % COURSES.length;
+    select(COURSES[j].id);
+    buttons[j].focus();
+  });
+
+  const totalAns = Object.values(p.stages).reduce((a, s) => a + s.answered, 0);
+  const totalOk = Object.values(p.stages).reduce((a, s) => a + s.correct, 0);
+  const nBadges = Object.keys(p.badges).length;
+
+  app.append(
+    h('section', { class: 'hero' },
+      h('h1', null, 'BIOLOGY'),
+      h('p', { class: 'muted small' }, '図解道場でスライダーを動かして形をつかみ、4択ラッシュで定着させよう。'),
+    ),
+    h('div', { class: 'panel small' }, `これまでの解答 ${totalAns}問（正解 ${totalOk}問）　連続正解の最高 ${p.bestStreak}問　バッジ ${nBadges}個`),
+    tabs,
+    list,
+    h('nav', { class: 'home-links', 'aria-label': 'その他の画面' },
+      h('a', { class: 'btn', href: '#/miss' }, 'ミスサマリー'),
+      h('a', { class: 'btn', href: '#/glossary' }, '用語帳'),
+      h('a', { class: 'btn', href: '#/badges' }, '実績バッジ'),
+      h('a', { class: 'btn', href: '#/transfer' }, '引き継ぎ・設定'),
+    ),
+  );
+  select(tab);
+}
+return { renderHome };
+})();
+
+// ---- dojo/common.js ----
+__m["dojo/common.js"] = (function () {
+// 図解道場の共通部品（スライダー・切替ボタン・解説欄）
+const { h } = __m["lib/dom.js"];
+
+let uid = 0;
+
+// キーボード操作できるネイティブのスライダー
+function slider({ label, min, max, step = 1, value, format = (v) => String(v), onInput }) {
+  const id = 'sl-' + ++uid;
+  const out = h('output', { for: id, 'aria-live': 'off' }, format(value));
+  const input = h('input', { type: 'range', id, min, max, step, value });
+  const el = h('div', { class: 'control' }, h('label', { for: id }, label), out, input);
+  const ctl = {
+    el,
+    input,
+    get value() {
+      return Number(input.value);
+    },
+    set(v, silent) {
+      input.value = String(v);
+      out.textContent = format(Number(input.value));
+      input.setAttribute('aria-valuetext', out.textContent);
+      if (!silent && onInput) onInput(Number(input.value));
+    },
+    setRange(lo, hi) {
+      input.min = String(lo);
+      input.max = String(hi);
+      ctl.set(Math.min(hi, Math.max(lo, ctl.value)), true);
+    },
+  };
+  input.setAttribute('aria-valuetext', out.textContent);
+  input.addEventListener('input', () => {
+    out.textContent = format(Number(input.value));
+    input.setAttribute('aria-valuetext', out.textContent);
+    if (onInput) onInput(Number(input.value));
+  });
+  return ctl;
+}
+
+// 切替ボタン（aria-pressed で状態を示す）
+function segmented({ label, options, value, onChange }) {
+  const group = h('div', { class: 'seg', role: 'group', 'aria-label': label });
+  const btns = options.map((o) =>
+    h('button', { type: 'button', 'aria-pressed': o.value === value ? 'true' : 'false', onclick: () => ctl.set(o.value) }, o.label),
+  );
+  group.append(...btns);
+  const ctl = {
+    el: h('div', null, label ? h('div', { class: 'small muted', 'aria-hidden': 'true' }, label) : null, group),
+    value,
+    set(v, silent) {
+      ctl.value = v;
+      btns.forEach((b, i) => b.setAttribute('aria-pressed', options[i].value === v ? 'true' : 'false'));
+      if (!silent && onChange) onChange(v);
+    },
+  };
+  return ctl;
+}
+
+// 「いま何が起きているか」欄。文章はスライダーの値に応じて書き換える
+function explainBox() {
+  const el = h('div', { class: 'explain', 'aria-live': 'polite' });
+  return {
+    el,
+    set(paragraphs) {
+      el.replaceChildren(...paragraphs.filter(Boolean).map((t) => h('p', null, t)));
+    },
+  };
+}
+
+function panel(title, ...children) {
+  return h('section', { class: 'panel' }, title ? h('h2', null, title) : null, ...children);
+}
+
+function modelNote(text = 'モデルによる模式図') {
+  return h('span', { class: 'badge-model' }, text);
+}
+return { slider, segmented, explainBox, panel, modelNote };
+})();
+
+// ---- lib/series.js ----
+__m["lib/series.js"] = (function () {
+// グラフ用の点列を作る純粋関数（DOM に依存しないので Node の検証でも使える）
+function sample(f, x0, x1, n = 160) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const xv = x0 + ((x1 - x0) * i) / n;
+    pts.push([xv, f(xv)]);
+  }
+  return pts;
+}
+
+// 点列を間引く（表示用）
+function thin(points, maxN = 240) {
+  if (points.length <= maxN) return points;
+  const step = (points.length - 1) / (maxN - 1);
+  const out = [];
+  for (let i = 0; i < maxN; i++) out.push(points[Math.round(i * step)]);
+  return out;
+}
+return { sample, thin };
+})();
+
+// ---- ui/dojo.js ----
+__m["ui/dojo.js"] = (function () {
+// 図解道場の画面枠：シミュレーター本体＋「やってみよう」課題
+const { h, toast } = __m["lib/dom.js"];
+const { stageById } = __m["stages.js"];
+const { getProgress, markVisited, markTask } = __m["progress.js"];
+const { DOJOS } = __m["dojo/index.js"];
+const { GENERATORS } = __m["questions/index.js"];
+const { createChart, legendFromSpec } = __m["lib/chart.js"];
+const { panel, modelNote } = __m["dojo/common.js"];
+const { sample } = __m["lib/series.js"];
+
+function renderDojo(app, stageId, ...args) {
+  const stage = stageById(stageId);
+  const dojo = DOJOS[stageId];
+  markVisited(stageId);
+
+  app.append(
+    h('div', { class: 'hero' },
+      h('div', { class: 'stage-head' }, h('span', { class: 'stage-code' }, stage.code), h('h1', { class: 'stage-title' }, stage.title)),
+      h('div', { class: 'small muted' }, '図解道場 ', modelNote()),
+    ),
+  );
+
+  if (!dojo) {
+    const p = panel('準備中', h('p', { class: 'muted' }, 'このステージの図解道場は準備中です。グラフ部品の表示確認用の図を示します。'));
+    app.append(p);
+    const chart = createChart(p, { label: '表示確認用グラフ' });
+    const spec = {
+      x: { min: 0, max: 10, label: 'x' },
+      y: { min: 0, max: 1.2, label: 'y', step: 0.2, digits: 1 },
+      series: [
+        { points: sample((x) => x / (2 + x), 0, 10), color: 'c1', label: '系列1' },
+        { points: sample((x) => 0.5 * x / (0.6 + x), 0, 10), color: 'c2', dash: 'dash', label: '系列2' },
+      ],
+    };
+    chart.draw(spec);
+    p.append(legendFromSpec(spec));
+    return null;
+  }
+
+  const taskItems = new Map();
+  const st = getProgress().stages[stageId];
+  const taskList = h('ul', { class: 'tasks' });
+  for (const t of dojo.tasks) {
+    const li = h('li', { class: st.tasks[t.id] ? 'done' : '' }, h('span', { class: 'task-mark', 'aria-hidden': 'true' }, st.tasks[t.id] ? '✓' : ''), h('span', { class: 'task-text' }, t.text));
+    taskItems.set(t.id, li);
+    taskList.append(li);
+  }
+
+  const ctx = {
+    args,
+    // 状態が変わるたびに呼ぶ。課題の達成を判定する
+    update(state) {
+      for (const t of dojo.tasks) {
+        if (!t.check || getProgress().stages[stageId].tasks[t.id]) continue;
+        let ok = false;
+        try {
+          ok = t.check(state);
+        } catch (e) {
+          ok = false;
+        }
+        if (ok && markTask(stageId, t.id)) {
+          const li = taskItems.get(t.id);
+          li.classList.add('done');
+          li.querySelector('.task-mark').textContent = '✓';
+          toast('やってみよう達成：' + (t.short || t.text));
+        }
+      }
+    },
+  };
+
+  const body = h('div');
+  app.append(body);
+  const cleanup = dojo.mount(body, ctx);
+
+  app.append(
+    panel('やってみよう', taskList),
+    h('div', { class: 'row' },
+      GENERATORS.some((g) => g.stage === stageId) ? h('a', { class: 'btn primary grow', href: `#/rush/${stageId}` }, 'このステージの4択ラッシュへ') : null,
+      h('a', { class: 'btn grow', href: `#/glossary/${stageId}` }, '用語帳'),
+    ),
+  );
+  return cleanup;
+}
+return { renderDojo };
+})();
+
+// ---- main.js ----
+__m["main.js"] = (function () {
+// エントリーポイント：画面の切替（ハッシュルーター）
+const { h, clear, toast } = __m["lib/dom.js"];
+const { initTheme, cycleTheme } = __m["lib/theme.js"];
+const { renderHome } = __m["ui/home.js"];
+const { renderDojo } = __m["ui/dojo.js"];
+const { stageById } = __m["stages.js"];
+
+const app = document.getElementById('app');
+const backBtn = document.getElementById('btn-back');
+let cleanup = null;
+
+function notFound() {
+  app.append(h('div', { class: 'panel' }, h('p', null, 'ページが見つかりません。'), h('a', { class: 'btn', href: '#/home' }, 'ホームへ')));
+}
+
+const ROUTES = {
+  home: () => renderHome(app),
+  dojo: (id) => (stageById(id) ? renderDojo(app, id) : notFound()),
+};
+
+function route() {
+  if (typeof cleanup === 'function') cleanup();
+  cleanup = null;
+  clear(app);
+  const parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
+  const [name, ...args] = parts;
+  const fn = ROUTES[name];
+  backBtn.hidden = name === 'home' || !fn;
+  if (!fn) notFound();
+  else cleanup = fn(...args.map(decodeURIComponent));
+  window.scrollTo(0, 0);
+  app.focus({ preventScroll: true });
+}
+
+backBtn.addEventListener('click', () => {
+  if (history.length > 1 && sessionStorageSafe()) history.back();
+  else location.hash = '#/home';
+});
+
+function sessionStorageSafe() {
+  // アプリ内で一度でも画面遷移していれば戻る、そうでなければホームへ
+  return route.navigated === true;
+}
+
+document.getElementById('btn-theme').addEventListener('click', () => {
+  toast('表示：' + cycleTheme());
+});
+
+window.addEventListener('hashchange', () => {
+  route.navigated = true;
+  route();
+});
+
+initTheme();
+route();
+return {  };
+})();
+})();
+</script>
+</body>
+</html>
