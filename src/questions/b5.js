@@ -1,6 +1,6 @@
 // B5 生態系のバランス（キーストーン種）の問題
 import { KATA, assignmentQuestion, distinctNumbers } from './common.js';
-import { simulate, SCALE } from '../models/keystone.js';
+import { simulate, SCALE, yMaxFor } from '../models/keystone.js';
 
 export const B5 = [
   {
@@ -68,10 +68,10 @@ export const B5 = [
       const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c4', dash: 'dot' }];
       const aq = assignmentQuestion(labels, order);
       return {
-        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは3種の個体数（相対値）の変化を表している。ア〜ウの組合せとして正しいものはどれか。',
+        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは、3種の量（ラッコ・ウニは個体数、ケルプは現存量）を、それぞれ乱獲前を100とした相対値で表している。ア〜ウの組合せとして正しいものはどれか。',
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
           vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
           alt: '3種の個体数の変化ア・イ・ウ',
@@ -122,7 +122,7 @@ export const B5 = [
           text: '台風や山火事などで生態系が乱されても、その程度が小さければやがて元の状態に戻る。生態系のこのような性質を何というか。',
           correct: '復元力',
           wrong: ['生物濃縮', '富栄養化', '間接効果'],
-          explanation: 'これは生態系の復元力である。撹乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
+          explanation: 'これは生態系の復元力である。かく乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
         };
       }
       return {
@@ -160,10 +160,10 @@ export const B5 = [
       const target = rng.pick(['ウニ', 'ケルプ']);
       const up = target === 'ウニ';
       return {
-        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニ・ケルプの個体数（相対値）である。乱獲後に十分時間がたったとき、${target}の個体数は乱獲前と比べてどうなったか。`,
+        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニの個体数とケルプの現存量を、それぞれ乱獲前を100とした相対値で表したものである。乱獲後に十分時間がたったとき、${target}の${up ? '個体数' : '量'}は乱獲前と比べてどうなったか。`,
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: [
             { points: run.map((r) => [r.t, r.o * SCALE.o]), color: 'c4', dash: 'dashdot', width: 3, label: 'ラッコ' },
             { points: run.map((r) => [r.t, r.u * SCALE.u]), color: 'c2', dash: 'dash', width: 3, label: 'ウニ' },

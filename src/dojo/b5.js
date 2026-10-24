@@ -3,7 +3,7 @@ import { h } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
 import { createChart, legend } from '../lib/chart.js';
 import { slider, explainBox, panel, modelNote } from './common.js';
-import { simulate, SCALE } from '../models/keystone.js';
+import { simulate, SCALE, yMaxFor } from '../models/keystone.js';
 
 const T_HUNT = 20;
 const T_END = 150;
@@ -19,15 +19,15 @@ export const dojo = {
 
     const top = panel(null);
     root.append(top);
-    top.append(h('h2', null, 'ラッコ・ウニ・ケルプの個体数 ', modelNote()));
-    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの個体数の変化のグラフ' });
+    top.append(h('h2', null, 'ラッコ・ウニの個体数とケルプの量 ', modelNote()));
+    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの量の変化のグラフ' });
     top.append(
       legend([
         { label: 'ラッコ', color: 'c4', dash: 'dashdot' },
         { label: 'ウニ', color: 'c2', dash: 'dash' },
-        { label: 'ケルプ（海藻）', color: 'c3' },
+        { label: 'ケルプ（海藻の現存量）', color: 'c3' },
       ]),
-      h('p', { class: 'small muted' }, `個体数は相対値。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
+      h('p', { class: 'small muted' }, `縦軸は3種とも「乱獲前＝100」とした相対値（種ごとに基準が違うので、どの種が多いかは比べられない。変化の割合を比べる）。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
     );
     const sO = slider({ label: '乱獲後のラッコの数（元を100%として）', min: 0, max: 100, step: 5, value: 70, format: (v) => v + '%', onInput: (v) => {
       st.o1 = v / 100;
@@ -47,9 +47,9 @@ export const dojo = {
         { points: run.map((r) => [r.t, r.k * SCALE.k]), color: 'c3', width: 3, label: 'ケルプ' },
       ];
       chart.draw({
-        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}`,
+        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}（乱獲前＝100）`,
         x: { min: 0, max: T_END, label: '時間（年）', step: 25 },
-        y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+        y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: yMaxFor(run) > 400 ? 100 : yMaxFor(run) > 200 ? 50 : 20 },
         series,
         vlines: st.o1 < 1 ? [{ x: T_HUNT, color: 'muted', label: '乱獲' }] : [],
       });
@@ -58,7 +58,7 @@ export const dojo = {
       const lines = [];
       if (st.o1 >= 0.999) {
         lines.push('ラッコがウニを食べているので、ウニは少なく保たれ、ケルプ（海藻）の森が豊かに保たれている。');
-        lines.push('ラッコの数は多くないが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
+        lines.push('ラッコは個体数の少ない上位の捕食者だが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
       } else {
         lines.push(`ラッコが ${fmt(st.o1 * 100, 0)}% に減ると、食べられる量が減ったウニが増え（約${fmt(du, 1)}倍）、そのウニに食べられてケルプが減る（約${fmt(dk * 100, 0)}%に）。`);
         lines.push('ラッコはケルプを直接食べないのに、ウニを介してケルプの量に影響している。このような影響を間接効果という。ケルプの森をすみかや産卵場所にする魚などにも影響が広がる。');

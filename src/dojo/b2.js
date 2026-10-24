@@ -15,7 +15,7 @@ function at(run, minute) {
 export const dojo = {
   tasks: [
     { id: 'peak', text: '「健康」で、血糖値が最も高くなる時刻に「時刻」スライダーを合わせよう。', short: '血糖値のピークを発見' },
-    { id: 'glucagon', text: '「健康」で、血糖値が空腹時より下がってグルカゴンが増えている時刻を探そう。', short: 'グルカゴンの出番を発見' },
+    { id: 'glucagonDown', text: '「健康」で、血糖値が上がっている間はグルカゴンが空腹時の半分以下に減っていることを、時刻スライダーで確かめよう。', short: 'グルカゴンが減る' },
     { id: 'type1', text: '「1型糖尿病」に切り替えて、インスリンがほとんど増えないことを確かめよう。', short: '1型を確認' },
     { id: 'sens', text: 'インスリンの分泌能力はそのまま（1.0倍以上）で、効きやすさを0.3倍以下にしてみよう。', short: '効きにくさを体験' },
   ],
@@ -85,7 +85,7 @@ export const dojo = {
         vlines: [{ x: cursor / 60, color: 'fg', dash: 'dash', width: 1.2 }],
         series: [
           !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
-          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値' },
+          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値', labelAt: sm.peakT / 60 },
           { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
           { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
         ].filter(Boolean),
@@ -101,24 +101,37 @@ export const dojo = {
 
       const lines = [];
       const fast = sm.fastingG;
-      if (cursor < sm.peakT && cur.G > fast + 3) {
-        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が感知し、インスリンの分泌が増えはじめる。');
-      } else if (cur.G > fast + 3) {
-        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。');
+      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
+      const rising = cursor < sm.peakT && cur.G > fast + 3;
+      const high = cur.G > fast + 3;
+      if (kind === 'type1') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。しかしB細胞がはたらかないため、血糖値が上がってもインスリンはほとんど増えない。');
+        else if (high) lines.push('インスリンがほとんどないので、細胞へのグルコースの取り込みや肝臓でのグリコーゲン合成が進まない。脳などでのインスリンによらない消費でゆっくり下がるだけで、高い血糖値が続く。');
+        else lines.push('インスリンがほとんど分泌されないので、空腹時から血糖値が高い。');
+      } else if (kind === 'type2') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。B細胞はインスリンを分泌するが、量が少ない、または効きにくいため、血糖値が大きく上がる。');
+        else if (high) lines.push('インスリンは分泌されているが、効きにくい（または量が少ない）ので、細胞へのグルコースの取り込みが進まず、血糖値が下がるのに時間がかかる。');
+        else lines.push('インスリンのはたらきが弱いので、空腹時の血糖値もやや高めに保たれている。');
+      } else if (rising) {
+        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が直接感知するほか、間脳の視床下部も感知して副交感神経を通じてB細胞を刺激するので、インスリンの分泌が増える。グルカゴンの分泌は減る。');
+      } else if (high) {
+        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。血糖値が下がるにつれてインスリンの分泌も減り、空腹時の値に戻ったところで落ち着く。');
       } else if (cur.G < fast - 3) {
-        lines.push('血糖値が空腹時より下がったので、ランゲルハンス島のA細胞からグルカゴンの分泌が増えている。グルカゴンは肝臓のグリコーゲンの分解を促し、血糖値を元に戻す。');
+        lines.push('血糖値が空腹時より下がっている。ランゲルハンス島のA細胞からグルカゴンの分泌が増え、肝臓のグリコーゲンの分解を促して血糖値を元に戻す。');
       } else {
-        lines.push('血糖値はほぼ一定に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
+        lines.push('血糖値は空腹時の値（約100 mg/100mL）に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
       }
       lines.push(`空腹時 ${fmt(fast, 0)} → 最大 ${fmt(sm.peakG, 0)} mg/100mL（食後 ${fmt(sm.peakT, 0)} 分）。食後2時間で ${fmt(sm.g120, 0)} mg/100mL。`);
-      if (prm.cap < 0.15) {
+      if (kind === 'type1') {
         lines.push('インスリンがほとんど分泌されないので（1型糖尿病のような状態）、取り込みが進まず、血糖値が高いまま下がりにくい。1型糖尿病は、免疫のはたらきでB細胞が破壊されることなどで起こり、治療にはインスリンの注射が必要になる。');
-      } else if (sm.peakG >= 180 || sm.fastingG >= 126) {
+      } else if (kind === 'type2') {
         lines.push(`インスリンは分泌されている（最大 ${fmt(sm.insulinPeak / ref.I, 1)}）のに血糖値が高いままになりやすい。インスリンが効きにくい、または分泌量が少ないから（2型糖尿病のような状態）。生活習慣などが関係する。`);
       } else if (prm.meal === 0) {
         lines.push('食事をしていないので、血糖値は空腹時の値のまま保たれる。');
+      } else if (prm.meal >= 1.5) {
+        lines.push('食事量が多いので血糖値は大きく上がるが、インスリンも多く分泌されるので、2時間ほどで空腹時の値に戻る。健康な人では、血糖値が高いまま下がらないことはない。');
       } else {
-        lines.push('血糖値が上がるとインスリンが増え、下がるとインスリンが減ってグルカゴンが増える。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
+        lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値に戻るとインスリンも元の量に戻る。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
       }
       exp.set(lines);
       ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
@@ -129,6 +142,6 @@ export const dojo = {
 };
 
 dojo.tasks[0].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && Math.abs(s.cursor - s.sm.peakT) <= 4;
-dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cur.G < s.sm.fastingG - 3 && s.cur.N / s.ref.N > 1.15;
+dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cursor < s.sm.peakT + 30 && s.cur.G > s.sm.fastingG + 15 && s.cur.N / s.ref.N <= 0.5;
 dojo.tasks[2].check = (s) => s.preset === 'type1';
 dojo.tasks[3].check = (s) => s.prm.cap >= 1 && s.prm.sens <= 0.3 && s.prm.meal >= 0.5;

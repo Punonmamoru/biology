@@ -25,7 +25,7 @@ export const A1 = [
       const v = (Vmax * n) / (n + 1);
       const d = distinctNumbers(v, [Vmax / 2, (Vmax * S) / Km, Vmax, Vmax - v, (Vmax * Km) / (Km + S), v / 2, v + Vmax / 10], '', 2);
       return {
-        text: `ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -59,8 +59,10 @@ export const A1 = [
       const k = rng.pick(['competitive', 'noncompetitive']);
       const Vmax = rng.pick([40, 50, 60, 80]);
       const Km = rng.pick([2, 3, 4]);
-      const I = rng.pick([2, 4, 6]);
+      // 競争的阻害は阻害剤を薄くし、横軸を広げて、高い基質濃度で最大速度に近づく様子が見えるようにする
+      const I = k === 'competitive' ? 2 : rng.pick([2, 4, 6]);
       const cur = inhibited(k, Vmax, Km, I, 2);
+      const sMax = 200;
       const A = {
         competitive: '競争的阻害（基質濃度を高くすると、阻害の影響が小さくなる）',
         noncompetitive: '非競争的阻害（基質濃度を高くしても、最大速度は回復しない）',
@@ -68,11 +70,11 @@ export const A1 = [
       return {
         text: '図は、ある酵素の基質濃度と反応速度の関係を、阻害剤を加えない場合（実線）と加えた場合（破線）で比べたものである。この阻害剤による阻害として最も適当なものはどれか。',
         chart: {
-          x: { min: 0, max: 60, label: '基質濃度', step: 10 },
+          x: { min: 0, max: sMax, label: '基質濃度', step: sMax / 5 },
           y: { min: 0, max: Vmax * 1.2, label: '反応速度', step: 10 },
           series: [
-            { points: sample((S) => rate(S, Vmax, Km), 0, 60, 200), color: 'c1', width: 3, label: '阻害剤なし' },
-            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, 60, 200), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
+            { points: sample((S) => rate(S, Vmax, Km), 0, sMax, 300), color: 'c1', width: 3, label: '阻害剤なし' },
+            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, sMax, 300), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
           ],
           alt: '阻害剤のありなしで比べた反応速度のグラフ',
         },
@@ -97,7 +99,7 @@ export const A1 = [
       ];
       const x = rng.pick(Q);
       return {
-        text: `反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
+        text: `【発展：教科書の範囲外】反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
         correct: x.a,
         wrong: ['1/Vmax', '−1/Km', 'Km/Vmax', 'Vmax', 'Km', 'Vmax/Km'],
         explanation: `ミカエリス・メンテンの式の逆数をとると 1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax となるので、${x.q}は ${x.a} を表す。1次関数 y ＝ ax ＋ b と同じ形になるから、傾きが Km/Vmax、y切片が 1/Vmax、y＝0 とおいた x切片が −1/Km になる。`,
@@ -119,7 +121,7 @@ export const A1 = [
       const cands = ask === 'Vmax' ? [yi, Km, -xi, Vmax * 2, Vmax / 2, Vmax / Km, Vmax * 10, Vmax / 10] : [-xi, Vmax, yi, Km * 2, Km / 2, Km * Vmax, Km * 10, Km / 10];
       const d = distinctNumbers(ans, cands, '', 3);
       return {
-        text: `ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,

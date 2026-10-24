@@ -44,5 +44,14 @@ export function simulate({ o0 = 1, o1 = 1, tHunt = 20, tEnd = 150, dt = 0.1 } = 
   return out;
 }
 
-// 表示用の相対値（0〜100）
-export const SCALE = { k: 100, u: 150, o: 100 };
+// 表示用の相対値：3種とも「乱獲前（ラッコ 1 の平衡状態）＝100」にそろえる。
+// 種ごとに基準が違うので、縦軸の値どうしで「どちらが多いか」は比べられない（変化の割合だけを比べる）。
+const BASE = equilibrium(1);
+export const SCALE = { k: 100 / BASE.k, u: 100 / BASE.u, o: 100 };
+
+// 縦軸の上限（100単位に切り上げ）
+export function yMaxFor(run) {
+  let m = 100;
+  for (const r of run) m = Math.max(m, r.o * SCALE.o, r.u * SCALE.u, r.k * SCALE.k);
+  return m <= 110 ? 120 : Math.ceil((m * 1.05) / 100) * 100;
+}

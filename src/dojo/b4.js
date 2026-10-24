@@ -11,10 +11,11 @@ const STYLE = { sun: { color: 'c2', dash: 'solid' }, shade: { color: 'c1', dash:
 function status(p, I) {
   const a = apparent(p, I);
   const ic = compensationPoint(p);
+  if (I <= 0) return '暗黒（光の強さ0）：光合成は行われず、呼吸によるCO₂の放出だけが起こっている。このときのCO₂放出速度が呼吸速度である';
   if (Math.abs(I - ic) < Math.max(0.02, ic * 0.04)) return 'ほぼ補償点：光合成速度と呼吸速度が等しく、見かけ上CO₂の出入りがない';
-  if (a < 0) return '補償点より弱い光：呼吸速度が光合成速度を上回り、CO₂を放出している（光合成は行っている）';
-  if (I >= saturationPoint(p)) return '光飽和点以上：光を強くしても速度はほとんど増えない（CO₂濃度や温度が限定要因）';
-  return '補償点と光飽和点の間：光を強くするほど見かけの光合成速度が大きくなる';
+  if (a < 0) return '補償点より弱い光：光合成は行っているが、呼吸速度のほうが大きいのでCO₂を放出している';
+  if (I >= saturationPoint(p)) return '光飽和点以上：これ以上光を強くしても光合成速度は増えない（CO₂濃度や温度が限定要因）';
+  return '補償点と光飽和点の間：光を強くするほど光合成速度が大きくなる（光の強さが限定要因）';
 }
 
 export const dojo = {
@@ -32,7 +33,7 @@ export const dojo = {
     top.append(h('h2', null, '光の強さとCO₂吸収速度 ', modelNote()));
     const chart = createChart(top, { label: '光の強さと見かけの光合成速度のグラフ', aspect: 0.75 });
     const leg = h('div');
-    top.append(leg, h('p', { class: 'small muted' }, '光合成速度 P ＝ Pmax·I/(K＋I)、見かけの光合成速度 ＝ P − 呼吸速度。光飽和点は、ここでは光合成速度が最大値の90%に達する光の強さとした。'));
+    top.append(leg, h('p', { class: 'small muted' }, '見かけの光合成速度 ＝ 光合成速度 − 呼吸速度。光飽和点は、これ以上光を強くしても光合成速度が増えなくなる点（■と縦の点線）。光飽和点より右では曲線が水平になる。'));
 
     const segShow = segmented({ label: '表示する植物', options: [{ value: 'sun', label: '陽生植物' }, { value: 'shade', label: '陰生植物' }, { value: 'both', label: '両方' }], value: st.show, onChange: (v) => { st.show = v; update(); } });
     const segZoom = segmented({ label: '横軸の範囲', options: [{ value: false, label: '全体（0〜60）' }, { value: true, label: '弱光を拡大（0〜6）' }], value: st.zoom, onChange: (v) => {
@@ -53,6 +54,7 @@ export const dojo = {
       const series = [];
       const markers = [];
       const hlines = [];
+      const satLines = [];
       for (const k of keys) {
         const p = PLANTS[k];
         series.push({ points: sample((I) => apparent(p, I), 0, xMax, 300), color: STYLE[k].color, dash: STYLE[k].dash, width: 3, label: p.name, legendLabel: p.name + '（見かけの光合成速度）' });
@@ -60,13 +62,16 @@ export const dojo = {
         const is = saturationPoint(p);
         const single = keys.length === 1;
         markers.push({ x: ic, y: 0, color: STYLE[k].color, label: single || st.zoom ? (single ? '補償点' : `補償点（${p.name.slice(0, 2)}）`) : null, dy: k === 'shade' ? -18 : 0 });
-        if (is <= xMax) markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+        if (is <= xMax) {
+          markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+          satLines.push({ x: is, color: STYLE[k].color, dash: 'dot', width: 1.2 });
+        }
         if (keys.length === 1) {
           series.push({ points: sample((I) => gross(p, I), 0, xMax, 300), color: 'muted', dash: 'dot', width: 2, label: '光合成速度', legendLabel: '光合成速度（見かけ＋呼吸）' });
           hlines.push({ y: -p.R, color: 'muted', dash: 'dot', label: `呼吸速度 ${fmt(p.R, 1)}（光がなくても続く）` });
         }
       }
-      const yMin = keys.includes('sun') ? -6 : -2;
+      const yMin = keys.includes('sun') ? -4 : -2;
       const yMax = st.zoom ? (keys.includes('sun') ? 8 : 6) : keys.length === 1 && keys[0] === 'shade' ? 8 : 22;
       chart.draw({
         alt: `光の強さ ${fmt(st.I, 2)} キロルクス`,
@@ -75,7 +80,7 @@ export const dojo = {
         series,
         markers,
         hlines,
-        vlines: [{ x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
+        vlines: [...satLines, { x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
       });
       leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
 
@@ -87,7 +92,7 @@ export const dojo = {
       if (keys.length === 2) {
         lines.push(`2本の曲線は約 ${fmt(cross, 1)} キロルクスで交わる。これより弱い光では陰生植物のほうが見かけの光合成速度が大きい。陰生植物は呼吸速度が小さく補償点が低いので、弱い光でも成長できるからである。`);
       }
-      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 1)} キロルクス。`);
+      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 0)} キロルクス。`);
       if (st.I < 3) {
         lines.push('森林の林床はこのくらい暗い。陽樹の芽生えは補償点が高く育ちにくいが、陰樹の芽生えは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
       }

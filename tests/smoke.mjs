@@ -20,7 +20,7 @@ try {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const URL0 = pathToFileURL(join(ROOT, 'index.html')).href;
-const STAGES = ['b1', 'b2', 'b3', 'b4', 'b5', 'a1', 'a2', 'a3'];
+const STAGES = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10', 'a1', 'a2', 'a3'];
 const ROUTES = ['#/home', ...STAGES.map((s) => '#/dojo/' + s), ...STAGES.map((s) => '#/rush/' + s), '#/rush/mix-basic', '#/rush/mix-advanced', '#/miss', '#/glossary', '#/badges', '#/transfer'];
 let failures = 0;
 const ok = (cond, msg) => {

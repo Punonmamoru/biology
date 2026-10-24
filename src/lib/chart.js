@@ -72,12 +72,18 @@ function makeHatch(ctx, color, kind) {
   g.beginPath();
   if (kind === 'cross') {
     g.moveTo(0, 4); g.lineTo(8, 4); g.moveTo(4, 0); g.lineTo(4, 8);
+  } else if (kind === 'vert') {
+    g.moveTo(2, 0); g.lineTo(2, 8); g.moveTo(6, 0); g.lineTo(6, 8);
   } else {
     g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6);
   }
   g.stroke();
   return ctx.createPattern(c, 'repeat');
 }
+
+// 棒グラフの系列ごとの塗り（1系列目はべた塗り、2系列目以降は模様。色だけに頼らない）
+export const HATCHES = [null, 'diag', 'cross', 'vert'];
+const hatchOf = (i) => HATCHES[i % HATCHES.length];
 
 function haloText(ctx, text, x, y, color, bg) {
   ctx.lineJoin = 'round';
@@ -235,6 +241,20 @@ export function drawSpec(ctx, W, H, spec) {
   ctx.rect(pad.l - 1, pad.t - 1, pw + 2, ph + 2);
   ctx.clip();
 
+  // 多角形の区画（バイオームの図など）。塗りのあと、名前は最後に書く
+  for (const pg of spec.polygons || []) {
+    if (!pg.points || pg.points.length < 3) continue;
+    ctx.beginPath();
+    pg.points.forEach(([px, py], i) => (i ? ctx.lineTo(X(px), yOf(pg.axis)(py)) : ctx.moveTo(X(px), yOf(pg.axis)(py))));
+    ctx.closePath();
+    ctx.fillStyle = tokenColor(pg.fill || 'region');
+    ctx.fill();
+    ctx.strokeStyle = tokenColor(pg.bold ? 'fg' : pg.stroke || 'muted');
+    ctx.lineWidth = pg.bold ? 2.5 : 1;
+    ctx.setLineDash([]);
+    ctx.stroke();
+  }
+
   // 棒グラフ
   if (spec.bars) {
     const cats = spec.bars.categories;
@@ -243,7 +263,7 @@ export function drawSpec(ctx, W, H, spec) {
     const bw = Math.min(56, (slot * 0.76) / groups.length);
     groups.forEach((g, gi) => {
       const col = tokenColor(g.color || 'c1');
-      const fill = gi === 0 ? col : makeHatch(ctx, col, gi === 2 ? 'cross' : 'diag');
+      const fill = hatchOf(gi) ? makeHatch(ctx, col, hatchOf(gi)) : col;
       g.values.forEach((v, ci) => {
         const cx = pad.l + slot * (ci + 0.5) + (gi - (groups.length - 1) / 2) * bw;
         const top = Y(Math.max(v, y.min));
@@ -330,6 +350,16 @@ export function drawSpec(ctx, W, H, spec) {
     }
   }
   ctx.restore();
+
+  // 多角形の名前
+  for (const pg of spec.polygons || []) {
+    if (!pg.label || !pg.at) continue;
+    ctx.font = `${pg.bold ? 'bold ' : ''}${fs}px ${font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    haloText(ctx, pg.label, X(pg.at[0]), yOf(pg.axis)(pg.at[1]), fg, bg);
+  }
+  ctx.font = `${fs}px ${font}`;
 
   // 点
   for (const m of spec.markers || []) {
@@ -485,7 +515,7 @@ export function legendFromSpec(spec) {
     dash: s.dash || 'solid',
   }));
   if (spec.bars) {
-    spec.bars.groups.forEach((g, i) => items.push({ label: g.label, color: g.color || 'c1', bar: true, hatch: i === 0 ? null : i === 2 ? 'cross' : 'diag' }));
+    spec.bars.groups.forEach((g, i) => items.push({ label: g.label, color: g.color || 'c1', bar: true, hatch: hatchOf(i) }));
   }
   return legend(items);
 }

@@ -23,6 +23,8 @@
   --c5: #8a6a00;   /* 系列5：黄土 */
   --region: rgba(31, 95, 191, 0.08);
   --region-2: rgba(196, 68, 26, 0.08);
+  --region-3: rgba(30, 127, 69, 0.22);
+  --region-4: rgba(138, 106, 0, 0.10);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -50,6 +52,8 @@
     --c5: #f0c95a;
     --region: rgba(127, 178, 255, 0.12);
     --region-2: rgba(255, 154, 107, 0.12);
+    --region-3: rgba(111, 220, 149, 0.22);
+    --region-4: rgba(240, 201, 90, 0.10);
     --shadow: none;
   }
 }
@@ -77,6 +81,8 @@
   --c5: #f0c95a;
   --region: rgba(127, 178, 255, 0.12);
   --region-2: rgba(255, 154, 107, 0.12);
+  --region-3: rgba(111, 220, 149, 0.22);
+  --region-4: rgba(240, 201, 90, 0.10);
   --shadow: none;
 }
 
@@ -284,3 +290,24 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* ===== 表の横スクロール・塩基配列（B7〜B9） ===== */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.table-scroll table.data { min-width: 100%; width: max-content; }
+.table-scroll th, .table-scroll td { white-space: nowrap; }
+.seg.many button { flex: 0 1 auto; padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+.seq-view { display: grid; gap: 10px; margin-top: 6px; }
+.seq-row { display: grid; gap: 4px; }
+.seq-blocks { display: flex; flex-wrap: wrap; gap: 4px; }
+.codon { border: 1px solid var(--line); border-radius: 8px; padding: 4px 5px; min-width: 3.6em; text-align: center; background: var(--surface); }
+.codon.alt { background: var(--surface-2); }
+.codon.outside { border-style: dashed; color: var(--muted); }
+.codon.changed { border: 2px solid var(--c2); }
+.codon.stop .aa { font-weight: 700; }
+.codon .seq { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.02rem; letter-spacing: 0.08em; }
+.codon .seq.rna { color: var(--c1); }
+.codon .aa { font-size: 0.74rem; line-height: 1.25; margin-top: 2px; word-break: break-all; }
+.codon .mut { background: var(--ng-soft); color: var(--ng); font-weight: 700; border-radius: 3px; outline: 1px solid var(--ng); }
+.codon-table td { vertical-align: top; font-size: 0.78rem; line-height: 1.45; white-space: nowrap; }
+.codon-table td div.used { font-weight: 700; color: var(--c1); }
+.codon-table td div.used::before { content: "▶"; font-size: 0.7em; margin-right: 2px; }

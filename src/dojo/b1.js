@@ -11,10 +11,10 @@ const TEXT = {
   G2: 'DNAの複製が終わり、分裂の準備をしている。DNA量は4。',
 };
 const M_TEXT = {
-  前期: '前期：核の中で染色体が凝縮し、太く短いひも状に見えるようになる。',
+  前期: '前期：染色体が凝縮して太く短いひも状になり、やがて核膜が消える。',
   中期: '中期：染色体が細胞の中央（赤道面）に並ぶ。染色体の観察に適した時期。',
   後期: '後期：各染色体が縦に裂けるように分かれ、両極へ移動する。',
-  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。分裂が終わるとDNA量は4から2に戻る。',
+  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。後期に両極へ分かれた染色体がそれぞれの細胞に入るので、細胞1個あたりのDNA量は4から2に戻る。',
 };
 
 // 細胞の模式図
@@ -140,7 +140,7 @@ export const dojo = {
     const cellCanvas = h('canvas', { role: 'img', 'aria-label': '細胞の模式図' });
     const cellCaption = h('div', { class: 'small' });
     const exp = explainBox();
-    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)));
+    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)), h('p', { class: 'small muted' }, 'M期の前期・中期・後期・終期は模式的に等しい長さで表示している（実際には前期が最も長い）。'));
 
     const playBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => toggle() }, '▶ 再生');
 
@@ -154,21 +154,22 @@ export const dojo = {
       panel('いま何が起きているか', exp.el),
     );
 
-    // 計算ツール
+    // 計算ツール（間期の G1・S・G2 は顕微鏡では区別できないので、DNA量の測定で見分ける）
+    const COUNT_LABEL = { G1: 'G1期：DNA量2の細胞数', S: 'S期：DNA量2〜4の細胞数', G2: 'G2期：DNA量4で間期の細胞数', M: 'M期：分裂期の細胞数（顕微鏡で数える）' };
     const inputs = {};
     const totalIn = h('input', { type: 'number', inputmode: 'decimal', min: 1, step: 'any', value: 24 });
     const defaults = { G1: 40, S: 32, G2: 16, M: 12 };
     const grid = h('div', { class: 'calc-grid' }, h('label', null, '全周期（時間）', totalIn));
     for (const k of PHASES) {
       inputs[k] = h('input', { type: 'number', inputmode: 'numeric', min: 0, step: 1, value: defaults[k] });
-      grid.append(h('label', null, `${k}期の細胞数`, inputs[k]));
+      grid.append(h('label', null, COUNT_LABEL[k], inputs[k]));
     }
     const result = h('div', { 'aria-live': 'polite' });
     const applyBtn = h('button', { type: 'button', class: 'btn', onclick: () => applyCalc() }, '求めた長さをグラフに反映');
     root.append(
       panel('計算ツール：細胞数の割合から各期の長さを求める',
-        h('p', { class: 'small muted' }, '体細胞分裂が盛んな組織を固定・染色して観察すると、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。'),
-        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 観察した細胞の総数）')),
+        h('p', { class: 'small muted' }, '細胞が各時期にばらばらに分布している組織では、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。固定・染色して顕微鏡で観察すると間期と分裂期（前期〜終期）は区別できるが、間期のG1期・S期・G2期は見分けられないので、細胞1個あたりのDNA量を測定して数える（DNA量2＝G1期、2〜4＝S期、4＝G2期とM期）。'),
+        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 調べた細胞の総数）')),
         grid,
         h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => calc(true) }, '計算する'), applyBtn),
         result,

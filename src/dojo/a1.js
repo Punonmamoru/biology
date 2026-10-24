@@ -7,7 +7,11 @@ import { rate, inhibited, lineweaver, tempRate, optimumTemp, afterTreatment, act
 import { sample } from '../lib/series.js';
 
 const KI = 2;
-const S_MAX = 40;
+// 横軸の右端は、見かけの Km の12倍以上（v が Vmax の約92%以上になる）まで広げる。
+// そうしないと競争的阻害で最大速度が変わらないことがグラフから読み取れない。
+function sMaxFor(...kms) {
+  return Math.max(40, Math.ceil((12 * Math.max(...kms)) / 50) * 50);
+}
 
 export const dojo = {
   tasks: [
@@ -34,10 +38,10 @@ export const dojo = {
 
     // ① 基質濃度
     const sV = slider({ label: '最大速度 Vmax', min: 20, max: 100, step: 5, value: st.Vmax, format: (v) => String(v), onInput: (v) => { st.Vmax = v; update(); } });
-    const sK = slider({ label: 'ミカエリス定数 Km', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
+    const sK = slider({ label: 'ミカエリス定数 Km（発展）', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
     const segI = segmented({ label: '阻害剤', options: [{ value: 'none', label: 'なし' }, { value: 'competitive', label: '競争的阻害' }, { value: 'noncompetitive', label: '非競争的阻害' }], value: st.inh, onChange: (v) => { st.inh = v; if (v !== 'none' && st.I === 0) { st.I = 4; sI.set(4, true); } update(); } });
     const sI = slider({ label: '阻害剤の濃度 [I]', min: 0, max: 10, step: 0.5, value: st.I, format: (v) => fmt(v, 1), onInput: (v) => { st.I = v; update(); } });
-    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
+    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク（発展）' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
     const ctlS = h('div', null, segI.el, sI.el, segLB.el, sV.el, sK.el);
 
     // ② 温度
@@ -63,6 +67,7 @@ export const dojo = {
       const base = { Vmax: st.Vmax, Km: st.Km };
       const cur = inhibited(st.inh, st.Vmax, st.Km, st.I, KI);
       const hasInh = st.inh !== 'none' && st.I > 0;
+      const S_MAX = sMaxFor(base.Km, cur.Km);
       title.replaceChildren('基質濃度と反応速度 ', modelNote());
       if (!st.lb) {
         const series = [];
@@ -70,7 +75,7 @@ export const dojo = {
         series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
         chart.draw({
           alt: `Vmax ${fmt(cur.Vmax, 1)}、Km ${fmt(cur.Km, 1)}`,
-          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: 5 },
+          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: niceStep(S_MAX, 8) },
           y: { min: 0, max: 110, label: '反応速度 v', step: 20 },
           series,
           hlines: [
@@ -142,9 +147,10 @@ export const dojo = {
       if (st.T < To - 2) lines.push(`${fmt(st.T, 1)}℃：温度が上がるほど分子の運動が活発になり、酵素と基質がよく出会うので反応速度が大きくなる。低温では反応がおそいだけで、酵素はこわれていない。`);
       else if (st.T <= To + 2) lines.push(`${fmt(st.T, 1)}℃：最適温度付近。温度上昇で速くなる効果と、熱変性で酵素が失活する効果のつり合いで、反応速度が最大になる。ヒトの酵素の多くは体温付近〜40℃くらいが最適温度である。`);
       else lines.push(`${fmt(st.T, 1)}℃：酵素はタンパク質でできているので、高温では立体構造が変化（変性）し、活性部位の形がくずれて失活する。熱変性していない酵素は約${fmt(activeFraction(st.T) * 100, 0)}%しかない。`);
-      lines.push(st.Th > To + 5
-        ? `処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)} までしか回復しない。熱による変性は不可逆的だからである。`
-        : `処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では変性が起こっていないからである。`);
+      const kept = vAfter / tempRate(To);
+      if (kept < 0.98) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)}（処理しない場合の約${fmt(kept * 100, 0)}%）までしか回復しない。熱で変性した酵素は元に戻らない（不可逆的）からである。`);
+      else if (st.Th < To) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では反応がおそくなるだけで、変性は起こっていないからである。`);
+      else lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、ほぼもとどおりにはたらく。この温度では熱変性がほとんど起こっていないからである。`);
       exp.set(lines);
     }
 
@@ -164,7 +170,7 @@ export const dojo = {
       const vals = Object.values(ENZYMES).map((e) => `${e.name} ${fmt(phRate(st.pH, e.opt), 2)}`);
       exp.set([
         `pH ${fmt(st.pH, 1)} での反応速度：${vals.join('、')}。`,
-        '酵素ごとに最もよくはたらく pH（最適pH）がある。胃液は強い酸性なのでペプシンの最適pHは約2、だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8である。',
+        '酵素ごとに最もよくはたらく pH（最適pH）がある。ペプシンの最適pHは約2で、強い酸性の胃液の中でよくはたらく。だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8が最適pHである。',
         '最適pHから外れると、酵素タンパク質の立体構造や電荷の状態が変わり、活性部位が基質と結合しにくくなるから、反応速度が下がる。',
       ]);
     }

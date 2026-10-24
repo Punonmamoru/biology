@@ -34,6 +34,8 @@
   --c5: #8a6a00;   /* 系列5：黄土 */
   --region: rgba(31, 95, 191, 0.08);
   --region-2: rgba(196, 68, 26, 0.08);
+  --region-3: rgba(30, 127, 69, 0.22);
+  --region-4: rgba(138, 106, 0, 0.10);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -61,6 +63,8 @@
     --c5: #f0c95a;
     --region: rgba(127, 178, 255, 0.12);
     --region-2: rgba(255, 154, 107, 0.12);
+    --region-3: rgba(111, 220, 149, 0.22);
+    --region-4: rgba(240, 201, 90, 0.10);
     --shadow: none;
   }
 }
@@ -88,6 +92,8 @@
   --c5: #f0c95a;
   --region: rgba(127, 178, 255, 0.12);
   --region-2: rgba(255, 154, 107, 0.12);
+  --region-3: rgba(111, 220, 149, 0.22);
+  --region-4: rgba(240, 201, 90, 0.10);
   --shadow: none;
 }
 
@@ -295,6 +301,27 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* ===== 表の横スクロール・塩基配列（B7〜B9） ===== */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.table-scroll table.data { min-width: 100%; width: max-content; }
+.table-scroll th, .table-scroll td { white-space: nowrap; }
+.seg.many button { flex: 0 1 auto; padding-left: 12px; padding-right: 12px; white-space: nowrap; }
+.seq-view { display: grid; gap: 10px; margin-top: 6px; }
+.seq-row { display: grid; gap: 4px; }
+.seq-blocks { display: flex; flex-wrap: wrap; gap: 4px; }
+.codon { border: 1px solid var(--line); border-radius: 8px; padding: 4px 5px; min-width: 3.6em; text-align: center; background: var(--surface); }
+.codon.alt { background: var(--surface-2); }
+.codon.outside { border-style: dashed; color: var(--muted); }
+.codon.changed { border: 2px solid var(--c2); }
+.codon.stop .aa { font-weight: 700; }
+.codon .seq { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.02rem; letter-spacing: 0.08em; }
+.codon .seq.rna { color: var(--c1); }
+.codon .aa { font-size: 0.74rem; line-height: 1.25; margin-top: 2px; word-break: break-all; }
+.codon .mut { background: var(--ng-soft); color: var(--ng); font-weight: 700; border-radius: 3px; outline: 1px solid var(--ng); }
+.codon-table td { vertical-align: top; font-size: 0.78rem; line-height: 1.45; white-space: nowrap; }
+.codon-table td div.used { font-weight: 700; color: var(--c1); }
+.codon-table td div.used::before { content: "▶"; font-size: 0.7em; margin-right: 2px; }
 
 </style>
 </head>
@@ -519,12 +546,18 @@ function makeHatch(ctx, color, kind) {
   g.beginPath();
   if (kind === 'cross') {
     g.moveTo(0, 4); g.lineTo(8, 4); g.moveTo(4, 0); g.lineTo(4, 8);
+  } else if (kind === 'vert') {
+    g.moveTo(2, 0); g.lineTo(2, 8); g.moveTo(6, 0); g.lineTo(6, 8);
   } else {
     g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6);
   }
   g.stroke();
   return ctx.createPattern(c, 'repeat');
 }
+
+// 棒グラフの系列ごとの塗り（1系列目はべた塗り、2系列目以降は模様。色だけに頼らない）
+const HATCHES = [null, 'diag', 'cross', 'vert'];
+const hatchOf = (i) => HATCHES[i % HATCHES.length];
 
 function haloText(ctx, text, x, y, color, bg) {
   ctx.lineJoin = 'round';
@@ -682,6 +715,20 @@ function drawSpec(ctx, W, H, spec) {
   ctx.rect(pad.l - 1, pad.t - 1, pw + 2, ph + 2);
   ctx.clip();
 
+  // 多角形の区画（バイオームの図など）。塗りのあと、名前は最後に書く
+  for (const pg of spec.polygons || []) {
+    if (!pg.points || pg.points.length < 3) continue;
+    ctx.beginPath();
+    pg.points.forEach(([px, py], i) => (i ? ctx.lineTo(X(px), yOf(pg.axis)(py)) : ctx.moveTo(X(px), yOf(pg.axis)(py))));
+    ctx.closePath();
+    ctx.fillStyle = tokenColor(pg.fill || 'region');
+    ctx.fill();
+    ctx.strokeStyle = tokenColor(pg.bold ? 'fg' : pg.stroke || 'muted');
+    ctx.lineWidth = pg.bold ? 2.5 : 1;
+    ctx.setLineDash([]);
+    ctx.stroke();
+  }
+
   // 棒グラフ
   if (spec.bars) {
     const cats = spec.bars.categories;
@@ -690,7 +737,7 @@ function drawSpec(ctx, W, H, spec) {
     const bw = Math.min(56, (slot * 0.76) / groups.length);
     groups.forEach((g, gi) => {
       const col = tokenColor(g.color || 'c1');
-      const fill = gi === 0 ? col : makeHatch(ctx, col, gi === 2 ? 'cross' : 'diag');
+      const fill = hatchOf(gi) ? makeHatch(ctx, col, hatchOf(gi)) : col;
       g.values.forEach((v, ci) => {
         const cx = pad.l + slot * (ci + 0.5) + (gi - (groups.length - 1) / 2) * bw;
         const top = Y(Math.max(v, y.min));
@@ -777,6 +824,16 @@ function drawSpec(ctx, W, H, spec) {
     }
   }
   ctx.restore();
+
+  // 多角形の名前
+  for (const pg of spec.polygons || []) {
+    if (!pg.label || !pg.at) continue;
+    ctx.font = `${pg.bold ? 'bold ' : ''}${fs}px ${font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    haloText(ctx, pg.label, X(pg.at[0]), yOf(pg.axis)(pg.at[1]), fg, bg);
+  }
+  ctx.font = `${fs}px ${font}`;
 
   // 点
   for (const m of spec.markers || []) {
@@ -932,11 +989,11 @@ function legendFromSpec(spec) {
     dash: s.dash || 'solid',
   }));
   if (spec.bars) {
-    spec.bars.groups.forEach((g, i) => items.push({ label: g.label, color: g.color || 'c1', bar: true, hatch: i === 0 ? null : i === 2 ? 'cross' : 'diag' }));
+    spec.bars.groups.forEach((g, i) => items.push({ label: g.label, color: g.color || 'c1', bar: true, hatch: hatchOf(i) }));
   }
   return legend(items);
 }
-return { DASHES, tokenColor, redrawAllCharts, niceStep, drawSpec, createChart, legend, legendFromSpec };
+return { DASHES, tokenColor, redrawAllCharts, niceStep, HATCHES, drawSpec, createChart, legend, legendFromSpec };
 })();
 
 // ---- lib/theme.js ----
@@ -1003,6 +1060,11 @@ const STAGES = [
   { id: 'b3', code: 'B3', course: 'basic', title: '免疫の一次応答・二次応答', unit: 'ヒトの体の調節', lead: '記憶細胞があると、2回目は速く・多く抗体がつくられる。' },
   { id: 'b4', code: 'B4', course: 'basic', title: '光の強さと光合成', unit: '生物の多様性と生態系', lead: '陽生植物と陰生植物で、補償点・光飽和点が違う。' },
   { id: 'b5', code: 'B5', course: 'basic', title: '生態系のバランス（キーストーン種）', unit: '生物の多様性と生態系', lead: 'ラッコ→ウニ→ケルプ。1種の変化が間接効果で広がる。' },
+  { id: 'b6', code: 'B6', course: 'basic', title: '酸素解離曲線', unit: 'ヒトの体の調節', lead: 'S字曲線とCO₂分圧による右方移動。組織で酸素を放出する割合を計算。' },
+  { id: 'b7', code: 'B7', course: 'basic', title: '腎臓のはたらき', unit: 'ヒトの体の調節', lead: 'イヌリンの濃縮率から原尿量を求め、物質ごとの再吸収率を計算する。' },
+  { id: 'b8', code: 'B8', course: 'basic', title: 'バイオーム', unit: '生物の多様性と生態系', lead: '年平均気温と年降水量でバイオームが決まる。日本の水平分布・垂直分布。' },
+  { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '遺伝子とそのはたらき', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
+  { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -1221,7 +1283,7 @@ function slider({ label, min, max, step = 1, value, format = (v) => String(v), o
 
 // 切替ボタン（aria-pressed で状態を示す）
 function segmented({ label, options, value, onChange }) {
-  const group = h('div', { class: 'seg', role: 'group', 'aria-label': label });
+  const group = h('div', { class: options.length > 4 ? 'seg many' : 'seg', role: 'group', 'aria-label': label });
   const btns = options.map((o) =>
     h('button', { type: 'button', 'aria-pressed': o.value === value ? 'true' : 'false', onclick: () => ctl.set(o.value) }, o.label),
   );
@@ -1336,10 +1398,10 @@ const TEXT = {
   G2: 'DNAの複製が終わり、分裂の準備をしている。DNA量は4。',
 };
 const M_TEXT = {
-  前期: '前期：核の中で染色体が凝縮し、太く短いひも状に見えるようになる。',
+  前期: '前期：染色体が凝縮して太く短いひも状になり、やがて核膜が消える。',
   中期: '中期：染色体が細胞の中央（赤道面）に並ぶ。染色体の観察に適した時期。',
   後期: '後期：各染色体が縦に裂けるように分かれ、両極へ移動する。',
-  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。分裂が終わるとDNA量は4から2に戻る。',
+  終期: '終期：核膜が再び現れ、細胞質分裂が起こる。後期に両極へ分かれた染色体がそれぞれの細胞に入るので、細胞1個あたりのDNA量は4から2に戻る。',
 };
 
 // 細胞の模式図
@@ -1465,7 +1527,7 @@ const dojo = {
     const cellCanvas = h('canvas', { role: 'img', 'aria-label': '細胞の模式図' });
     const cellCaption = h('div', { class: 'small' });
     const exp = explainBox();
-    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)));
+    top.append(h('div', { class: 'cell-view', style: { marginTop: '8px' } }, cellCanvas, h('div', { class: 'grow' }, cellCaption)), h('p', { class: 'small muted' }, 'M期の前期・中期・後期・終期は模式的に等しい長さで表示している（実際には前期が最も長い）。'));
 
     const playBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => toggle() }, '▶ 再生');
 
@@ -1479,21 +1541,22 @@ const dojo = {
       panel('いま何が起きているか', exp.el),
     );
 
-    // 計算ツール
+    // 計算ツール（間期の G1・S・G2 は顕微鏡では区別できないので、DNA量の測定で見分ける）
+    const COUNT_LABEL = { G1: 'G1期：DNA量2の細胞数', S: 'S期：DNA量2〜4の細胞数', G2: 'G2期：DNA量4で間期の細胞数', M: 'M期：分裂期の細胞数（顕微鏡で数える）' };
     const inputs = {};
     const totalIn = h('input', { type: 'number', inputmode: 'decimal', min: 1, step: 'any', value: 24 });
     const defaults = { G1: 40, S: 32, G2: 16, M: 12 };
     const grid = h('div', { class: 'calc-grid' }, h('label', null, '全周期（時間）', totalIn));
     for (const k of PHASES) {
       inputs[k] = h('input', { type: 'number', inputmode: 'numeric', min: 0, step: 1, value: defaults[k] });
-      grid.append(h('label', null, `${k}期の細胞数`, inputs[k]));
+      grid.append(h('label', null, COUNT_LABEL[k], inputs[k]));
     }
     const result = h('div', { 'aria-live': 'polite' });
     const applyBtn = h('button', { type: 'button', class: 'btn', onclick: () => applyCalc() }, '求めた長さをグラフに反映');
     root.append(
       panel('計算ツール：細胞数の割合から各期の長さを求める',
-        h('p', { class: 'small muted' }, '体細胞分裂が盛んな組織を固定・染色して観察すると、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。'),
-        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 観察した細胞の総数）')),
+        h('p', { class: 'small muted' }, '細胞が各時期にばらばらに分布している組織では、各期の細胞数の割合は、その期にかかる時間の割合に等しいとみなせる。固定・染色して顕微鏡で観察すると間期と分裂期（前期〜終期）は区別できるが、間期のG1期・S期・G2期は見分けられないので、細胞1個あたりのDNA量を測定して数える（DNA量2＝G1期、2〜4＝S期、4＝G2期とM期）。'),
+        h('p', { class: 'small' }, h('b', null, '各期の時間 ＝ 全周期の時間 × （その期の細胞数 ÷ 調べた細胞の総数）')),
         grid,
         h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => calc(true) }, '計算する'), applyBtn),
         result,
@@ -1627,6 +1690,7 @@ __m["models/glucose.js"] = (function () {
 //   dN/dt = kN·(low(G) − N)          low(G) は血糖値が低いほど大きい
 //   dX/dt = kX·(I − X)               X＝インスリンの作用（血中インスリンより少し遅れて効く）
 // 上式の I のはたらき（放出の抑制・取り込みの促進）は X を通して効かせる。時間の単位は分。
+// 健康な人では、食後に上昇した血糖値が空腹時の値（約100）へ戻り、空腹時を下回らない（教科書の図の形）。
 const PRESETS = {
   healthy: { label: '健康', meal: 1, cap: 1, sens: 1 },
   type1: { label: '1型糖尿病', meal: 1, cap: 0.03, sens: 1 },
@@ -1638,13 +1702,13 @@ const P = {
   ka: 1 / 30, // 小腸からの吸収速度
   dose: 170, // 食事量1のとき血液に入る糖の総量（mg/100mL 相当）
   u0: 0.0028, // インスリンによらない取り込み（脳など）
-  si: 0.07, // インスリンによる取り込み
+  si: 0.05, // インスリンによる取り込み
   p0: 0.75, // 肝臓からの基礎的な放出
   pg: 1.8, // グルカゴンによる肝臓からの放出（グリコーゲンの分解）
-  hi: 1.5, // インスリンによる肝臓からの放出の抑制
+  hi: 1, // インスリンによる肝臓からの放出の抑制
   kI: 1 / 15,
   kN: 1 / 15,
-  kX: 1 / 15,
+  kX: 1 / 4, // インスリンの作用の遅れは短くする（長いと食後に空腹時より下がる「行き過ぎ」が出る）
   gHalf: 140,
   gLow: 80,
 };
@@ -1749,7 +1813,7 @@ function at(run, minute) {
 const dojo = {
   tasks: [
     { id: 'peak', text: '「健康」で、血糖値が最も高くなる時刻に「時刻」スライダーを合わせよう。', short: '血糖値のピークを発見' },
-    { id: 'glucagon', text: '「健康」で、血糖値が空腹時より下がってグルカゴンが増えている時刻を探そう。', short: 'グルカゴンの出番を発見' },
+    { id: 'glucagonDown', text: '「健康」で、血糖値が上がっている間はグルカゴンが空腹時の半分以下に減っていることを、時刻スライダーで確かめよう。', short: 'グルカゴンが減る' },
     { id: 'type1', text: '「1型糖尿病」に切り替えて、インスリンがほとんど増えないことを確かめよう。', short: '1型を確認' },
     { id: 'sens', text: 'インスリンの分泌能力はそのまま（1.0倍以上）で、効きやすさを0.3倍以下にしてみよう。', short: '効きにくさを体験' },
   ],
@@ -1819,7 +1883,7 @@ const dojo = {
         vlines: [{ x: cursor / 60, color: 'fg', dash: 'dash', width: 1.2 }],
         series: [
           !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
-          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値' },
+          { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値', labelAt: sm.peakT / 60 },
           { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
           { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
         ].filter(Boolean),
@@ -1835,24 +1899,37 @@ const dojo = {
 
       const lines = [];
       const fast = sm.fastingG;
-      if (cursor < sm.peakT && cur.G > fast + 3) {
-        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が感知し、インスリンの分泌が増えはじめる。');
-      } else if (cur.G > fast + 3) {
-        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。');
+      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
+      const rising = cursor < sm.peakT && cur.G > fast + 3;
+      const high = cur.G > fast + 3;
+      if (kind === 'type1') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。しかしB細胞がはたらかないため、血糖値が上がってもインスリンはほとんど増えない。');
+        else if (high) lines.push('インスリンがほとんどないので、細胞へのグルコースの取り込みや肝臓でのグリコーゲン合成が進まない。脳などでのインスリンによらない消費でゆっくり下がるだけで、高い血糖値が続く。');
+        else lines.push('インスリンがほとんど分泌されないので、空腹時から血糖値が高い。');
+      } else if (kind === 'type2') {
+        if (rising) lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。B細胞はインスリンを分泌するが、量が少ない、または効きにくいため、血糖値が大きく上がる。');
+        else if (high) lines.push('インスリンは分泌されているが、効きにくい（または量が少ない）ので、細胞へのグルコースの取り込みが進まず、血糖値が下がるのに時間がかかる。');
+        else lines.push('インスリンのはたらきが弱いので、空腹時の血糖値もやや高めに保たれている。');
+      } else if (rising) {
+        lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が直接感知するほか、間脳の視床下部も感知して副交感神経を通じてB細胞を刺激するので、インスリンの分泌が増える。グルカゴンの分泌は減る。');
+      } else if (high) {
+        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。血糖値が下がるにつれてインスリンの分泌も減り、空腹時の値に戻ったところで落ち着く。');
       } else if (cur.G < fast - 3) {
-        lines.push('血糖値が空腹時より下がったので、ランゲルハンス島のA細胞からグルカゴンの分泌が増えている。グルカゴンは肝臓のグリコーゲンの分解を促し、血糖値を元に戻す。');
+        lines.push('血糖値が空腹時より下がっている。ランゲルハンス島のA細胞からグルカゴンの分泌が増え、肝臓のグリコーゲンの分解を促して血糖値を元に戻す。');
       } else {
-        lines.push('血糖値はほぼ一定に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
+        lines.push('血糖値は空腹時の値（約100 mg/100mL）に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
       }
       lines.push(`空腹時 ${fmt(fast, 0)} → 最大 ${fmt(sm.peakG, 0)} mg/100mL（食後 ${fmt(sm.peakT, 0)} 分）。食後2時間で ${fmt(sm.g120, 0)} mg/100mL。`);
-      if (prm.cap < 0.15) {
+      if (kind === 'type1') {
         lines.push('インスリンがほとんど分泌されないので（1型糖尿病のような状態）、取り込みが進まず、血糖値が高いまま下がりにくい。1型糖尿病は、免疫のはたらきでB細胞が破壊されることなどで起こり、治療にはインスリンの注射が必要になる。');
-      } else if (sm.peakG >= 180 || sm.fastingG >= 126) {
+      } else if (kind === 'type2') {
         lines.push(`インスリンは分泌されている（最大 ${fmt(sm.insulinPeak / ref.I, 1)}）のに血糖値が高いままになりやすい。インスリンが効きにくい、または分泌量が少ないから（2型糖尿病のような状態）。生活習慣などが関係する。`);
       } else if (prm.meal === 0) {
         lines.push('食事をしていないので、血糖値は空腹時の値のまま保たれる。');
+      } else if (prm.meal >= 1.5) {
+        lines.push('食事量が多いので血糖値は大きく上がるが、インスリンも多く分泌されるので、2時間ほどで空腹時の値に戻る。健康な人では、血糖値が高いまま下がらないことはない。');
       } else {
-        lines.push('血糖値が上がるとインスリンが増え、下がるとインスリンが減ってグルカゴンが増える。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
+        lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値に戻るとインスリンも元の量に戻る。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
       }
       exp.set(lines);
       ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
@@ -1863,7 +1940,7 @@ const dojo = {
 };
 
 dojo.tasks[0].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && Math.abs(s.cursor - s.sm.peakT) <= 4;
-dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cur.G < s.sm.fastingG - 3 && s.cur.N / s.ref.N > 1.15;
+dojo.tasks[1].check = (s) => s.preset === 'healthy' && s.prm.meal >= 0.5 && s.cursor < s.sm.peakT + 30 && s.cur.G > s.sm.fastingG + 15 && s.cur.N / s.ref.N <= 0.5;
 dojo.tasks[2].check = (s) => s.preset === 'type1';
 dojo.tasks[3].check = (s) => s.prm.cap >= 1 && s.prm.sens <= 0.3 && s.prm.meal >= 0.5;
 return { dojo };
@@ -1876,7 +1953,7 @@ __m["models/immune.js"] = (function () {
 //   一次応答：潜伏期が長く（約1週間）、量が少ない
 //   二次応答：同じ抗原の記憶細胞があるとき。立ち上がりが速く、量が非常に多く、長く続く
 // 記憶細胞は抗原ごとに特異的なので、別の抗原Bでは一次応答になる。
-const PRIMARY = { lag: 4, rise: 8, decay: 9, amp: 1 };
+const PRIMARY = { lag: 6, rise: 8, decay: 9, amp: 1 }; // 約1週間で増えはじめ、約2週間で最大
 const SECONDARY = { lag: 1.5, rise: 4.5, decay: 30, amp: 100 };
 const FLOOR = 0.01; // 検出限界程度の基礎量
 const MEMORY_DAYS = 7; // 記憶細胞ができるまでの日数（これより前の再侵入は一次応答として扱う）
@@ -1948,7 +2025,7 @@ const { antibodyModel, peakDelay, PRIMARY, SECONDARY, MEMORY_DAYS } = __m["model
 const { sample } = __m["lib/series.js"];
 
 const DAYS = 100;
-const MIN_GAP = 10;
+const MIN_GAP = 21;
 
 const dojo = {
   tasks: [
@@ -1983,7 +2060,7 @@ const dojo = {
     const segAg = segmented({ label: '2回目の抗原', options: [{ value: 'A', label: '同じ抗原A' }, { value: 'B', label: '別の抗原B' }], value: st.antigen2, onChange: (v) => { st.antigen2 = v; update(); } });
     const exp = explainBox();
     root.append(
-      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あとに設定できる（記憶細胞ができるまでの時間を考えて）。`)),
+      panel('操作', segAx.el, s1.el, s2.el, segAg.el, h('p', { class: 'small muted' }, `2回目は1回目の${MIN_GAP}日以上あと（一次応答がおさまってから）に設定できる。`)),
       panel('いま何が起きているか', exp.el),
     );
 
@@ -2012,7 +2089,7 @@ const dojo = {
       });
 
       const lines = [];
-      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約${PRIMARY.lag}日かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
+      lines.push(`1回目（抗原A）：侵入から抗体が増えはじめるまで約1週間かかり、約${peakDelay(PRIMARY)}日後に最大（${fmt(pA1, 1)}）になる。これが一次応答。`);
       if (second.kind === 'secondary') {
         lines.push(`2回目（同じ抗原A）：1回目にできた記憶細胞がすぐに増殖して形質細胞（抗体産生細胞）になるので、約${peakDelay(SECONDARY)}日で最大になり、量は約${fmt(p2 / pA1, 0)}倍（${fmt(p2, 0)}）。これが二次応答で、一次応答より速く、多量の抗体がつくられる。`);
       } else {
@@ -2033,7 +2110,7 @@ const dojo = {
 dojo.tasks[0].check = (s) => s.log;
 dojo.tasks[1].check = (s) => s.antigen2 === 'B';
 dojo.tasks[2].check = (s) => s.antigen2 === 'A' && s.d2 - s.d1 >= 50 && s.kind2 === 'secondary';
-// MEMORY_DAYS（7日）より MIN_GAP（10日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
+// MEMORY_DAYS（7日）より MIN_GAP（21日）を大きくしてあるので、同じ抗原なら必ず二次応答になる
 if (MIN_GAP < MEMORY_DAYS) throw new Error('MIN_GAP must be >= MEMORY_DAYS');
 return { dojo };
 })();
@@ -2041,35 +2118,30 @@ return { dojo };
 // ---- models/photosynthesis.js ----
 __m["models/photosynthesis.js"] = (function () {
 // B4 光の強さと光合成
-// 光合成速度 P(I) = Pmax·I / (K + I)、見かけの光合成速度 = P(I) − R（R：呼吸速度）
+// 光合成速度 P(I) は非直角双曲線 θP² − (αI ＋ Pmax)P ＋ αI·Pmax ＝ 0 の小さいほうの解。
+//   α：弱い光での傾き（光の強さに比例して増える割合）、Pmax：最大の光合成速度、θ：曲がり方（1に近いほど鋭く折れる）
+// θ を1に近くとると、弱い光では P ≒ αI（直線）、強い光では P ＝ Pmax で明確に頭打ちになり、教科書の図の形になる。
+// 見かけの光合成速度 ＝ P(I) − R（R：呼吸速度）
 // 単位：光の強さ［キロルクス］、速度［CO₂吸収速度の相対値］
+const THETA = 0.995;
 const PLANTS = {
-  sun: { name: '陽生植物', Pmax: 20, K: 6, R: 4 },
-  shade: { name: '陰生植物', Pmax: 6, K: 1.5, R: 0.6 },
+  sun: { name: '陽生植物', Pmax: 20, alpha: 1.25, R: 2 },
+  shade: { name: '陰生植物', Pmax: 6, alpha: 1.25, R: 0.4 },
 };
-const SAT_FRACTION = 0.9; // 光飽和点の目安：光合成速度が Pmax の90%に達する光の強さ
 
 function gross(p, I) {
-  return (p.Pmax * I) / (p.K + I);
+  if (I <= 0) return 0;
+  const b = p.alpha * I + p.Pmax;
+  const disc = b * b - 4 * THETA * p.alpha * I * p.Pmax;
+  return (b - Math.sqrt(Math.max(0, disc))) / (2 * THETA);
 }
 
 function apparent(p, I) {
   return gross(p, I) - p.R;
 }
 
-// 補償点：見かけの光合成速度 = 0（光合成速度 = 呼吸速度）
-function compensationPoint(p) {
-  return (p.R * p.K) / (p.Pmax - p.R);
-}
-
-// 光飽和点（このモデルでは Pmax の90%に達する光の強さ）
-function saturationPoint(p) {
-  return (SAT_FRACTION * p.K) / (1 - SAT_FRACTION);
-}
-
-// 2本の見かけの光合成曲線の交点（二分法）
-function crossingPoint(a, b, lo = 0, hi = 100) {
-  const f = (I) => apparent(a, I) - apparent(b, I);
+// 二分法（f(lo) と f(hi) の符号が違うとき）
+function solve(f, lo, hi) {
   let fl = f(lo);
   if (fl * f(hi) > 0) return null;
   for (let i = 0; i < 80; i++) {
@@ -2083,7 +2155,30 @@ function crossingPoint(a, b, lo = 0, hi = 100) {
   }
   return (lo + hi) / 2;
 }
-return { PLANTS, SAT_FRACTION, gross, apparent, compensationPoint, saturationPoint, crossingPoint };
+
+// 補償点：見かけの光合成速度 = 0（光合成速度 = 呼吸速度）
+function compensationPoint(p) {
+  return solve((I) => apparent(p, I), 0, 1000);
+}
+
+// 光合成速度の傾き dP/dI（陰関数の微分）
+function slope(p, I) {
+  const P = gross(p, I);
+  return (p.alpha * (p.Pmax - P)) / (p.alpha * I + p.Pmax - 2 * THETA * P);
+}
+
+// 光飽和点：これ以上光を強くしても光合成速度が増えなくなる点。
+// 曲線の傾きが弱い光での傾きのほぼ0（1%）まで小さくなった点を、図の上で「増えなくなる点」とした。
+const FLAT = 0.01;
+function saturationPoint(p) {
+  return solve((I) => slope(p, I) - FLAT * p.alpha, 1e-6, 1000);
+}
+
+// 2本の見かけの光合成曲線の交点
+function crossingPoint(a, b, lo = 0, hi = 100) {
+  return solve((I) => apparent(a, I) - apparent(b, I), lo, hi);
+}
+return { THETA, PLANTS, gross, apparent, compensationPoint, slope, FLAT, saturationPoint, crossingPoint };
 })();
 
 // ---- dojo/b4.js ----
@@ -2101,10 +2196,11 @@ const STYLE = { sun: { color: 'c2', dash: 'solid' }, shade: { color: 'c1', dash:
 function status(p, I) {
   const a = apparent(p, I);
   const ic = compensationPoint(p);
+  if (I <= 0) return '暗黒（光の強さ0）：光合成は行われず、呼吸によるCO₂の放出だけが起こっている。このときのCO₂放出速度が呼吸速度である';
   if (Math.abs(I - ic) < Math.max(0.02, ic * 0.04)) return 'ほぼ補償点：光合成速度と呼吸速度が等しく、見かけ上CO₂の出入りがない';
-  if (a < 0) return '補償点より弱い光：呼吸速度が光合成速度を上回り、CO₂を放出している（光合成は行っている）';
-  if (I >= saturationPoint(p)) return '光飽和点以上：光を強くしても速度はほとんど増えない（CO₂濃度や温度が限定要因）';
-  return '補償点と光飽和点の間：光を強くするほど見かけの光合成速度が大きくなる';
+  if (a < 0) return '補償点より弱い光：光合成は行っているが、呼吸速度のほうが大きいのでCO₂を放出している';
+  if (I >= saturationPoint(p)) return '光飽和点以上：これ以上光を強くしても光合成速度は増えない（CO₂濃度や温度が限定要因）';
+  return '補償点と光飽和点の間：光を強くするほど光合成速度が大きくなる（光の強さが限定要因）';
 }
 
 const dojo = {
@@ -2122,7 +2218,7 @@ const dojo = {
     top.append(h('h2', null, '光の強さとCO₂吸収速度 ', modelNote()));
     const chart = createChart(top, { label: '光の強さと見かけの光合成速度のグラフ', aspect: 0.75 });
     const leg = h('div');
-    top.append(leg, h('p', { class: 'small muted' }, '光合成速度 P ＝ Pmax·I/(K＋I)、見かけの光合成速度 ＝ P − 呼吸速度。光飽和点は、ここでは光合成速度が最大値の90%に達する光の強さとした。'));
+    top.append(leg, h('p', { class: 'small muted' }, '見かけの光合成速度 ＝ 光合成速度 − 呼吸速度。光飽和点は、これ以上光を強くしても光合成速度が増えなくなる点（■と縦の点線）。光飽和点より右では曲線が水平になる。'));
 
     const segShow = segmented({ label: '表示する植物', options: [{ value: 'sun', label: '陽生植物' }, { value: 'shade', label: '陰生植物' }, { value: 'both', label: '両方' }], value: st.show, onChange: (v) => { st.show = v; update(); } });
     const segZoom = segmented({ label: '横軸の範囲', options: [{ value: false, label: '全体（0〜60）' }, { value: true, label: '弱光を拡大（0〜6）' }], value: st.zoom, onChange: (v) => {
@@ -2143,6 +2239,7 @@ const dojo = {
       const series = [];
       const markers = [];
       const hlines = [];
+      const satLines = [];
       for (const k of keys) {
         const p = PLANTS[k];
         series.push({ points: sample((I) => apparent(p, I), 0, xMax, 300), color: STYLE[k].color, dash: STYLE[k].dash, width: 3, label: p.name, legendLabel: p.name + '（見かけの光合成速度）' });
@@ -2150,13 +2247,16 @@ const dojo = {
         const is = saturationPoint(p);
         const single = keys.length === 1;
         markers.push({ x: ic, y: 0, color: STYLE[k].color, label: single || st.zoom ? (single ? '補償点' : `補償点（${p.name.slice(0, 2)}）`) : null, dy: k === 'shade' ? -18 : 0 });
-        if (is <= xMax) markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+        if (is <= xMax) {
+          markers.push({ x: is, y: apparent(p, is), color: STYLE[k].color, shape: 'square', label: single ? '光飽和点' : `光飽和点（${p.name.slice(0, 2)}）`, dy: 22 });
+          satLines.push({ x: is, color: STYLE[k].color, dash: 'dot', width: 1.2 });
+        }
         if (keys.length === 1) {
           series.push({ points: sample((I) => gross(p, I), 0, xMax, 300), color: 'muted', dash: 'dot', width: 2, label: '光合成速度', legendLabel: '光合成速度（見かけ＋呼吸）' });
           hlines.push({ y: -p.R, color: 'muted', dash: 'dot', label: `呼吸速度 ${fmt(p.R, 1)}（光がなくても続く）` });
         }
       }
-      const yMin = keys.includes('sun') ? -6 : -2;
+      const yMin = keys.includes('sun') ? -4 : -2;
       const yMax = st.zoom ? (keys.includes('sun') ? 8 : 6) : keys.length === 1 && keys[0] === 'shade' ? 8 : 22;
       chart.draw({
         alt: `光の強さ ${fmt(st.I, 2)} キロルクス`,
@@ -2165,7 +2265,7 @@ const dojo = {
         series,
         markers,
         hlines,
-        vlines: [{ x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
+        vlines: [...satLines, { x: st.I, color: 'fg', dash: 'dash', width: 1.5, label: `${fmt(st.I, 2)}` }],
       });
       leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
 
@@ -2177,7 +2277,7 @@ const dojo = {
       if (keys.length === 2) {
         lines.push(`2本の曲線は約 ${fmt(cross, 1)} キロルクスで交わる。これより弱い光では陰生植物のほうが見かけの光合成速度が大きい。陰生植物は呼吸速度が小さく補償点が低いので、弱い光でも成長できるからである。`);
       }
-      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 1)} キロルクス。`);
+      lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 0)} キロルクス。`);
       if (st.I < 3) {
         lines.push('森林の林床はこのくらい暗い。陽樹の芽生えは補償点が高く育ちにくいが、陰樹の芽生えは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
       }
@@ -2245,9 +2345,18 @@ function simulate({ o0 = 1, o1 = 1, tHunt = 20, tEnd = 150, dt = 0.1 } = {}) {
   return out;
 }
 
-// 表示用の相対値（0〜100）
-const SCALE = { k: 100, u: 150, o: 100 };
-return { K, otterAt, equilibrium, simulate, SCALE };
+// 表示用の相対値：3種とも「乱獲前（ラッコ 1 の平衡状態）＝100」にそろえる。
+// 種ごとに基準が違うので、縦軸の値どうしで「どちらが多いか」は比べられない（変化の割合だけを比べる）。
+const BASE = equilibrium(1);
+const SCALE = { k: 100 / BASE.k, u: 100 / BASE.u, o: 100 };
+
+// 縦軸の上限（100単位に切り上げ）
+function yMaxFor(run) {
+  let m = 100;
+  for (const r of run) m = Math.max(m, r.o * SCALE.o, r.u * SCALE.u, r.k * SCALE.k);
+  return m <= 110 ? 120 : Math.ceil((m * 1.05) / 100) * 100;
+}
+return { K, otterAt, equilibrium, simulate, SCALE, yMaxFor };
 })();
 
 // ---- dojo/b5.js ----
@@ -2257,7 +2366,7 @@ const { h } = __m["lib/dom.js"];
 const { fmt } = __m["lib/format.js"];
 const { createChart, legend } = __m["lib/chart.js"];
 const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
-const { simulate, SCALE } = __m["models/keystone.js"];
+const { simulate, SCALE, yMaxFor } = __m["models/keystone.js"];
 
 const T_HUNT = 20;
 const T_END = 150;
@@ -2273,15 +2382,15 @@ const dojo = {
 
     const top = panel(null);
     root.append(top);
-    top.append(h('h2', null, 'ラッコ・ウニ・ケルプの個体数 ', modelNote()));
-    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの個体数の変化のグラフ' });
+    top.append(h('h2', null, 'ラッコ・ウニの個体数とケルプの量 ', modelNote()));
+    const chart = createChart(top, { label: 'ラッコ・ウニ・ケルプの量の変化のグラフ' });
     top.append(
       legend([
         { label: 'ラッコ', color: 'c4', dash: 'dashdot' },
         { label: 'ウニ', color: 'c2', dash: 'dash' },
-        { label: 'ケルプ（海藻）', color: 'c3' },
+        { label: 'ケルプ（海藻の現存量）', color: 'c3' },
       ]),
-      h('p', { class: 'small muted' }, `個体数は相対値。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
+      h('p', { class: 'small muted' }, `縦軸は3種とも「乱獲前＝100」とした相対値（種ごとに基準が違うので、どの種が多いかは比べられない。変化の割合を比べる）。${T_HUNT}年目から乱獲が起こり、ラッコが下のスライダーの値まで減る。`),
     );
     const sO = slider({ label: '乱獲後のラッコの数（元を100%として）', min: 0, max: 100, step: 5, value: 70, format: (v) => v + '%', onInput: (v) => {
       st.o1 = v / 100;
@@ -2301,9 +2410,9 @@ const dojo = {
         { points: run.map((r) => [r.t, r.k * SCALE.k]), color: 'c3', width: 3, label: 'ケルプ' },
       ];
       chart.draw({
-        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}`,
+        alt: `ラッコ ${fmt(st.o1 * 100, 0)}%。最終的にウニ ${fmt(end.u * SCALE.u, 0)}、ケルプ ${fmt(end.k * SCALE.k, 0)}（乱獲前＝100）`,
         x: { min: 0, max: T_END, label: '時間（年）', step: 25 },
-        y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+        y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: yMaxFor(run) > 400 ? 100 : yMaxFor(run) > 200 ? 50 : 20 },
         series,
         vlines: st.o1 < 1 ? [{ x: T_HUNT, color: 'muted', label: '乱獲' }] : [],
       });
@@ -2312,7 +2421,7 @@ const dojo = {
       const lines = [];
       if (st.o1 >= 0.999) {
         lines.push('ラッコがウニを食べているので、ウニは少なく保たれ、ケルプ（海藻）の森が豊かに保たれている。');
-        lines.push('ラッコの数は多くないが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
+        lines.push('ラッコは個体数の少ない上位の捕食者だが、ウニの数をおさえることで生態系のバランスを保っている。このような種をキーストーン種という。');
       } else {
         lines.push(`ラッコが ${fmt(st.o1 * 100, 0)}% に減ると、食べられる量が減ったウニが増え（約${fmt(du, 1)}倍）、そのウニに食べられてケルプが減る（約${fmt(dk * 100, 0)}%に）。`);
         lines.push('ラッコはケルプを直接食べないのに、ウニを介してケルプの量に影響している。このような影響を間接効果という。ケルプの森をすみかや産卵場所にする魚などにも影響が広がる。');
@@ -2329,6 +2438,1081 @@ const dojo = {
 dojo.tasks[0].check = (s) => s.o1 <= 0.5 && s.du > 1;
 dojo.tasks[1].check = (s) => s.o1 <= 0.1 && s.dk <= 0.5;
 dojo.tasks[2].check = (s) => s.changed && s.o1 >= 1;
+return { dojo };
+})();
+
+// ---- models/oxygen.js ----
+__m["models/oxygen.js"] = (function () {
+// B6 酸素解離曲線
+// 酸素ヘモグロビンの割合 S(P) ＝ Pⁿ / (P50ⁿ ＋ Pⁿ)（ヒルの式。n≒2.7 でS字形になる）
+// CO₂分圧が高いほど P50（半分が酸素ヘモグロビンになる酸素分圧）が大きくなり、曲線は右へずれる。
+// 単位：分圧［相対値。教科書の図と同じく肺胞のO₂分圧を100とする］、割合［%］。数値は教科書の図の目安（肺：O₂ 100・CO₂ 40、組織：O₂ 30・CO₂ 70）に合わせた模式。
+const HILL_N = 2.7;
+const P50_BASE = 27; // CO₂分圧 40 のときの P50
+const P50_SLOPE = 14 / 30; // CO₂分圧が 1 上がるごとの P50 の増加
+
+const LUNG = { pO2: 100, pCO2: 40 };
+const TISSUE = { pO2: 30, pCO2: 70 };
+
+function p50(pCO2) {
+  return P50_BASE + P50_SLOPE * (pCO2 - 40);
+}
+
+// 酸素ヘモグロビンの割合［%］
+function saturation(pO2, pCO2) {
+  if (pO2 <= 0) return 0;
+  const r = Math.pow(pO2 / p50(pCO2), HILL_N);
+  return (100 * r) / (1 + r);
+}
+
+// 肺で酸素ヘモグロビンだったもののうち、組織で酸素を放出した割合［%］
+function releaseFraction(sLung, sTissue) {
+  return ((sLung - sTissue) / sLung) * 100;
+}
+
+// 肺と組織の条件から、肺・組織での割合と放出の割合をまとめて求める
+function exchange(lung = LUNG, tissue = TISSUE) {
+  const sL = saturation(lung.pO2, lung.pCO2);
+  const sT = saturation(tissue.pO2, tissue.pCO2);
+  return { sLung: sL, sTissue: sT, released: sL - sT, fraction: releaseFraction(sL, sT) };
+}
+
+// 血液 100 mL が組織で放出する酸素の体積［mL］（ヘモグロビン 1 g は最大 1.34 mL の酸素と結合）
+const O2_PER_HB = 1.34;
+function releasedVolume(hbPer100mL, sLung, sTissue) {
+  return hbPer100mL * O2_PER_HB * ((sLung - sTissue) / 100);
+}
+return { HILL_N, P50_BASE, P50_SLOPE, LUNG, TISSUE, p50, saturation, releaseFraction, exchange, O2_PER_HB, releasedVolume };
+})();
+
+// ---- dojo/b6.js ----
+__m["dojo/b6.js"] = (function () {
+// B6 酸素解離曲線 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { saturation, releaseFraction, p50, LUNG, TISSUE } = __m["models/oxygen.js"];
+const { sample } = __m["lib/series.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'half', text: '組織のO₂分圧を動かして、組織での酸素ヘモグロビンの割合がほぼ50%になる値を探そう。', short: '半分が酸素を離す分圧' },
+    { id: 'co2', text: '組織のCO₂分圧を40（肺胞と同じ）に下げて、組織で放出される酸素の割合が小さくなることを確かめよう。', short: 'CO₂分圧の効果' },
+    { id: 'flat', text: '肺のO₂分圧を70以下に下げても、肺での酸素ヘモグロビンの割合が90%以上に保たれることを確かめよう。', short: 'S字の上側は平ら' },
+    { id: 'exercise', text: '激しい運動中の筋肉のように、組織のO₂分圧を20以下・CO₂分圧を75以上にして、放出される割合を80%以上にしよう。', short: '運動中の筋肉' },
+  ],
+  mount(root, ctx) {
+    const st = { lungO2: LUNG.pO2, tisO2: TISSUE.pO2, tisCO2: TISSUE.pCO2 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '酸素分圧と酸素ヘモグロビンの割合 ', modelNote()));
+    const chart = createChart(top, { label: '酸素解離曲線のグラフ', aspect: 0.75 });
+    const leg = h('div');
+    top.append(leg, h('p', { class: 'small muted' }, `分圧はすべて相対値（教科書の図と同じく、肺胞のO₂分圧を100とする目盛り）。肺胞のCO₂分圧は ${LUNG.pCO2} とした。組織のO₂分圧は肺胞より低い範囲で動かせる。`));
+
+    const sLung = slider({ label: '肺（肺胞）のO₂分圧', min: 40, max: 100, step: 1, value: st.lungO2, format: (v) => v + '（相対値）', onInput: (v) => {
+      st.lungO2 = v;
+      // 組織のO₂分圧は肺胞より低い（肺胞より10以上低い範囲で動かせる）
+      sTis.setRange(5, Math.min(60, v - 10));
+      st.tisO2 = sTis.value;
+      update();
+    } });
+    const sTis = slider({ label: '組織のO₂分圧', min: 5, max: 60, step: 1, value: st.tisO2, format: (v) => v + '（相対値）', onInput: (v) => { st.tisO2 = v; update(); } });
+    const sCO2 = slider({ label: '組織のCO₂分圧', min: 40, max: 80, step: 1, value: st.tisCO2, format: (v) => v + '（相対値）', onInput: (v) => { st.tisCO2 = v; update(); } });
+    const readout = h('div', { class: 'small', 'aria-live': 'polite' });
+    const exp = explainBox();
+    const calcBox = h('div', { 'aria-live': 'polite' });
+    root.append(
+      panel('操作', sLung.el, sTis.el, sCO2.el, readout),
+      panel('計算：組織で酸素を放出した割合', calcBox),
+      panel('いま何が起きているか', exp.el),
+    );
+
+    function update() {
+      const sL = saturation(st.lungO2, LUNG.pCO2);
+      const sT = saturation(st.tisO2, st.tisCO2);
+      const frac = releaseFraction(sL, sT);
+      const series = [
+        { points: sample((p) => saturation(p, LUNG.pCO2), 0, 100, 200), color: 'c1', width: 3, label: `CO₂ ${LUNG.pCO2}（肺）`, legendLabel: `CO₂分圧 ${LUNG.pCO2}（肺胞）` },
+      ];
+      if (st.tisCO2 !== LUNG.pCO2) {
+        series.push({ points: sample((p) => saturation(p, st.tisCO2), 0, 100, 200), color: 'c2', dash: 'dash', width: 3, label: `CO₂ ${st.tisCO2}（組織）`, labelAt: 72, legendLabel: `CO₂分圧 ${st.tisCO2}（組織）` });
+      }
+      chart.draw({
+        alt: `肺で ${fmt(sL, 0)}%、組織で ${fmt(sT, 0)}%。放出した割合 ${fmt(frac, 0)}%`,
+        x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
+        y: { min: 0, max: 100, label: '酸素ヘモグロビンの割合（%）', step: 10 },
+        series,
+        vlines: [
+          { x: st.lungO2, color: 'c1', dash: 'dot', label: '肺' },
+          { x: st.tisO2, color: 'c2', dash: 'dot', label: '組織', dy: 18 },
+        ],
+        hlines: [
+          { y: sL, color: 'c1', dash: 'dot', width: 1, label: `肺 ${fmt(sL, 0)}%` },
+          { y: sT, color: 'c2', dash: 'dot', width: 1, label: `組織 ${fmt(sT, 0)}%` },
+        ],
+        markers: [
+          { x: st.lungO2, y: sL, color: 'c1' },
+          { x: st.tisO2, y: sT, color: 'c2', shape: 'square' },
+        ],
+      });
+      leg.replaceChildren(legend([...series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash })), { label: '肺・組織の分圧（縦の点線）', color: 'muted', dash: 'dot' }]));
+      readout.replaceChildren(
+        h('div', null, h('b', null, '肺'), `：O₂分圧 ${st.lungO2}・CO₂分圧 ${LUNG.pCO2} → 酸素ヘモグロビン ${fmt(sL, 1)}%`),
+        h('div', null, h('b', null, '組織'), `：O₂分圧 ${st.tisO2}・CO₂分圧 ${st.tisCO2} → 酸素ヘモグロビン ${fmt(sT, 1)}%`),
+      );
+      calcBox.replaceChildren(
+        h('p', { class: 'small' }, h('b', null, '組織で酸素を放出した割合 ＝ （肺での割合 − 組織での割合）÷ 肺での割合 × 100')),
+        h('p', null, `（${fmt(sL, 1)} − ${fmt(sT, 1)}）÷ ${fmt(sL, 1)} × 100 ＝ `, h('b', null, `${fmt(frac, 1)}%`)),
+        h('p', { class: 'small muted' }, `「肺で酸素と結合していたヘモグロビンのうち、組織で酸素を離したものの割合」である。全ヘモグロビンに対する割合を問われたときは、差の ${fmt(sL - sT, 1)}% が答えになる。`),
+      );
+
+      const lines = [];
+      lines.push('酸素分圧が高い肺胞では、ヘモグロビンの大部分が酸素と結合して酸素ヘモグロビンになる。酸素分圧が低い組織では、酸素ヘモグロビンが酸素を離してヘモグロビンにもどり、離れた酸素が組織の細胞に渡される。');
+      if (st.tisCO2 > LUNG.pCO2) {
+        lines.push(`組織のようにCO₂分圧が高いと、曲線は右にずれる（いまの設定で、半分が酸素ヘモグロビンになるO₂分圧は ${fmt(p50(LUNG.pCO2), 0)} → ${fmt(p50(st.tisCO2), 0)}）。同じO₂分圧でも酸素ヘモグロビンの割合が小さくなるので、CO₂を多く出している（さかんに呼吸している）組織ほど、多くの酸素を受け取れる。`);
+      } else {
+        lines.push('組織のCO₂分圧を肺と同じにすると、曲線は1本になる。CO₂分圧が高いときより酸素を離しにくくなるので、組織で放出される酸素の割合は小さくなる。');
+      }
+      if (st.lungO2 <= 70 && sL >= 90) {
+        lines.push(`曲線はS字形で、O₂分圧の高い側は平らに近い。そのため肺のO₂分圧が ${st.lungO2} に下がっても、酸素ヘモグロビンの割合は ${fmt(sL, 0)}% と大きくは下がらない。`);
+      } else {
+        lines.push('曲線がS字形なので、O₂分圧が 20〜50 くらいの範囲では、O₂分圧が少し下がるだけで酸素ヘモグロビンの割合が大きく下がる。組織の酸素分圧はこの範囲にあるので、組織で効率よく酸素を放出できる。');
+      }
+      exp.set(lines);
+      ctx.update({ ...st, sL, sT, frac });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => Math.abs(s.sT - 50) <= 3;
+dojo.tasks[1].check = (s) => s.tisCO2 === LUNG.pCO2 && s.tisO2 <= 50;
+dojo.tasks[2].check = (s) => s.lungO2 <= 70 && s.sL >= 90;
+dojo.tasks[3].check = (s) => s.tisO2 <= 20 && s.tisCO2 >= 75 && s.frac >= 80;
+return { dojo };
+})();
+
+// ---- models/kidney.js ----
+__m["models/kidney.js"] = (function () {
+// B7 腎臓のはたらき
+// 濃縮率 ＝ 尿中の濃度 ÷ 血しょう中の濃度
+// イヌリンはろ過されるが再吸収も分泌もされないので、原尿量 ＝ 尿量 × イヌリンの濃縮率
+// 再吸収量 ＝ 原尿中の量 − 尿中の量、再吸収率 ＝ 再吸収量 ÷ 原尿中の量
+// 濃度は質量パーセント［%］（g/100mL とみなす）。数値は教科書の表の目安。
+const SUBSTANCES = [
+  { id: 'protein', name: 'タンパク質', plasma: 7.2, filtrate: 0, urine: 0, note: '分子が大きく、糸球体からボーマンのうへろ過されない' },
+  { id: 'glucose', name: 'グルコース', plasma: 0.1, filtrate: 0.1, urine: 0, note: 'ろ過されるが、細尿管ですべて再吸収される' },
+  { id: 'urea', name: '尿素', plasma: 0.03, filtrate: 0.03, urine: 2, note: '不要な物質だが、一部（この表では約4割）は再吸収される。水が大量に再吸収されるので、尿中で濃縮される' },
+  { id: 'uric', name: '尿酸', plasma: 0.004, filtrate: 0.004, urine: 0.05, note: '不要な物質' },
+  { id: 'creatinine', name: 'クレアチニン', plasma: 0.001, filtrate: 0.001, urine: 0.075, note: '筋肉でできる不要な物質。濃縮率（75）はイヌリン（120）より小さく、表の数値からは一部が再吸収されたと計算される' },
+  { id: 'na', name: 'ナトリウムイオン', plasma: 0.3, filtrate: 0.3, urine: 0.35, note: '大部分が再吸収される（鉱質コルチコイドが促進）' },
+  { id: 'k', name: 'カリウムイオン', plasma: 0.02, filtrate: 0.02, urine: 0.15, note: '' },
+  { id: 'inulin', name: 'イヌリン', plasma: 0.1, filtrate: 0.1, urine: 12, note: '静脈に注射する多糖類。ろ過されるが再吸収されない' },
+];
+
+function substanceById(id) {
+  return SUBSTANCES.find((s) => s.id === id) || null;
+}
+
+function concentrationRatio(plasma, urine) {
+  return urine / plasma;
+}
+
+function filtrateVolume(urineVolume, inulinRatio) {
+  return urineVolume * inulinRatio;
+}
+
+// 原尿量 F・尿量 U と、原尿中・尿中の濃度［%］から再吸収を求める（量は g。体積は mL とする）
+function reabsorption(F, U, cFiltrate, cUrine) {
+  const filtered = (F * cFiltrate) / 100;
+  const excreted = (U * cUrine) / 100;
+  const re = filtered - excreted;
+  return { filtered, excreted, reabsorbed: re, rate: filtered > 0 ? re / filtered : 0 };
+}
+
+// 水の再吸収率 ＝ 1 − 尿量 ÷ 原尿量
+function waterReabsorption(F, U) {
+  return 1 - U / F;
+}
+
+// 既定値：1日の尿量 1.5 L、イヌリンの濃縮率 120 → 原尿量 180 L
+const DEFAULT = { urineL: 1.5, inulinPlasma: 0.1, inulinUrine: 12 };
+return { SUBSTANCES, substanceById, concentrationRatio, filtrateVolume, reabsorption, waterReabsorption, DEFAULT };
+})();
+
+// ---- dojo/b7.js ----
+__m["dojo/b7.js"] = (function () {
+// B7 腎臓のはたらき の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, niceStep } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { SUBSTANCES, substanceById, concentrationRatio, filtrateVolume, reabsorption, waterReabsorption, DEFAULT } = __m["models/kidney.js"];
+
+const pctText = (r) => fmt(r * 100, 1) + '%';
+
+const dojo = {
+  tasks: [
+    { id: 'gfr', text: '尿量を 2.0 L にしたとき、原尿量がちょうど 180 L になるように尿中のイヌリン濃度を合わせよう。', short: '原尿量を求める' },
+    { id: 'glucose', text: '「グルコース」を選び、ろ過されたグルコースがすべて再吸収されることを確かめよう。', short: 'グルコースの再吸収' },
+    { id: 'urea', text: '「尿素」を選び、再吸収率がグルコースや水よりずっと小さいことを確かめよう。', short: '尿素の再吸収率' },
+    { id: 'protein', text: '「タンパク質」を選び、原尿に含まれない（ろ過されない）ことを確かめよう。', short: 'タンパク質はろ過されない' },
+  ],
+  mount(root, ctx) {
+    const st = { U: DEFAULT.urineL, cInUrine: DEFAULT.inulinUrine, sub: 'urea' };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '原尿中の量と尿中の量（1日あたり） ', modelNote()));
+    const chart = createChart(top, { label: '原尿中と尿中の物質量の棒グラフ', aspect: 0.62 });
+    top.append(h('p', { class: 'small muted' }, '濃度は質量パーセント（%）で、血しょう・原尿・尿の1 mL を 1 g とみなして計算する。数値は教科書の表の目安。尿量とイヌリン濃度は計算の練習のために別々に動かせるが、実際のヒトの原尿量は1日約170〜180 L で、尿量が増えると尿は薄くなる。'));
+
+    const sU = slider({ label: '1日の尿量', min: 0.5, max: 3, step: 0.1, value: st.U, format: (v) => fmt(v, 1) + ' L', onInput: (v) => { st.U = v; update(); } });
+    const sIn = slider({ label: `尿中のイヌリン濃度（血しょう中は ${DEFAULT.inulinPlasma}%）`, min: 8, max: 24, step: 0.5, value: st.cInUrine, format: (v) => fmt(v, 1) + '%', onInput: (v) => { st.cInUrine = v; update(); } });
+    const segSub = segmented({
+      label: '調べる物質',
+      options: [{ value: 'water', label: '水' }, ...SUBSTANCES.filter((s) => s.id !== 'inulin').map((s) => ({ value: s.id, label: s.name }))],
+      value: st.sub,
+      onChange: (v) => { st.sub = v; update(); },
+    });
+    const calcBox = h('div', { 'aria-live': 'polite' });
+    const tableBox = h('div', { class: 'table-scroll' });
+    const exp = explainBox();
+    root.append(
+      panel('操作', sU.el, sIn.el, segSub.el),
+      panel('計算', calcBox),
+      panel('いま何が起きているか', exp.el),
+      panel('物質ごとの濃度・濃縮率・再吸収率（この設定の原尿量で計算）', tableBox),
+    );
+
+    function update() {
+      const ratioIn = concentrationRatio(DEFAULT.inulinPlasma, st.cInUrine);
+      const F = filtrateVolume(st.U, ratioIn); // L
+      const Fml = F * 1000;
+      const Uml = st.U * 1000;
+      let bars;
+      let unit;
+      const lines = [];
+      const calc = [
+        h('p', null, h('b', null, 'イヌリンの濃縮率'), ` ＝ 尿中の濃度 ÷ 血しょう中の濃度 ＝ ${fmt(st.cInUrine, 1)} ÷ ${DEFAULT.inulinPlasma} ＝ `, h('b', null, fmt(ratioIn, 0))),
+        h('p', null, h('b', null, '原尿量'), ` ＝ 尿量 × イヌリンの濃縮率 ＝ ${fmt(st.U, 1)} L × ${fmt(ratioIn, 0)} ＝ `, h('b', null, fmt(F, 1) + ' L')),
+      ];
+      let info;
+      if (st.sub === 'water') {
+        const r = waterReabsorption(F, st.U);
+        info = { name: '水', rate: r };
+        unit = 'L';
+        bars = [F, st.U];
+        calc.push(h('p', null, h('b', null, '水の再吸収率'), ` ＝ （原尿量 − 尿量）÷ 原尿量 ＝ （${fmt(F, 1)} − ${fmt(st.U, 1)}）÷ ${fmt(F, 1)} ＝ `, h('b', null, pctText(r))));
+        lines.push(`原尿 ${fmt(F, 0)} L のうち ${fmt(F - st.U, 1)} L（${pctText(r)}）の水が、細尿管と集合管で再吸収されて血液にもどる。尿として出るのは ${fmt(st.U, 1)} L だけである。`);
+        lines.push('集合管での水の再吸収は、脳下垂体後葉から分泌されるバソプレシンによって促進される。体内の水が不足するとバソプレシンが増えて尿量が減り、体液の濃度が一定に保たれる。');
+      } else {
+        const s = substanceById(st.sub);
+        const ratio = concentrationRatio(s.plasma, s.urine);
+        const ra = reabsorption(Fml, Uml, s.filtrate, s.urine);
+        info = { name: s.name, rate: ra.rate, filtered: ra.filtered };
+        unit = 'g';
+        bars = [ra.filtered, ra.excreted];
+        calc.push(h('p', null, h('b', null, `${s.name}の原尿中の量`), ` ＝ 原尿量 × 濃度 ＝ ${fmt(Fml, 0)} mL × ${s.filtrate}／100 ＝ ${fmt(ra.filtered, 1)} g`));
+        calc.push(h('p', null, h('b', null, `${s.name}の尿中の量`), ` ＝ 尿量 × 濃度 ＝ ${fmt(Uml, 0)} mL × ${s.urine}／100 ＝ ${fmt(ra.excreted, 1)} g`));
+        if (ra.filtered > 0) {
+          calc.push(h('p', null, h('b', null, '再吸収率'), ` ＝ （${fmt(ra.filtered, 1)} − ${fmt(ra.excreted, 1)}）÷ ${fmt(ra.filtered, 1)} ＝ `, h('b', null, pctText(ra.rate))));
+          lines.push(`${s.name}：濃縮率は ${fmt(ratio, 1)}。原尿中の ${fmt(ra.filtered, 1)} g のうち ${fmt(ra.reabsorbed, 1)} g（${pctText(ra.rate)}）が再吸収される。${s.note ? s.note + '。' : ''}`);
+        } else {
+          calc.push(h('p', null, '原尿中に含まれないので、再吸収率は考えない。'));
+          lines.push(`${s.name}：${s.note}。そのため健康な人の原尿・尿にはほとんど含まれない。`);
+        }
+        if (st.sub === 'glucose') lines.push('グルコースは体に必要な物質なので、細尿管ですべて再吸収される。血糖値が非常に高いと再吸収しきれず、尿中にグルコースが出る（糖尿病で尿糖が出る理由）。');
+        if (st.sub === 'urea') lines.push('尿素は肝臓でアンモニアからつくられる不要な物質である。一部は再吸収されるが、水のほうがはるかに多く再吸収されるので、尿中では血しょう中の約67倍に濃縮される。');
+      }
+      lines.push(`イヌリンはろ過されるが再吸収も分泌もされないので、尿中のイヌリンはすべて原尿に由来する。だから、原尿量 ＝ 尿量 × イヌリンの濃縮率 で原尿量を求められる（いまの設定で ${fmt(F, 0)} L／日）。`);
+
+      const yMax = Math.max(1, bars[0] * 1.15);
+      chart.draw({
+        alt: `${info.name}：原尿中 ${fmt(bars[0], 1)} ${unit}、尿中 ${fmt(bars[1], 1)} ${unit}`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: yMax, label: `${info.name}の量（${unit}／日）`, step: niceStep(yMax, 5), digits: yMax < 2 ? 1 : 0 },
+        bars: { categories: ['原尿中', '尿中'], groups: [{ label: info.name, values: bars, color: 'c1' }] },
+        texts: [
+          { x: 0.25, y: Math.min(bars[0] + yMax * 0.05, yMax * 0.95), text: `${fmt(bars[0], 1)} ${unit}` },
+          { x: 0.75, y: Math.min(bars[1] + yMax * 0.05, yMax * 0.95), text: `${fmt(bars[1], 1)} ${unit}` },
+          info.filtered === 0 ? null : { x: 0.5, y: yMax * 0.6, text: `再吸収 ${pctText(info.rate)}`, color: 'c2' },
+        ].filter(Boolean),
+      });
+      calcBox.replaceChildren(...calc);
+
+      const rows = [{ name: '水', plasma: '—', urine: '—', ratio: st.U / F, rate: waterReabsorption(F, st.U), water: true }, ...SUBSTANCES.map((s) => {
+        const ra = reabsorption(Fml, Uml, s.filtrate, s.urine);
+        return { name: s.name, plasma: s.plasma, filtrate: s.filtrate, urine: s.urine, ratio: s.urine / s.plasma, rate: ra.filtered > 0 ? ra.rate : null, inulin: s.id === 'inulin' };
+      })];
+      tableBox.replaceChildren(h('table', { class: 'data' },
+        h('thead', null, h('tr', null, h('th', null, '物質'), h('th', null, '血しょう'), h('th', null, '原尿'), h('th', null, '尿'), h('th', null, '濃縮率'), h('th', null, '再吸収率'))),
+        h('tbody', null, ...rows.map((r) => h('tr', null,
+          h('td', null, r.name),
+          h('td', null, r.water ? '—' : r.plasma + '%'),
+          h('td', null, r.water ? '—' : r.filtrate + '%'),
+          h('td', null, r.water ? '—' : (r.inulin ? fmt(st.cInUrine, 1) : r.urine) + '%'),
+          h('td', null, r.water ? '—' : r.inulin ? fmt(ratioIn, 0) : fmt(r.ratio, r.ratio < 10 ? 1 : 0)),
+          h('td', null, r.inulin ? '0%（再吸収されない）' : r.rate == null ? 'ろ過されない' : pctText(r.rate)),
+        ))),
+      ));
+      exp.set(lines);
+      ctx.update({ ...st, F, ratioIn, rate: info.rate });
+    }
+
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => Math.abs(s.U - 2) < 0.01 && Math.abs(s.F - 180) < 0.5;
+dojo.tasks[1].check = (s) => s.sub === 'glucose';
+dojo.tasks[2].check = (s) => s.sub === 'urea';
+dojo.tasks[3].check = (s) => s.sub === 'protein';
+return { dojo };
+})();
+
+// ---- models/biome.js ----
+__m["models/biome.js"] = (function () {
+// B8 バイオーム（年平均気温と年降水量による模式的な区分）
+// 境界は教科書の図の目安を直線でつないだ模式。点がどの多角形に入るかで判定する（図と判定が必ず一致する）。
+const T_MIN = -15;
+const T_MAX = 30;
+const P_MAX = 4500;
+
+const BIOMES = {
+  tundra: { name: 'ツンドラ', kind: '荒原', plants: 'コケ植物・地衣類・小形の草本' },
+  desert: { name: '砂漠', kind: '荒原', plants: 'サボテン類など乾燥に強い植物' },
+  steppe: { name: 'ステップ', kind: '草原', plants: 'イネのなかまの草本' },
+  savanna: { name: 'サバンナ', kind: '草原', plants: 'イネのなかまの草本と、まばらな樹木（アカシアなど）' },
+  taiga: { name: '針葉樹林', kind: '森林', plants: 'トウヒ類・モミ類などの常緑針葉樹（落葉針葉樹のカラマツ類も見られる）' },
+  temperate: { name: '夏緑樹林', kind: '森林', plants: 'ブナ・ミズナラなどの落葉広葉樹' },
+  laurel: { name: '照葉樹林', kind: '森林', plants: 'スダジイ・タブノキ・アラカシなどの常緑広葉樹' },
+  sclerophyll: { name: '硬葉樹林', kind: '森林', plants: 'オリーブ・コルクガシなど（夏に乾燥し冬に雨が多い地域）' },
+  monsoon: { name: '雨緑樹林', kind: '森林', plants: 'チークなど（雨季に葉をつけ乾季に落葉する）' },
+  subtropical: { name: '亜熱帯多雨林', kind: '森林', plants: 'ガジュマル・アコウ・ヘゴ、海岸にはマングローブ' },
+  tropical: { name: '熱帯多雨林', kind: '森林', plants: '常緑広葉樹。種類が非常に多く、高木が層をなす' },
+};
+
+// 境界線（気温 T の関数）
+const pDesert = (T) => 200 + 5 * (T + 5); // これより少ないと砂漠
+// 森林と草原の境界（これより少ないと草原）。気温が高いほど蒸発が多いので、森林に必要な降水量が多くなる。
+// 折れ線の頂点を結ぶ連続した境界にする（20℃付近でも段差なく、なめらかに上がる）。
+// 気温20℃未満の草原がステップ、20℃以上の草原がサバンナ。
+const GRASS_KNOTS = [[-5, 400], [16, 715], [24, 1300], [30, 1300]];
+function pGrass(T) {
+  const k = GRASS_KNOTS;
+  if (T <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) {
+    if (T <= k[i][0]) {
+      const [t0, p0] = k[i - 1];
+      const [t1, p1] = k[i];
+      return p0 + ((p1 - p0) * (T - t0)) / (t1 - t0);
+    }
+  }
+  return k[k.length - 1][1];
+}
+const P_SCLERO = 1200; // 13〜20℃で、これより少ない森林は硬葉樹林
+const P_RAIN = 2000; // 20℃以上で、これ以上なら多雨林
+const pEnvelope = (T) => 1000 + ((T - T_MIN) * 3500) / (T_MAX - T_MIN); // これより多い地域はほとんどない
+const T_TUNDRA = -5;
+const T_TAIGA = 5;
+const T_TEMPERATE = 13;
+const T_WARM = 20;
+const T_TROPICAL = 24;
+
+function classify(T, P) {
+  if (T < T_MIN || T > T_MAX || P < 0 || P > pEnvelope(T)) return null;
+  if (T < T_TUNDRA) return 'tundra';
+  if (P < pDesert(T)) return 'desert';
+  if (T < T_WARM) {
+    if (P < pGrass(T)) return 'steppe';
+    if (T < T_TAIGA) return 'taiga';
+    if (T < T_TEMPERATE) return 'temperate';
+    return P < P_SCLERO ? 'sclerophyll' : 'laurel';
+  }
+  if (P < pGrass(T)) return 'savanna';
+  if (P < P_RAIN) return 'monsoon';
+  return T < T_TROPICAL ? 'subtropical' : 'tropical';
+}
+
+// 図に描く多角形（classify と同じ境界）。[気温, 降水量] の点列
+const line = (f, t0, t1) => [[t0, f(t0)], [t1, f(t1)]];
+// 森林と草原の境界の折れ線（t0〜t1 の間の頂点を含む）
+const grassLine = (t0, t1) => [t0, ...GRASS_KNOTS.map((k) => k[0]).filter((t) => t > t0 && t < t1), t1].map((t) => [t, pGrass(t)]);
+function polygons() {
+  const env = (t0, t1) => line(pEnvelope, t0, t1);
+  const rev = (pts) => pts.slice().reverse();
+  return [
+    { id: 'tundra', points: [[T_MIN, 0], [T_TUNDRA, 0], ...rev(env(T_MIN, T_TUNDRA))], at: [-10, 450] },
+    { id: 'desert', points: [[T_TUNDRA, 0], [T_MAX, 0], ...rev(line(pDesert, T_TUNDRA, T_MAX))], at: [12.5, 140] },
+    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [9, 520] },
+    { id: 'taiga', points: [...grassLine(T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
+    { id: 'temperate', points: [...grassLine(T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
+    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
+    { id: 'laurel', points: [[T_TEMPERATE, P_SCLERO], [T_WARM, P_SCLERO], ...rev(env(T_TEMPERATE, T_WARM))], at: [16.5, 2200] },
+    { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), ...rev(grassLine(T_WARM, T_MAX))], at: [26, 800] },
+    { id: 'monsoon', points: [...grassLine(T_WARM, T_MAX), [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25.5, 1650] },
+    { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2900] },
+    { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3100] },
+  ];
+}
+
+// 都市の気候（平年値の概数）
+const CITIES = [
+  { name: '東京', T: 15.4, P: 1530 },
+  { name: '札幌', T: 8.9, P: 1150 },
+  { name: '那覇', T: 23.1, P: 2040 },
+  { name: 'シンガポール', T: 27.5, P: 2340 },
+  { name: 'カイロ', T: 22.0, P: 25 },
+  { name: 'ローマ', T: 15.5, P: 800 },
+  { name: 'モスクワ', T: 5.8, P: 700 },
+  { name: 'バンコク', T: 28.6, P: 1650 },
+];
+
+// 日本の水平分布（緯度による。主に気温で決まる）
+const JAPAN_HORIZONTAL = [
+  { zone: '亜寒帯', biome: 'taiga', where: '北海道の東北部', trees: 'エゾマツ・トドマツ' },
+  { zone: '冷温帯', biome: 'temperate', where: '北海道の南西部〜東北地方', trees: 'ブナ・ミズナラ' },
+  { zone: '暖温帯', biome: 'laurel', where: '関東地方〜四国・九州', trees: 'スダジイ・タブノキ・アラカシ' },
+  { zone: '亜熱帯', biome: 'subtropical', where: '南西諸島（沖縄など）', trees: 'ガジュマル・アコウ・ヘゴ' },
+];
+
+// 日本の垂直分布（本州中部の目安。標高 m）
+const VERTICAL = [
+  { zone: '丘陵帯', from: 0, to: 700, biome: 'laurel', veg: '照葉樹林（スダジイ・タブノキ・アラカシ）' },
+  { zone: '山地帯', from: 700, to: 1700, biome: 'temperate', veg: '夏緑樹林（ブナ・ミズナラ）' },
+  { zone: '亜高山帯', from: 1700, to: 2500, biome: 'taiga', veg: '針葉樹林（シラビソ・オオシラビソ・コメツガ）' },
+  { zone: '高山帯', from: 2500, to: 4000, biome: null, veg: '森林限界より上の、ハイマツの低木林や高山草原（お花畑）' },
+];
+const TREE_LINE = 2500;
+
+function verticalZone(elev) {
+  return VERTICAL.find((v) => elev >= v.from && elev < v.to) || VERTICAL[VERTICAL.length - 1];
+}
+
+// 標高が 100 m 高くなるごとに気温は約 0.6℃ 下がる（0.5〜0.6℃）
+const LAPSE = 0.6;
+function tempAt(baseT, baseElev, elev) {
+  return baseT - (LAPSE * (elev - baseElev)) / 100;
+}
+
+// 暖かさの指数：月平均気温が 5℃ を超える月について（月平均気温 − 5）を合計した値
+function warmthIndex(monthly) {
+  return monthly.reduce((a, t) => a + (t > 5 ? t - 5 : 0), 0);
+}
+const WI_ZONES = [
+  { lo: 0, hi: 15, biome: 'tundra' },
+  { lo: 15, hi: 45, biome: 'taiga' },
+  { lo: 45, hi: 85, biome: 'temperate' },
+  { lo: 85, hi: 180, biome: 'laurel' },
+  { lo: 180, hi: 240, biome: 'subtropical' },
+  { lo: 240, hi: Infinity, biome: 'tropical' },
+];
+function biomeByWI(wi) {
+  return (WI_ZONES.find((z) => wi >= z.lo && wi < z.hi) || WI_ZONES[0]).biome;
+}
+return { T_MIN, T_MAX, P_MAX, BIOMES, pDesert, GRASS_KNOTS, pGrass, P_SCLERO, P_RAIN, pEnvelope, T_TUNDRA, T_TAIGA, T_TEMPERATE, T_WARM, T_TROPICAL, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, LAPSE, tempAt, warmthIndex, WI_ZONES, biomeByWI };
+})();
+
+// ---- dojo/b8.js ----
+__m["dojo/b8.js"] = (function () {
+// B8 バイオーム の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { BIOMES, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, tempAt, LAPSE, warmthIndex, biomeByWI, WI_ZONES, T_MIN, T_MAX, P_MAX } = __m["models/biome.js"];
+
+// 森林・草原・荒原で塗りを分ける（色だけに頼らず、各区画に名前を書く）
+const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+
+// 月平均気温（平年値の概数、℃）
+const MONTHLY = {
+  札幌: [-3.2, -2.7, 1.1, 7.3, 13.0, 17.0, 21.1, 22.3, 18.6, 12.1, 5.2, -0.9],
+  東京: [5.4, 6.1, 9.4, 14.3, 18.8, 21.9, 25.7, 26.9, 23.3, 18.0, 12.5, 7.7],
+  那覇: [17.3, 17.5, 19.1, 21.5, 24.2, 27.2, 29.1, 29.0, 27.9, 25.5, 22.5, 19.0],
+};
+
+// 模式的な山の形（横は位置、縦は標高 m）
+const PEAK = 3200;
+const xl = (y) => (50 * y) / PEAK;
+const xr = (y) => 100 - (50 * y) / PEAK;
+
+const dojo = {
+  tasks: [
+    { id: 'tokyo', text: '都市のボタンで「東京」を選び、東京が照葉樹林の区画に入ることを確かめよう。', short: '東京は照葉樹林' },
+    { id: 'dry', text: '年平均気温を24℃以上にしたまま年降水量を減らし、熱帯多雨林 → 雨緑樹林 → サバンナ → 砂漠 と変わるのを確かめよう。', short: '降水量でバイオームが変わる' },
+    { id: 'cold', text: '年降水量を1200 mm以上にしたまま気温を下げ、照葉樹林 → 夏緑樹林 → 針葉樹林 → ツンドラ と変わるのを確かめよう。', short: '気温でバイオームが変わる' },
+    { id: 'alpine', text: '垂直分布で、標高を森林限界より上（高山帯）に合わせよう。', short: '森林限界をこえる' },
+  ],
+  mount(root, ctx) {
+    const st = { T: 15.4, P: 1530, elev: 500, baseT: 16, city: '東京', wiCity: '東京' };
+    const seenDry = new Set();
+    const seenCold = new Set();
+    const polys = polygons();
+
+    // ---- 世界のバイオーム ----
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '年平均気温・年降水量とバイオーム ', modelNote()));
+    const chart = createChart(top, { label: 'バイオームの分布図', aspect: 0.95, maxHeight: 540 });
+    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安を直線でつないだ模式。濃い塗りが森林、中間が草原、うすい塗りが荒原。左上の白い部分は、そのような気候の地域がほとんどないことを表す。'));
+    const sT = slider({ label: '年平均気温', min: T_MIN, max: T_MAX, step: 0.5, value: st.T, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.T = v; st.city = null; segCity.set(null, true); update(); } });
+    const sP = slider({ label: '年降水量', min: 0, max: P_MAX, step: 50, value: st.P, format: (v) => v + ' mm', onInput: (v) => { st.P = v; st.city = null; segCity.set(null, true); update(); } });
+    const segCity = segmented({ label: '都市の気候（平年値の概数）', options: CITIES.map((c) => ({ value: c.name, label: c.name })), value: st.city, onChange: (v) => {
+      const c = CITIES.find((x) => x.name === v);
+      st.city = v;
+      st.T = c.T;
+      st.P = c.P;
+      sT.set(Math.round(c.T * 2) / 2, true);
+      sP.set(Math.round(c.P / 50) * 50, true);
+      update();
+    } });
+    const result = h('div', { class: 'small', 'aria-live': 'polite' });
+    const exp = explainBox();
+    root.append(panel('操作', sT.el, sP.el, segCity.el, result), panel('いま何が起きているか', exp.el));
+
+    // ---- 日本の水平分布・垂直分布 ----
+    const jp = panel('日本のバイオーム');
+    root.append(jp);
+    jp.append(
+      h('p', { class: 'small' }, '日本は降水量が十分に多いので、どこでも極相は森林になる。バイオームは主に気温で決まり、緯度による分布を', h('b', null, '水平分布'), '、標高による分布を', h('b', null, '垂直分布'), 'という。'),
+      h('div', { class: 'table-scroll' }, h('table', { class: 'data' },
+        h('thead', null, h('tr', null, h('th', null, '気候帯'), h('th', null, 'おもな地域（低地）'), h('th', null, 'バイオーム'), h('th', null, '代表的な樹木'))),
+        h('tbody', null, ...JAPAN_HORIZONTAL.map((r) => h('tr', null, h('td', null, r.zone), h('td', null, r.where), h('td', null, BIOMES[r.biome].name), h('td', null, r.trees)))),
+      )),
+      h('h3', null, '垂直分布（本州中部の目安）'),
+    );
+    const vchart = createChart(jp, { label: '垂直分布の模式図', aspect: 0.7 });
+    const sElev = slider({ label: '標高', min: 0, max: PEAK, step: 50, value: st.elev, format: (v) => v + ' m', onInput: (v) => { st.elev = v; update(); } });
+    const sBase = slider({ label: 'ふもと（標高0 m）の年平均気温', min: 10, max: 20, step: 0.5, value: st.baseT, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.baseT = v; update(); } });
+    const vResult = h('div', { class: 'small', 'aria-live': 'polite' });
+    jp.append(sElev.el, sBase.el, vResult);
+
+    // ---- 暖かさの指数 ----
+    const wiPanel = panel('計算：暖かさの指数（発展）');
+    root.append(wiPanel);
+    const segWI = segmented({ label: '都市', options: Object.keys(MONTHLY).map((k) => ({ value: k, label: k })), value: st.wiCity, onChange: (v) => { st.wiCity = v; update(); } });
+    const wiBox = h('div', { 'aria-live': 'polite' });
+    wiPanel.append(
+      h('p', { class: 'small' }, h('b', null, '暖かさの指数 ＝ 月平均気温が5℃をこえる月について、（月平均気温 − 5）を1年分たし合わせた値'), '。植物の生育には5℃以上が必要と考えて、1年間の暖かさを数値で表したもの。'),
+      segWI.el,
+      wiBox,
+    );
+
+    function update() {
+      const b = classify(st.T, st.P);
+      chart.draw({
+        alt: `年平均気温 ${fmt(st.T, 1)}℃、年降水量 ${st.P} mm：${b ? BIOMES[b].name : '該当なし'}`,
+        x: { min: T_MIN, max: T_MAX, label: '年平均気温（℃）', step: 5, grid: false },
+        y: { min: 0, max: P_MAX, label: '年降水量（mm）', step: 500 },
+        polygons: polys.map((p) => ({ points: p.points, fill: FILL[BIOMES[p.id].kind], stroke: 'muted', label: BIOMES[p.id].name, at: p.at, bold: p.id === b })),
+        markers: [{ x: st.T, y: st.P, color: 'c2', shape: 'diamond', label: st.city || 'いまの点' }],
+      });
+      if (b) {
+        const B = BIOMES[b];
+        result.replaceChildren(h('b', null, `判定：${B.name}`), `（${B.kind}）　おもな植物：${B.plants}`);
+      } else {
+        result.replaceChildren(h('b', null, '判定：該当なし'), '（この気温でこれほど降水量の多い地域はほとんどない）');
+      }
+
+      const lines = [];
+      if (!b) lines.push('気温が低い地域では、大気中に含まれる水蒸気が少ないので、降水量がこれほど多くなることはほとんどない。');
+      else if (BIOMES[b].kind === '森林') lines.push(`年降水量が十分に多いので森林が成立する。森林の種類（${BIOMES[b].name}）は主に気温で決まる。`);
+      else if (BIOMES[b].kind === '草原') lines.push(`年降水量が少なく森林が成立しないので、草原（${BIOMES[b].name}）になる。熱帯の草原がサバンナ、温帯の草原がステップで、サバンナには樹木がまばらに生える。`);
+      else lines.push(b === 'tundra' ? '年平均気温が非常に低いので、樹木が育たず、コケ植物・地衣類などがまばらに生える荒原（ツンドラ）になる。' : '年降水量が非常に少ないので、乾燥に強い植物がまばらに生える荒原（砂漠）になる。');
+      lines.push('バイオームは、その地域の気候（気温と降水量）に応じて成立する植生と、そこにすむ動物などをまとめたものである。陸上では、降水量が多いと森林、少ないと草原、非常に少ないか気温が非常に低いと荒原になり、森林や草原の種類は主に気温で決まる。');
+      exp.set(lines);
+      if (b && st.T >= 24) seenDry.add(b);
+      if (b && st.P >= 1200) seenCold.add(b);
+
+      // 垂直分布
+      const bands = VERTICAL.map((v) => {
+        const a = v.from;
+        const top2 = Math.min(v.to, PEAK);
+        const pts = top2 >= PEAK ? [[xl(a), a], [xr(a), a], [50, PEAK]] : [[xl(a), a], [xr(a), a], [xr(top2), top2], [xl(top2), top2]];
+        return { points: pts, fill: v.biome ? FILL[BIOMES[v.biome].kind] : 'region-4', stroke: 'muted', label: `${v.zone}`, at: [50, (a + top2) / 2 - (top2 >= PEAK ? 120 : 0)] };
+      });
+      const z = verticalZone(st.elev);
+      const tHere = tempAt(st.baseT, 0, st.elev);
+      vchart.draw({
+        alt: `標高 ${st.elev} m：${z.zone}、${z.veg}`,
+        x: { min: 0, max: 100, ticks: [], grid: false },
+        y: { min: 0, max: 3500, label: '標高（m）', step: 500 },
+        polygons: bands,
+        hlines: [
+          { y: 700, color: 'muted', dash: 'dot', width: 1, label: '約700 m', align: 'right' },
+          { y: 1700, color: 'muted', dash: 'dot', width: 1, label: '約1700 m', align: 'right' },
+          { y: TREE_LINE, color: 'c2', dash: 'dash', width: 1.5, label: `森林限界 約${TREE_LINE} m`, align: 'right' },
+        ],
+        markers: [{ x: xl(st.elev), y: st.elev, color: 'c2', shape: 'diamond', label: `${fmt(tHere, 1)}℃` }],
+      });
+      vResult.replaceChildren(
+        h('div', null, h('b', null, `標高 ${st.elev} m：${z.zone}`), `　${z.veg}`),
+        h('div', null, `気温の目安：${fmt(st.baseT, 1)} − ${LAPSE} × ${st.elev}／100 ＝ ${fmt(tHere, 1)} ℃（標高が100 m 上がるごとに約 ${LAPSE}℃ 下がるとした）`),
+        h('div', { class: 'muted' }, '垂直分布の境界の標高は緯度によって変わり、北の地方ほど低くなる。'),
+      );
+
+      // 暖かさの指数
+      const m = MONTHLY[st.wiCity];
+      const wi = warmthIndex(m);
+      const wb = biomeByWI(wi);
+      wiBox.replaceChildren(
+        h('div', { class: 'table-scroll' }, h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '月'), ...m.map((_, i) => h('th', null, i + 1)))),
+          h('tbody', null,
+            h('tr', null, h('td', null, '気温'), ...m.map((t) => h('td', null, fmt(t, 1)))),
+            h('tr', null, h('td', null, '−5'), ...m.map((t) => h('td', null, t > 5 ? fmt(t - 5, 1) : '—'))),
+          ),
+        )),
+        h('p', null, `${st.wiCity}の暖かさの指数 ＝ `, h('b', null, fmt(wi, 1)), ` → `, h('b', null, BIOMES[wb].name), `（${WI_ZONES.map((zz) => `${zz.lo}${Number.isFinite(zz.hi) ? '〜' + zz.hi : '以上'}：${BIOMES[zz.biome].name}`).join('、')}）`),
+      );
+
+      ctx.update({ ...st, b, zone: z.zone, dryAll: ['tropical', 'monsoon', 'savanna', 'desert'].every((k) => seenDry.has(k)), coldAll: ['laurel', 'temperate', 'taiga', 'tundra'].every((k) => seenCold.has(k)) });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.city === '東京' && s.b === 'laurel';
+dojo.tasks[1].check = (s) => s.dryAll;
+dojo.tasks[2].check = (s) => s.coldAll;
+dojo.tasks[3].check = (s) => s.elev >= TREE_LINE;
+return { dojo };
+})();
+
+// ---- models/dna.js ----
+__m["models/dna.js"] = (function () {
+// B9 DNAとタンパク質合成 / B10 DNAの塩基組成 で使う純粋関数
+const BASES = ['A', 'T', 'G', 'C'];
+const RNA_BASES = ['U', 'C', 'A', 'G'];
+const DNA_PAIR = { A: 'T', T: 'A', G: 'C', C: 'G' };
+const RNA_FROM_TEMPLATE = { A: 'U', T: 'A', G: 'C', C: 'G' };
+
+function complement(dna) {
+  return [...dna].map((b) => DNA_PAIR[b]).join('');
+}
+
+// 鋳型鎖（DNA）から、相補的な塩基をもつ mRNA をつくる（転写）
+function transcribe(template) {
+  return [...template].map((b) => RNA_FROM_TEMPLATE[b]).join('');
+}
+
+// 遺伝暗号表（標準）。終止コドンは null
+const AA = {
+  Phe: 'フェニルアラニン', Leu: 'ロイシン', Ile: 'イソロイシン', Met: 'メチオニン', Val: 'バリン',
+  Ser: 'セリン', Pro: 'プロリン', Thr: 'トレオニン', Ala: 'アラニン', Tyr: 'チロシン',
+  His: 'ヒスチジン', Gln: 'グルタミン', Asn: 'アスパラギン', Lys: 'リシン', Asp: 'アスパラギン酸',
+  Glu: 'グルタミン酸', Cys: 'システイン', Trp: 'トリプトファン', Arg: 'アルギニン', Gly: 'グリシン',
+};
+const AMINO = AA;
+const TABLE_SRC = {
+  Phe: 'UUU UUC', Leu: 'UUA UUG CUU CUC CUA CUG', Ile: 'AUU AUC AUA', Met: 'AUG', Val: 'GUU GUC GUA GUG',
+  Ser: 'UCU UCC UCA UCG AGU AGC', Pro: 'CCU CCC CCA CCG', Thr: 'ACU ACC ACA ACG', Ala: 'GCU GCC GCA GCG',
+  Tyr: 'UAU UAC', His: 'CAU CAC', Gln: 'CAA CAG', Asn: 'AAU AAC', Lys: 'AAA AAG', Asp: 'GAU GAC',
+  Glu: 'GAA GAG', Cys: 'UGU UGC', Trp: 'UGG', Arg: 'CGU CGC CGA CGG AGA AGG', Gly: 'GGU GGC GGA GGG',
+};
+const CODON_TABLE = {};
+for (const [k, v] of Object.entries(TABLE_SRC)) for (const c of v.split(' ')) CODON_TABLE[c] = k;
+for (const c of ['UAA', 'UAG', 'UGA']) CODON_TABLE[c] = null;
+const START = 'AUG';
+
+function aminoName(codon) {
+  const k = CODON_TABLE[codon];
+  return k === null ? '終止' : AA[k];
+}
+
+function codonsOf(aaKey) {
+  return Object.keys(CODON_TABLE).filter((c) => CODON_TABLE[c] === aaKey);
+}
+
+// mRNA を最初の AUG から3塩基ずつ読み、終止コドンで止める
+// 返り値：{ start, codons: [{ codon, key, name, pos }], stopped }
+function translate(mrna, fromStart = true) {
+  const start = fromStart ? mrna.indexOf(START) : 0;
+  const out = { start, codons: [], stopped: false };
+  if (start < 0) return out;
+  for (let i = start; i + 3 <= mrna.length; i += 3) {
+    const codon = mrna.slice(i, i + 3);
+    const key = CODON_TABLE[codon];
+    out.codons.push({ codon, key, name: key === null ? '終止' : AA[key], pos: i });
+    if (key === null) {
+      out.stopped = true;
+      break;
+    }
+  }
+  return out;
+}
+
+function aminoSequence(mrna, fromStart = true) {
+  return translate(mrna, fromStart).codons.filter((c) => c.key !== null).map((c) => c.key);
+}
+
+// 突然変異：置換・欠失・挿入（位置は0始まり）
+function substitute(seq, pos, base) {
+  return seq.slice(0, pos) + base + seq.slice(pos + 1);
+}
+function deleteAt(seq, pos) {
+  return seq.slice(0, pos) + seq.slice(pos + 1);
+}
+function insertAt(seq, pos, base) {
+  return seq.slice(0, pos) + base + seq.slice(pos);
+}
+
+// 2つのアミノ酸配列を比べて、変異の影響を分類する
+// kind：same（変わらない）／one（1つだけ変わる）／shorter（短くなる）／longer（長くなる）／many（2つ以上変わる）／nostart（翻訳が始まらない）
+function compareProteins(before, after) {
+  if (before.length > 0 && after.length === 0) return { kind: 'nostart', first: 0 };
+  const n = Math.min(before.length, after.length);
+  let first = -1;
+  for (let i = 0; i < n; i++) if (before[i] !== after[i]) { first = i; break; }
+  if (first < 0 && before.length === after.length) return { kind: 'same', first: -1 };
+  if (first < 0) return { kind: after.length < before.length ? 'shorter' : 'longer', first: n };
+  let changed = 0;
+  for (let i = 0; i < n; i++) if (before[i] !== after[i]) changed++;
+  return { kind: changed === 1 && before.length === after.length ? 'one' : 'many', first, changed };
+}
+
+// ---- B10 塩基組成 ----
+// 2本鎖DNAでは A＝T、G＝C（シャルガフの規則）。A の割合 a［%］から全塩基の割合を求める
+function compositionFromA(a) {
+  const g = (100 - 2 * a) / 2;
+  return { A: a, T: a, G: g, C: g };
+}
+function compositionFromG(g) {
+  const a = (100 - 2 * g) / 2;
+  return { A: a, T: a, G: g, C: g };
+}
+
+// 1本鎖（鎖1）の組成から、相補鎖（鎖2）と2本鎖全体の組成を求める
+function strandComposition(s1) {
+  const s2 = { A: s1.T, T: s1.A, G: s1.C, C: s1.G };
+  const both = { A: (s1.A + s2.A) / 2, T: (s1.T + s2.T) / 2, G: (s1.G + s2.G) / 2, C: (s1.C + s2.C) / 2 };
+  return { s1, s2, both };
+}
+
+// 10塩基対で約3.4 nm（1塩基対あたり 0.34 nm）。らせん1回転が10塩基対
+const NM_PER_BP = 0.34;
+const BP_PER_TURN = 10;
+function lengthNm(bp) {
+  return bp * NM_PER_BP;
+}
+
+const GENOMES = [
+  { name: 'ヒト', bp: 3.0e9, genes: 20000 },
+  { name: '大腸菌', bp: 4.6e6, genes: 4500 },
+];
+return { BASES, RNA_BASES, complement, transcribe, AMINO, CODON_TABLE, START, aminoName, codonsOf, translate, aminoSequence, substitute, deleteAt, insertAt, compareProteins, compositionFromA, compositionFromG, strandComposition, NM_PER_BP, BP_PER_TURN, lengthNm, GENOMES };
+})();
+
+// ---- dojo/b9.js ----
+__m["dojo/b9.js"] = (function () {
+// B9 DNAとタンパク質合成 の図解道場
+const { h } = __m["lib/dom.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { transcribe, translate, aminoSequence, substitute, deleteAt, insertAt, compareProteins, CODON_TABLE, AMINO, RNA_BASES, BASES } = __m["models/dna.js"];
+
+// もとの遺伝子の鋳型鎖。mRNA は UC｜AUG GCU UGG AAA GAC CUU UAC GGC UAA｜UUGAGUAA
+// （開始コドンの前と終止コドンの後ろにも塩基を置き、読み枠がずれたときにも先に終止コドンが現れるようにした）
+const TEMPLATE = 'AGTACCGAACCTTTCTGGAAATGCCGATTAACTCATT';
+const CORE_START = 2; // 開始コドンの位置（0始まり）
+const CORE_END = 29; // 終止コドンの直後の位置
+const COMP = { A: 'T', T: 'A', G: 'C', C: 'G' };
+const other = (s) => [...s].map((b) => COMP[b]).join('');
+
+function blocks(template, mutPos, mutType) {
+  const mrna = transcribe(template);
+  const tr = translate(mrna);
+  const out = [];
+  const start = tr.start < 0 ? mrna.length : tr.start;
+  if (start > 0) out.push({ dna: template.slice(0, start), rna: mrna.slice(0, start), aa: '', lead: true, from: 0 });
+  for (const c of tr.codons) out.push({ dna: template.slice(c.pos, c.pos + 3), rna: c.codon, aa: c.name, stop: c.key === null, from: c.pos });
+  const end = tr.codons.length ? tr.codons[tr.codons.length - 1].pos + 3 : start;
+  if (end < mrna.length) out.push({ dna: template.slice(end), rna: mrna.slice(end), aa: '', tail: true, open: tr.start >= 0 && !tr.stopped, from: end });
+  return out.map((b) => ({ ...b, mark: mutType !== 'none' && mutPos >= b.from && mutPos < b.from + b.dna.length ? mutPos - b.from : -1 }));
+}
+
+function seqRow(title, bl, changed) {
+  return h('div', { class: 'seq-row' },
+    h('div', { class: 'seq-title small' }, title),
+    h('div', { class: 'seq-blocks' }, ...bl.map((b, i) => {
+      const letters = (s) => [...s].map((ch, k) => h('span', { class: k === b.mark ? 'mut' : null }, ch));
+      return h('div', { class: 'codon' + (b.lead || b.tail ? ' outside' : i % 2 ? ' alt' : '') + (changed && changed.has(i) ? ' changed' : '') + (b.stop ? ' stop' : '') },
+        h('div', { class: 'seq' }, ...letters(b.dna)),
+        h('div', { class: 'seq rna' }, ...letters(b.rna)),
+        h('div', { class: 'aa' }, b.lead ? '（翻訳されない）' : b.tail ? (b.open ? '（この先へ続く）' : '（終止後）') : b.aa + (changed && changed.has(i) ? ' ※' : '')),
+      );
+    })),
+  );
+}
+
+const dojo = {
+  tasks: [
+    { id: 'missense', text: '「置換」で、アミノ酸が1つだけ別のものに変わる突然変異をつくろう。', short: 'アミノ酸が1つ変わる置換' },
+    { id: 'silent', text: '「置換」で、塩基は変わってもアミノ酸配列が変わらない突然変異を見つけよう。', short: 'アミノ酸が変わらない置換' },
+    { id: 'nonsense', text: '「置換」で、途中に終止コドンができてタンパク質が短くなる突然変異をつくろう。', short: '終止コドンができる置換' },
+    { id: 'frameshift', text: '「欠失」で、変異した位置より後ろのアミノ酸が次々に変わる（読み枠がずれる）ことを確かめよう。', short: '欠失でフレームシフト' },
+  ],
+  mount(root, ctx) {
+    const st = { type: 'none', pos: 7, base: 'T' };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'DNA → mRNA → アミノ酸 ', modelNote('模式的な短い遺伝子')));
+    const view = h('div', { class: 'seq-view', 'aria-live': 'polite' });
+    top.append(
+      h('p', { class: 'small muted' }, '各ブロックの上段がDNAの鋳型鎖、中段がmRNA（転写）、下段がアミノ酸（翻訳）。鋳型鎖とmRNAは塩基どうしが向かい合うように並べている（「生物」で学ぶ向きでは、鋳型鎖は左が3′末端、mRNAは左が5′末端）。mRNAは最初のAUG（開始コドン）から3塩基ずつ読まれ、終止コドンで翻訳が終わる。突然変異（置換・欠失・挿入）は「生物」で詳しく学ぶ内容。'),
+      view,
+    );
+
+    const segType = segmented({ label: '突然変異の種類', options: [{ value: 'none', label: 'なし' }, { value: 'sub', label: '置換' }, { value: 'del', label: '欠失' }, { value: 'ins', label: '挿入' }], value: st.type, onChange: (v) => { st.type = v; update(); } });
+    const sPos = slider({ label: '鋳型鎖の何番目の塩基か', min: 1, max: TEMPLATE.length, step: 1, value: st.pos, format: (v) => `${v} 番目（もとの塩基 ${TEMPLATE[v - 1]}）`, onInput: (v) => { st.pos = v; update(); } });
+    const segBase = segmented({ label: '置換後・挿入する塩基（鋳型鎖）', options: BASES.map((b) => ({ value: b, label: b })), value: st.base, onChange: (v) => { st.base = v; update(); } });
+    const exp = explainBox();
+    const tableBox = h('div', { class: 'table-scroll' });
+    root.append(
+      panel('操作', segType.el, sPos.el, segBase.el),
+      panel('いま何が起きているか', exp.el),
+      panel('遺伝暗号表（mRNAのコドン → アミノ酸）', h('p', { class: 'small muted' }, 'いまの（突然変異後の）mRNAで使われているコドンを太字で示す。'), tableBox),
+    );
+
+    function mutate() {
+      const i = st.pos - 1;
+      if (st.type === 'sub') return substitute(TEMPLATE, i, st.base);
+      if (st.type === 'del') return deleteAt(TEMPLATE, i);
+      if (st.type === 'ins') return insertAt(TEMPLATE, i, st.base);
+      return TEMPLATE;
+    }
+
+    function update() {
+      const mut = mutate();
+      const before = aminoSequence(transcribe(TEMPLATE));
+      const after = aminoSequence(transcribe(mut));
+      const cmp = compareProteins(before, after);
+      const blA = blocks(TEMPLATE, -1, 'none');
+      const blB = blocks(mut, st.pos - 1, st.type);
+      // 変わったアミノ酸のブロック番号
+      const changed = new Set();
+      let k = 0;
+      blB.forEach((b, idx) => {
+        if (b.lead || b.tail) return;
+        if (b.stop) {
+          if (k < before.length) changed.add(idx);
+          return;
+        }
+        if (before[k] !== CODON_TABLE[b.rna]) changed.add(idx);
+        k++;
+      });
+      view.replaceChildren(...[seqRow('もとの遺伝子', blA), st.type === 'none' ? null : seqRow('突然変異後', blB, changed)].filter(Boolean));
+      sPos.setRange(1, TEMPLATE.length);
+
+      const lines = [];
+      const name = (key) => AMINO[key];
+      lines.push(`もとのタンパク質：${before.map(name).join('－')}（アミノ酸 ${before.length} 個）。`);
+      if (st.type === 'none') {
+        lines.push('DNAの鋳型鎖の塩基に相補的な塩基をもつmRNAがつくられる（転写）。このとき、DNAのAに対してはmRNAのU（ウラシル）が対応する。mRNAの3つの塩基の並び（コドン）が1つのアミノ酸を指定し、その順にアミノ酸がつながってタンパク質ができる（翻訳）。');
+        lines.push('上の「突然変異の種類」を選んで、塩基の置換・欠失・挿入がタンパク質にどう影響するか比べてみよう。');
+      } else {
+        lines.push(after.length ? `突然変異後：${after.map(name).join('－')}（アミノ酸 ${after.length} 個）。` : '突然変異後：アミノ酸 0 個（翻訳されない）。');
+        const i0 = st.pos - 1;
+        const indel = st.type !== 'sub';
+        const what = st.type === 'sub' ? '置換' : st.type === 'del' ? '欠失' : '挿入';
+        const shift = `${what}によって、それより後ろのコドンの区切り（読み枠）が1塩基ずれた（フレームシフト）。`;
+        if (mut === TEMPLATE) lines.push('もとと同じ塩基を選んでいるので、変化はない。別の塩基を選ぼう。');
+        else if (cmp.kind === 'nostart') lines.push(`開始コドン（AUG）が${what}でこわれたので、翻訳が始まらず、このタンパク質はつくられない。途中に終止コドンができる場合とは別の現象である。`);
+        else if (cmp.kind === 'same') {
+          if (i0 < CORE_START || (st.type === 'ins' && i0 === CORE_START)) lines.push('開始コドンより前（翻訳されない部分）の変化なので、タンパク質は変わらない。');
+          else if (i0 >= CORE_END) lines.push('終止コドンより後ろ（翻訳されない部分）の変化なので、タンパク質は変わらない。');
+          else if (i0 >= CORE_END - 3) lines.push('終止コドンの中の変化だが、別の終止コドン（終止コドンは UAA・UAG・UGA の3種類）になったので、タンパク質は変わらない。');
+          else if (!indel) lines.push('塩基が置換されたが、アミノ酸は変わらなかった。1つのアミノ酸を指定するコドンが複数あるため（特に3番目の塩基の違い）、置換がタンパク質に影響しないことがある。');
+          else lines.push(`${what}が起こったが、新しくできた開始コドンから読み始めたため、アミノ酸配列は変わらなかった。読み枠がずれても、いつもタンパク質が変わるとは限らない。`);
+        } else if (!indel) {
+          if (cmp.kind === 'one') lines.push('置換によってコドンが1つ変わり、アミノ酸が1つだけ別のものに変わった。置換では、ほかのコドンの読み方は変わらない。鎌状赤血球貧血症は、このような1塩基の置換でヘモグロビンのアミノ酸が1つ変わって起こる。');
+          else if (cmp.kind === 'shorter') lines.push('置換によって途中に終止コドンができ、そこで翻訳が止まってタンパク質が短くなった。はたらきを失うことが多い。');
+          else if (cmp.kind === 'longer') lines.push('終止コドンが置換によってアミノ酸を指定するコドンに変わったので、翻訳がその先まで続き、タンパク質が長くなった。');
+          else lines.push('置換によってアミノ酸配列が変わった。');
+        } else if (cmp.kind === 'shorter') {
+          lines.push(`${shift}そのため変異した位置より後ろのアミノ酸が変わり、途中で終止コドンが現れてタンパク質が短くなった。1塩基の置換に比べて、タンパク質への影響が大きくなりやすい。`);
+        } else if (cmp.kind === 'one') {
+          lines.push(`${shift}ただしこの位置では、すぐあとが元の読み方とそろったため、アミノ酸が1つ変わっただけですんだ。`);
+        } else {
+          lines.push(`${shift}そのため変異した位置より後ろのアミノ酸が次々に変わった。1塩基の置換に比べて、タンパク質への影響が大きくなりやすい。`);
+        }
+        if (cmp.kind !== 'nostart' && !translate(transcribe(mut)).stopped && after.length) lines.push('終止コドンがなくなったので、この図の範囲を越えて翻訳が続く。');
+      }
+      exp.set(lines);
+
+      // 遺伝暗号表
+      const used = new Set(blocks(mut, -1, 'none').filter((b) => !b.lead && !b.tail).map((b) => b.rna));
+      const cell = (c) => {
+        const key = CODON_TABLE[c];
+        return h('div', { class: used.has(c) ? 'used' : null }, `${c} ${key === null ? '終止' : AMINO[key]}${c === 'AUG' ? '（開始）' : ''}`);
+      };
+      tableBox.replaceChildren(h('table', { class: 'data codon-table' },
+        h('thead', null, h('tr', null, h('th', null, '1番目＼2番目'), ...RNA_BASES.map((b) => h('th', null, b)))),
+        h('tbody', null, ...RNA_BASES.map((b1) => h('tr', null, h('th', null, b1), ...RNA_BASES.map((b2) => h('td', null, ...RNA_BASES.map((b3) => cell(b1 + b2 + b3))))))),
+      ));
+      ctx.update({ ...st, changedTemplate: mut !== TEMPLATE, kind: cmp.kind, first: cmp.first, before: before.length, after: after.length });
+    }
+    update();
+    return null;
+  },
+};
+
+// 鋳型鎖ともう一方の鎖の関係を確認する（読み込み時の自己点検）
+if (transcribe(TEMPLATE) !== other(TEMPLATE).replace(/T/g, 'U')) throw new Error('B9: TEMPLATE が不正です');
+
+dojo.tasks[0].check = (s) => s.type === 'sub' && s.kind === 'one';
+dojo.tasks[1].check = (s) => s.type === 'sub' && s.changedTemplate && s.kind === 'same' && s.pos - 1 >= CORE_START && s.pos - 1 < CORE_END - 3;
+dojo.tasks[2].check = (s) => s.type === 'sub' && s.kind === 'shorter' && s.after > 0;
+dojo.tasks[3].check = (s) => s.type === 'del' && (s.kind === 'many' || s.kind === 'shorter' || s.kind === 'longer') && s.first >= 0 && s.first < s.before - 1;
+return { TEMPLATE, dojo };
+})();
+
+// ---- dojo/b10.js ----
+__m["dojo/b10.js"] = (function () {
+// B10 DNAの塩基組成 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, HATCHES } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { strandComposition, compositionFromA, lengthNm, NM_PER_BP, BP_PER_TURN, GENOMES } = __m["models/dna.js"];
+
+const KEYS = ['A', 'T', 'G', 'C'];
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const pow10 = (e) => '10' + String(e).split('').map((c) => SUP[Number(c)]).join('');
+
+function lengthText(nm) {
+  if (nm >= 1e9) return `${fmt(nm / 1e9, 2)} m`;
+  if (nm >= 1e6) return `${fmt(nm / 1e6, 2)} mm`;
+  if (nm >= 1e3) return `${fmt(nm / 1e3, 2)} μm`;
+  return `${fmt(nm, 1)} nm`;
+}
+
+const dojo = {
+  tasks: [
+    { id: 'chargaff', text: '「2本鎖DNA」で A の割合を動かし、いつでも A＝T、G＝C になることを確かめよう。', short: 'シャルガフの規則' },
+    { id: 'gc', text: '「2本鎖DNA」で、G＋C の割合がちょうど60%になるように A の割合を合わせよう。', short: 'G＋C＝60%' },
+    { id: 'strand', text: '「1本ずつ見る」で、鎖1では A と T が等しくないのに、2本鎖全体では A＝T になることを確かめよう。', short: '1本鎖と2本鎖の違い' },
+    { id: 'human', text: '長さの計算で「ヒトの体細胞」を選び、DNAの全長がおよそ何mになるか確かめよう。', short: 'ヒトのDNAの長さ' },
+  ],
+  mount(root, ctx) {
+    const st = { mode: 'double', a: 30, s1: { A: 35, T: 20, G: 15 }, bpExp: 4, bpMant: 1, preset: null };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'DNAの塩基組成（%） ', modelNote()));
+    const chart = createChart(top, { label: '塩基組成の棒グラフ', aspect: 0.62 });
+    const leg = h('div');
+    top.append(leg);
+
+    const segMode = segmented({ label: '表示', options: [{ value: 'double', label: '2本鎖DNA' }, { value: 'strand', label: '1本ずつ見る' }], value: st.mode, onChange: (v) => { st.mode = v; draw(); } });
+    const sA = slider({ label: '2本鎖DNAの A の割合', min: 5, max: 45, step: 0.5, value: st.a, format: (v) => fmt(v, 1) + '%', onInput: (v) => { st.a = v; draw(); } });
+    const s1A = slider({ label: '鎖1の A', min: 5, max: 50, step: 1, value: st.s1.A, format: (v) => v + '%', onInput: (v) => { st.s1.A = v; fix1('A'); draw(); } });
+    const s1T = slider({ label: '鎖1の T', min: 5, max: 50, step: 1, value: st.s1.T, format: (v) => v + '%', onInput: (v) => { st.s1.T = v; fix1('T'); draw(); } });
+    const s1G = slider({ label: '鎖1の G', min: 5, max: 50, step: 1, value: st.s1.G, format: (v) => v + '%', onInput: (v) => { st.s1.G = v; fix1('G'); draw(); } });
+    const c1Out = h('div', { class: 'small' });
+    const strandBox = h('div', null, s1A.el, s1T.el, s1G.el, c1Out);
+    const exp = explainBox();
+    root.append(panel('操作', segMode.el, sA.el, strandBox), panel('いま何が起きているか', exp.el));
+
+    // 鎖1の C は残り（5%以上になるように、動かしていない値を減らす）
+    function fix1(moved) {
+      const others = ['A', 'T', 'G'].filter((k) => k !== moved);
+      let over = st.s1.A + st.s1.T + st.s1.G - 95;
+      for (const k of others) {
+        if (over <= 0) break;
+        const d = Math.min(over, st.s1[k] - 5);
+        st.s1[k] -= d;
+        over -= d;
+      }
+      s1A.set(st.s1.A, true);
+      s1T.set(st.s1.T, true);
+      s1G.set(st.s1.G, true);
+    }
+
+    // ---- 長さの計算 ----
+    const lp = panel('計算：塩基対の数とDNAの長さ');
+    root.append(lp);
+    const segPre = segmented({ label: '例', options: [{ value: 'ecoli', label: '大腸菌のゲノム' }, { value: 'human1', label: 'ヒトのゲノム（1組）' }, { value: 'human2', label: 'ヒトの体細胞（2組）' }], value: null, onChange: (v) => {
+      const bp = v === 'ecoli' ? GENOMES[1].bp : v === 'human1' ? GENOMES[0].bp : GENOMES[0].bp * 2;
+      st.bpExp = Math.floor(Math.log10(bp));
+      st.bpMant = Number((bp / Math.pow(10, st.bpExp)).toFixed(1));
+      st.preset = v;
+      sExp.set(st.bpExp, true);
+      sMant.set(st.bpMant, true);
+      draw();
+    } });
+    const sMant = slider({ label: '塩基対の数（仮数）', min: 1, max: 9.9, step: 0.1, value: st.bpMant, format: (v) => fmt(v, 1), onInput: (v) => { st.bpMant = v; st.preset = null; segPre.set(null, true); draw(); } });
+    const sExp = slider({ label: '塩基対の数（10の何乗か）', min: 1, max: 10, step: 1, value: st.bpExp, format: (v) => `× ${pow10(v)}`, onInput: (v) => { st.bpExp = v; st.preset = null; segPre.set(null, true); draw(); } });
+    const lenBox = h('div', { 'aria-live': 'polite' });
+    lp.append(
+      h('p', { class: 'small' }, h('b', null, `DNAの長さ ＝ 塩基対の数 × ${NM_PER_BP} nm`), `（2本鎖DNAは ${BP_PER_TURN} 塩基対でらせんが1回転し、その長さが約 ${fmt(NM_PER_BP * BP_PER_TURN, 1)} nm）`),
+      segPre.el, sMant.el, sExp.el, lenBox,
+    );
+
+    function draw() {
+      strandBox.hidden = st.mode !== 'strand';
+      sA.el.hidden = st.mode !== 'double';
+      let groups;
+      const lines = [];
+      if (st.mode === 'double') {
+        const c = compositionFromA(st.a);
+        groups = [{ label: '2本鎖DNA', values: KEYS.map((k) => c[k]), color: 'c1' }];
+        lines.push(`A ${fmt(c.A, 1)}%、T ${fmt(c.T, 1)}%、G ${fmt(c.G, 1)}%、C ${fmt(c.C, 1)}%。2本鎖DNAでは、AとT、GとCがそれぞれ相補的に対をつくっているので、Aの数＝Tの数、Gの数＝Cの数になる（シャルガフの規則）。`);
+        lines.push(`計算のしかた：A＝T＝${fmt(st.a, 1)}% なので、G＋C ＝ 100 − 2×${fmt(st.a, 1)} ＝ ${fmt(100 - 2 * st.a, 1)}%、G＝C ＝ ${fmt(c.G, 1)}%。`);
+        lines.push('AとTの割合（またはGとCの割合）は生物の種類によって異なるが、どの生物の2本鎖DNAでもA＝T、G＝Cが成り立つ。');
+      } else {
+        const s1 = { ...st.s1, C: 100 - st.s1.A - st.s1.T - st.s1.G };
+        const r = strandComposition(s1);
+        c1Out.textContent = `鎖1の C ＝ 100 − (A＋T＋G) ＝ ${fmt(s1.C, 0)}%`;
+        groups = [
+          { label: '鎖1', values: KEYS.map((k) => r.s1[k]), color: 'c1' },
+          { label: '鎖2（相補鎖）', values: KEYS.map((k) => r.s2[k]), color: 'c2' },
+          { label: '2本鎖全体', values: KEYS.map((k) => r.both[k]), color: 'c3' },
+        ];
+        lines.push(`鎖1：A ${s1.A}%、T ${s1.T}%、G ${s1.G}%、C ${s1.C}%。鎖2は鎖1と相補的なので、鎖2のA＝鎖1のT（${s1.T}%）、鎖2のT＝鎖1のA（${s1.A}%）、鎖2のG＝鎖1のC（${s1.C}%）、鎖2のC＝鎖1のG（${s1.G}%）になる。`);
+        lines.push(`2本鎖全体では、A ＝（${s1.A}＋${s1.T}）÷2 ＝ ${fmt(r.both.A, 1)}%、T も ${fmt(r.both.T, 1)}%。1本の鎖の中ではA＝Tとは限らないが、2本鎖全体では必ずA＝T、G＝Cになる。`);
+      }
+      chart.draw({
+        alt: groups.map((g) => `${g.label}：` + KEYS.map((k, i) => `${k} ${fmt(g.values[i], 1)}%`).join('、')).join('。'),
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 60, label: '割合（%）', step: 10 },
+        bars: { categories: KEYS, groups },
+      });
+      leg.replaceChildren(legend(groups.map((g, i) => ({ label: g.label, color: g.color, bar: true, hatch: HATCHES[i] }))));
+      exp.set(lines);
+
+      const bp = st.bpMant * Math.pow(10, st.bpExp);
+      const nm = lengthNm(bp);
+      lenBox.replaceChildren(
+        h('p', null, `${fmt(st.bpMant, 1)} × ${pow10(st.bpExp)} 塩基対 × ${NM_PER_BP} nm ＝ `, h('b', null, lengthText(nm)), `（らせんの回転数 ${fmt(bp / BP_PER_TURN, 0)} 回）`),
+        h('p', { class: 'small muted' }, st.preset === 'human2'
+          ? 'ヒトの体細胞には、両親から受け継いだゲノムが2組（約60億塩基対）あるので、DNAをすべてつなぐと約2 mになる。これが直径数 μm の核の中に、ヒストンに巻きついて折りたたまれて収まっている。'
+          : st.preset === 'ecoli'
+            ? '大腸菌のゲノムは約460万塩基対で、約4500個の遺伝子がある。原核生物では、DNAの大部分が遺伝子として使われている。'
+            : st.preset === 'human1'
+              ? 'ヒトのゲノム（1組）は約30億塩基対で、遺伝子は約2万個。タンパク質のアミノ酸配列を指定する部分は、ゲノム全体の1〜2%程度にすぎない。'
+              : '1 nm ＝ 10⁻⁹ m、1 μm ＝ 10⁻⁶ m、1 mm ＝ 10⁻³ m。'),
+      );
+      const two = compositionFromA(st.a);
+      ctx.update({ ...st, two, gcSum: two.G + two.C, s1C: 100 - st.s1.A - st.s1.T - st.s1.G, seenA: (st.seenA = (st.seenA || new Set()).add(st.a)) });
+    }
+    draw();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.mode === 'double' && s.seenA.size >= 3;
+dojo.tasks[1].check = (s) => s.mode === 'double' && Math.abs(s.gcSum - 60) < 0.01;
+dojo.tasks[2].check = (s) => s.mode === 'strand' && s.s1.A !== s.s1.T;
+dojo.tasks[3].check = (s) => s.preset === 'human2';
 return { dojo };
 })();
 
@@ -2405,7 +3589,11 @@ const { rate, inhibited, lineweaver, tempRate, optimumTemp, afterTreatment, acti
 const { sample } = __m["lib/series.js"];
 
 const KI = 2;
-const S_MAX = 40;
+// 横軸の右端は、見かけの Km の12倍以上（v が Vmax の約92%以上になる）まで広げる。
+// そうしないと競争的阻害で最大速度が変わらないことがグラフから読み取れない。
+function sMaxFor(...kms) {
+  return Math.max(40, Math.ceil((12 * Math.max(...kms)) / 50) * 50);
+}
 
 const dojo = {
   tasks: [
@@ -2432,10 +3620,10 @@ const dojo = {
 
     // ① 基質濃度
     const sV = slider({ label: '最大速度 Vmax', min: 20, max: 100, step: 5, value: st.Vmax, format: (v) => String(v), onInput: (v) => { st.Vmax = v; update(); } });
-    const sK = slider({ label: 'ミカエリス定数 Km', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
+    const sK = slider({ label: 'ミカエリス定数 Km（発展）', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
     const segI = segmented({ label: '阻害剤', options: [{ value: 'none', label: 'なし' }, { value: 'competitive', label: '競争的阻害' }, { value: 'noncompetitive', label: '非競争的阻害' }], value: st.inh, onChange: (v) => { st.inh = v; if (v !== 'none' && st.I === 0) { st.I = 4; sI.set(4, true); } update(); } });
     const sI = slider({ label: '阻害剤の濃度 [I]', min: 0, max: 10, step: 0.5, value: st.I, format: (v) => fmt(v, 1), onInput: (v) => { st.I = v; update(); } });
-    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
+    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク（発展）' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
     const ctlS = h('div', null, segI.el, sI.el, segLB.el, sV.el, sK.el);
 
     // ② 温度
@@ -2461,6 +3649,7 @@ const dojo = {
       const base = { Vmax: st.Vmax, Km: st.Km };
       const cur = inhibited(st.inh, st.Vmax, st.Km, st.I, KI);
       const hasInh = st.inh !== 'none' && st.I > 0;
+      const S_MAX = sMaxFor(base.Km, cur.Km);
       title.replaceChildren('基質濃度と反応速度 ', modelNote());
       if (!st.lb) {
         const series = [];
@@ -2468,7 +3657,7 @@ const dojo = {
         series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
         chart.draw({
           alt: `Vmax ${fmt(cur.Vmax, 1)}、Km ${fmt(cur.Km, 1)}`,
-          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: 5 },
+          x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: niceStep(S_MAX, 8) },
           y: { min: 0, max: 110, label: '反応速度 v', step: 20 },
           series,
           hlines: [
@@ -2540,9 +3729,10 @@ const dojo = {
       if (st.T < To - 2) lines.push(`${fmt(st.T, 1)}℃：温度が上がるほど分子の運動が活発になり、酵素と基質がよく出会うので反応速度が大きくなる。低温では反応がおそいだけで、酵素はこわれていない。`);
       else if (st.T <= To + 2) lines.push(`${fmt(st.T, 1)}℃：最適温度付近。温度上昇で速くなる効果と、熱変性で酵素が失活する効果のつり合いで、反応速度が最大になる。ヒトの酵素の多くは体温付近〜40℃くらいが最適温度である。`);
       else lines.push(`${fmt(st.T, 1)}℃：酵素はタンパク質でできているので、高温では立体構造が変化（変性）し、活性部位の形がくずれて失活する。熱変性していない酵素は約${fmt(activeFraction(st.T) * 100, 0)}%しかない。`);
-      lines.push(st.Th > To + 5
-        ? `処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)} までしか回復しない。熱による変性は不可逆的だからである。`
-        : `処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では変性が起こっていないからである。`);
+      const kept = vAfter / tempRate(To);
+      if (kept < 0.98) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)}（処理しない場合の約${fmt(kept * 100, 0)}%）までしか回復しない。熱で変性した酵素は元に戻らない（不可逆的）からである。`);
+      else if (st.Th < To) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では反応がおそくなるだけで、変性は起こっていないからである。`);
+      else lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、ほぼもとどおりにはたらく。この温度では熱変性がほとんど起こっていないからである。`);
       exp.set(lines);
     }
 
@@ -2562,7 +3752,7 @@ const dojo = {
       const vals = Object.values(ENZYMES).map((e) => `${e.name} ${fmt(phRate(st.pH, e.opt), 2)}`);
       exp.set([
         `pH ${fmt(st.pH, 1)} での反応速度：${vals.join('、')}。`,
-        '酵素ごとに最もよくはたらく pH（最適pH）がある。胃液は強い酸性なのでペプシンの最適pHは約2、だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8である。',
+        '酵素ごとに最もよくはたらく pH（最適pH）がある。ペプシンの最適pHは約2で、強い酸性の胃液の中でよくはたらく。だ液アミラーゼは中性付近の約7、すい液中のトリプシンは弱アルカリ性の約8が最適pHである。',
         '最適pHから外れると、酵素タンパク質の立体構造や電荷の状態が変わり、活性部位が基質と結合しにくくなるから、反応速度が下がる。',
       ]);
     }
@@ -2737,7 +3927,7 @@ const dojo = {
     top.append(leg, table);
 
     const segC = segmented({ label: '交配', options: [{ value: 'mono', label: 'Aa × Aa' }, { value: 'testMono', label: 'Aa × aa（検定交雑）' }, { value: 'di', label: 'AaBb × AaBb' }], value: st.cross, onChange: (v) => { st.cross = v; update(); } });
-    const sN = slider({ label: '子の数 n（交配の回数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
+    const sN = slider({ label: '子の数 n（調べた子の個体数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
     const sR = slider({ label: '組換え価 r', min: 0, max: 50, step: 1, value: st.r, format: (v) => v + ' %', onInput: (v) => { st.r = v; update(); } });
     const again = h('button', { type: 'button', class: 'btn primary', onclick: () => { st.seed = randomSeed(); st.rerolls += 1; update(); } }, '🎲 もう一度交配');
     const ctlRatio = h('div', null, segC.el);
@@ -3037,11 +4227,16 @@ const { dojo: b2 } = __m["dojo/b2.js"];
 const { dojo: b3 } = __m["dojo/b3.js"];
 const { dojo: b4 } = __m["dojo/b4.js"];
 const { dojo: b5 } = __m["dojo/b5.js"];
+const { dojo: b6 } = __m["dojo/b6.js"];
+const { dojo: b7 } = __m["dojo/b7.js"];
+const { dojo: b8 } = __m["dojo/b8.js"];
+const { dojo: b9 } = __m["dojo/b9.js"];
+const { dojo: b10 } = __m["dojo/b10.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, a1, a2, a3 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3 };
 return { DOJOS };
 })();
 
@@ -3153,7 +4348,7 @@ const WHY = {
   G1: 'G1期はDNA合成の準備をする時期で、DNA量は複製前の2のままだから、DNA量が2で一定の区間になる。',
   S: 'S期にはDNAが複製されるから、DNA量が2から4へしだいに増える区間になる。',
   G2: 'G2期は複製が終わって分裂の準備をする時期だから、DNA量は4で一定の区間になる。',
-  M: 'M期の終わりに細胞質分裂が起こってDNAが2つの細胞に分けられるから、DNA量が4から2へ急に減る直前の区間になる。',
+  M: 'M期の後期に染色体が両極へ分かれ、終わりに細胞質分裂で細胞が2つになるから、DNA量が4から2へ急に減る直前の区間になる。',
 };
 
 // 指定した時期から始まる1周期分のDNA量の点列と区間
@@ -3223,7 +4418,7 @@ const B1 = [
         text: '体細胞分裂で、細胞1個あたりのDNA量が4から2に減るのはいつか。',
         correct: 'M期の終わり（細胞質分裂が起こるとき）',
         wrong: ['S期の終わり', 'G2期のはじめ', 'M期の中期（染色体が赤道面に並ぶとき）', 'G1期の終わり'],
-        explanation: 'DNA量が半分に戻るのはM期の終わりである。細胞質分裂で1つの細胞が2つに分かれ、複製されたDNAが2つの細胞に等しく分配されるからである。',
+        explanation: 'DNA量が半分に戻るのはM期の終わりである。複製された染色体は核分裂（後期）で両極へ等しく分かれ、続く細胞質分裂で細胞が2つに分かれるから、細胞1個あたりのDNA量がここで半分になる。',
       };
     },
   },
@@ -3245,11 +4440,11 @@ const B1 = [
       const ans = (T * c) / N;
       const d = distinctNumbers(ans, [(c / N) * 100, (T * (N - c)) / N, ans * 2, ans / 2, c / T, ans + T / 10, T - ans + 1], ' 時間');
       return {
-        text: `ある組織の細胞を固定・染色して観察したところ、G1期 ${counts.G1}個、S期 ${counts.S}個、G2期 ${counts.G2}個、M期 ${counts.M}個であった。この細胞の細胞周期が ${T}時間のとき、${NAME[ask]}の長さは何時間か。`,
+        text: `ある組織の細胞について、細胞1個あたりのDNA量（相対値）を測定したところ、DNA量が2の細胞 ${counts.G1}個、2と4の間の細胞 ${counts.S}個、4の細胞 ${counts.G2 + counts.M}個であった。また顕微鏡で観察すると、DNA量4の細胞のうち ${counts.M}個が分裂期（M期）の細胞であった。この細胞の細胞周期が ${T}時間のとき、${NAME[ask]}の長さは何時間か。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）で求める。${T} × ${c}/${N} ＝ ${fmt(ans, 2)}時間となる。細胞がそれぞれの時期にいる割合は、その時期にかかる時間の割合に等しいとみなせるからである。`,
+        explanation: `DNA量2の細胞がG1期、2と4の間がS期、DNA量4のうち分裂期でない細胞がG2期なので、${NAME[ask]}の細胞は ${c}個であり、各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 総数）より ${T} × ${c}/${N} ＝ ${fmt(ans, 2)}時間となる。間期のG1期・S期・G2期は顕微鏡では区別できないのでDNA量で見分け、細胞がそれぞれの時期にいる割合はその時期にかかる時間の割合に等しいとみなせるからである。`,
       };
     },
   },
@@ -3267,7 +4462,7 @@ const B1 = [
       const ans = (N * len[ask]) / T;
       const d = distinctNumbers(ans, [(N * len[ask]) / 100, N / 4, N - ans, ans * 2, ans / 2, ans + k], ' 個', 1);
       return {
-        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間である。この細胞が細胞周期のさまざまな時期にばらばらに分布している組織で ${N}個の細胞を観察すると、${NAME[ask]}の細胞はおよそ何個見られるか。`,
+        text: `ある細胞の細胞周期は G1期 ${len.G1}時間、S期 ${len.S}時間、G2期 ${len.G2}時間、M期 ${len.M}時間である。この細胞が細胞周期のさまざまな時期にばらばらに分布している組織の細胞 ${N}個を${ask === 'M' ? '顕微鏡で観察すると、分裂期（M期）' : `、細胞1個あたりのDNA量を測定して調べると、${NAME[ask]}（DNA量が${ask === 'S' ? '2と4の間' : '4で分裂期でないもの'}）`}の細胞はおよそ何個あるか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -3329,10 +4524,16 @@ const B1 = [
     kind: 'term',
     make(rng) {
       const D = {
-        前期: '核の中で染色体が凝縮し、太く短いひも状に見えるようになる',
+        前期: '染色体が凝縮して太く短いひも状になり、やがて核膜が消える',
         中期: '染色体が細胞の中央の赤道面に並ぶ',
         後期: '各染色体が縦に裂けるように分かれ、両極へ移動する',
         終期: '核膜が再び現れ、細胞質分裂が起こる',
+      };
+      const SUBWHY = {
+        前期: '前期には、分裂に備えて長い糸状だった染色体が凝縮するので、太く短いひも状に見えるようになる。',
+        中期: '中期には、両極から伸びた紡錘糸が各染色体に付着して引き合うので、染色体が赤道面に並ぶ。',
+        後期: '後期には、紡錘糸に引かれて、縦に分かれた染色体が両極へ移動するので、同じ染色体のセットが両側に分かれる。',
+        終期: '終期には、両極に分かれた染色体のまわりに核膜ができ、細胞質も2つに分かれるので、2つの娘細胞ができる。',
       };
       const keys = Object.keys(D);
       const k = rng.pick(keys);
@@ -3341,14 +4542,14 @@ const B1 = [
           text: `体細胞分裂のM期で、「${D[k]}」のはどの時期か。`,
           correct: k,
           wrong: keys,
-          explanation: `これは${k}の特徴である。M期は染色体の様子によって前期・中期・後期・終期に分けられ、染色体を正確に2つに分けるためにこの順に進むからである。`,
+          explanation: `これは${k}の特徴である。${SUBWHY[k]}`,
         };
       }
       return {
         text: `体細胞分裂のM期の「${k}」の特徴として正しいものはどれか。`,
         correct: D[k],
         wrong: keys.map((x) => D[x]).concat(['DNAが複製され、DNA量が2倍になる']),
-        explanation: `${k}には${D[k]}。M期は前期→中期→後期→終期の順に進み、染色体を2つの細胞へ等しく分けるからである。`,
+        explanation: `${k}には${D[k]}。${SUBWHY[k]}`,
       };
     },
   },
@@ -3448,7 +4649,7 @@ const B2 = [
     kind: 'term',
     make(rng) {
       const Q = [
-        { h: 'インスリン', a: 'すい臓のランゲルハンス島のB細胞', why: 'B細胞は血糖値の上昇を感知してインスリンを分泌し、血糖値を下げるからである' },
+        { h: 'インスリン', a: 'すい臓のランゲルハンス島のB細胞', why: 'B細胞は血糖値の上昇を直接感知するほか、視床下部から副交感神経を通じて刺激されてインスリンを分泌し、血糖値を下げるからである' },
         { h: 'グルカゴン', a: 'すい臓のランゲルハンス島のA細胞', why: 'A細胞は血糖値の低下を感知してグルカゴンを分泌し、血糖値を上げるからである' },
         { h: 'アドレナリン', a: '副腎髄質', why: '血糖値が下がると視床下部から交感神経を通じて副腎髄質が刺激され、アドレナリンが分泌されるからである' },
         { h: '糖質コルチコイド', a: '副腎皮質', why: '脳下垂体前葉からの副腎皮質刺激ホルモンによって副腎皮質が刺激され、糖質コルチコイドが分泌されるからである' },
@@ -3808,7 +5009,7 @@ const B3 = [
     make(rng) {
       const Q = [
         { q: '抗体をつくって放出する細胞', a: '形質細胞（抗体産生細胞）', why: 'B細胞がヘルパーT細胞によって活性化されると、増殖して形質細胞に分化するからである' },
-        { q: '抗原を取り込んで、ヘルパーT細胞に抗原の情報を提示する細胞', a: '樹状細胞', why: '樹状細胞は抗原を取り込んでリンパ節へ移動し、抗原提示によってT細胞を活性化するからである' },
+        { q: '抗原を取り込んでリンパ節へ移動し、まだ抗原に出会っていないT細胞に抗原提示を行って獲得免疫を始めさせる細胞', a: '樹状細胞', why: '樹状細胞は抗原を取り込んでリンパ節へ移動し、抗原提示によってT細胞を活性化するからである' },
         { q: '同じ抗原を認識したB細胞を活性化させる細胞', a: 'ヘルパーT細胞', why: 'ヘルパーT細胞は抗原提示を受けて活性化し、同じ抗原を認識したB細胞やキラーT細胞のはたらきを促すからである' },
         { q: 'ウイルスに感染した細胞を直接攻撃して破壊する細胞', a: 'キラーT細胞', why: 'キラーT細胞は感染細胞の表面の抗原を認識し、その細胞を直接破壊するからである（細胞性免疫）' },
       ];
@@ -3816,7 +5017,7 @@ const B3 = [
       return {
         text: `獲得免疫で、「${x.q}」はどれか。`,
         correct: x.a,
-        wrong: Q.map((y) => y.a).concat(['マクロファージ']),
+        wrong: Q.map((y) => y.a).concat(['好中球']),
         explanation: `${x.q}は${x.a}である。${x.why}。`,
       };
     },
@@ -3838,7 +5039,7 @@ const B3 = [
       return {
         text: '毒ヘビにかまれたとき、ウマなどにつくらせておいた抗体をふくむ血清を注射する治療法を何というか。',
         correct: '血清療法',
-        wrong: ['予防接種', '化学療法', '自己免疫療法'],
+        wrong: ['予防接種', '化学療法', '免疫抑制療法'],
         explanation: 'これは血清療法である。すでにできている抗体を注射するので、自分で抗体をつくるのを待たずにすぐに毒を無毒化できるからである。',
       };
     },
@@ -3887,7 +5088,7 @@ const B3 = [
         chart: twoExposureChart(d1, d2, 'A', true),
         correct: lab(ans),
         wrong: [1, 2, 6, 12, 25, 40].filter((n) => n !== ans).map(lab),
-        explanation: `${which}回目の注射から約${ans}日で最大になっている。${which === 1 ? '一次応答では、抗原に合うリンパ球が活性化・増殖して形質細胞になるまでに時間がかかるからである。' : '二次応答では記憶細胞がすぐに増殖して形質細胞になるから、一次応答（約12日）より速く最大になる。'}`,
+        explanation: `${which}回目の注射から約${ans}日で最大になっている。${which === 1 ? '一次応答では、抗原に合うリンパ球が活性化・増殖して形質細胞になるまでに時間がかかるからである。' : '二次応答では記憶細胞がすぐに増殖して形質細胞になるから、一次応答（約${peakDelay(PRIMARY)}日）より速く最大になる。'}`,
       };
     },
   },
@@ -3956,7 +5157,7 @@ __m["questions/b4.js"] = (function () {
 // B4 光の強さと光合成 の問題
 const { fmt } = __m["lib/format.js"];
 const { KATA, distinctNumbers } = __m["questions/common.js"];
-const { PLANTS, apparent, compensationPoint } = __m["models/photosynthesis.js"];
+const { PLANTS, apparent, compensationPoint, saturationPoint } = __m["models/photosynthesis.js"];
 const { sample } = __m["lib/series.js"];
 
 const signed = (x) => fmt(x, 2);
@@ -4008,29 +5209,30 @@ const B4 = [
     level: 2,
     kind: 'graph',
     make(rng) {
-      const n = rng.pick([1, 2, 3]);
-      const m = rng.int(1, 3);
-      const Pmax = (n + 1) * 2 * m;
-      const K = rng.pick([2, 4, 5]);
-      const R = rng.pick([2, 4]);
-      const X = K * n;
-      const P = (Pmax * n) / (n + 1);
-      const p = { Pmax, K, R };
-      const ap = P - R;
-      const d = distinctNumbers(P, [ap, Math.abs(ap - R), Pmax, R, P + 2 * R, P * 2, P + 1, P + 3], '', 0);
+      const R = rng.pick([1, 2, 3, 4]);
+      const Pmax = rng.pick([8, 10, 12, 14, 16]);
+      const p = { Pmax, alpha: 1, R };
+      const sat = saturationPoint(p);
+      const xMax = Math.ceil((sat * 1.6) / 5) * 5;
+      const flat = rng.chance(0.5);
+      const X = flat ? Math.round((sat + (xMax - sat) / 2) / 1) : Math.max(R + 1, Math.round(Pmax / 2));
+      const ap = Math.round(apparent(p, X));
+      const P = ap + R;
+      const d = distinctNumbers(P, [ap, Math.abs(ap - R), R, P + R, P * 2, P + 1, Pmax + R], '', 0);
       return {
-        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とする。`,
+        text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とし、図の目盛りから整数で読み取ること。`,
         chart: {
-          x: { min: 0, max: K * 6, label: '光の強さ', step: K },
-          y: { min: -R - 2, max: Pmax, label: 'CO₂吸収速度', step: 2 },
-          series: [{ points: sample((I) => apparent(p, I), 0, K * 6, 200), color: 'c2', width: 3 }],
-          markers: [{ x: X, y: ap, color: 'c2' }],
+          x: { min: 0, max: xMax, label: '光の強さ', step: 5 },
+          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: 1 },
+          series: [{ points: sample((I) => apparent(p, I), 0, xMax, 200), color: 'c2', width: 3 }],
+          markers: [{ x: X, y: apparent(p, X), color: 'c2' }],
+          vlines: [{ x: X, color: 'muted', dash: 'dot', label: `${X}` }],
           alt: '見かけの光合成速度のグラフ',
         },
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${signed(ap)} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${signed(ap)} ＋ ${R} ＝ ${fmt(P, 2)} となる。`,
+        explanation: `グラフから、光の強さ0のときのCO₂吸収速度は −${R} なので呼吸速度は ${R}、光の強さ ${X} での見かけの光合成速度は ${ap} である。光合成速度 ＝ 見かけの光合成速度 ＋ 呼吸速度 だから、${ap} ＋ ${R} ＝ ${P} となる。`,
       };
     },
   },
@@ -4056,7 +5258,7 @@ const B4 = [
         },
         correct,
         wrong: [
-          `${lab[ask]}：呼吸速度が大きいから`,
+          ask === 'sun' ? `${lab.sun}：呼吸速度が小さいから` : `${lab.shade}：呼吸速度が大きいから`,
           `${lab[other]}：補償点と光飽和点がともに${ask === 'shade' ? '小さい' : '大きい'}から`,
           `${lab[other]}：最大の光合成速度が${ask === 'shade' ? '大きい' : '小さい'}から`,
           `${lab[ask]}：光が弱いと光合成をしないから`,
@@ -4119,19 +5321,17 @@ const B4 = [
     level: 3,
     kind: 'calc',
     make(rng) {
-      const cands = [];
-      for (const Ic of [0.5, 1, 1.5, 2, 3, 4]) for (const R of [1, 2, 3, 4]) for (const K of [2, 3, 4, 5, 6, 8, 10]) {
-        const Pmax = (R * (K + Ic)) / Ic;
-        if (Number.isInteger(Pmax) && Pmax <= 40 && Pmax > R) cands.push({ Ic, R, K, Pmax });
-      }
-      const c = rng.pick(cands);
-      const d = distinctNumbers(c.Ic, [(c.R * c.K) / c.Pmax, (c.R * c.K) / (c.Pmax + c.R), c.K, c.Pmax / c.R, c.Ic * 2, c.K / c.R], '', 2);
+      const k = rng.pick([0.5, 1, 1.5, 2, 2.5, 4]);
+      const Ic = rng.pick([0.4, 0.5, 0.8, 1, 1.2, 1.5, 2]);
+      const R = Number((k * Ic).toFixed(2));
+      if (!Number.isInteger(R * 10)) return this.make(rng);
+      const d = distinctNumbers(Ic, [k / R, R * k, R + k, R / k / 2, Ic * 2, Ic + 0.5, Ic * 3, Ic + 1.5], ' キロルクス', 2);
       return {
-        text: `ある植物の光合成速度 P（呼吸を差し引く前）が、光の強さ I を用いて P ＝ ${c.Pmax}I／(${c.K} ＋ I) で表され、呼吸速度は ${c.R} で一定である。この植物の補償点（光の強さ）はいくらか。`,
+        text: `ある植物では、弱い光の範囲で光合成速度（呼吸を差し引く前）が光の強さに比例し、光の強さが1キロルクス増えるごとに光合成速度が ${k} ずつ大きくなる。呼吸速度が ${R} で一定のとき、この植物の補償点は何キロルクスか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `補償点では光合成速度と呼吸速度が等しいので、${c.Pmax}I／(${c.K}＋I) ＝ ${c.R} を解く。${c.Pmax}I ＝ ${c.R}(${c.K}＋I) より I ＝ ${c.R}×${c.K}／(${c.Pmax}−${c.R}) ＝ ${fmt(c.Ic, 2)} となり、これは見かけの光合成速度が0になる光の強さだからである。`,
+        explanation: `補償点では光合成速度と呼吸速度が等しいので、${k} × I ＝ ${R} より I ＝ ${R} ÷ ${k} ＝ ${fmt(Ic, 2)} キロルクスとなる。補償点は見かけの光合成速度が0になる光の強さだから、光合成速度が呼吸速度に追いつく点を求めればよい。`,
       };
     },
   },
@@ -4210,7 +5410,7 @@ return { B4 };
 __m["questions/b5.js"] = (function () {
 // B5 生態系のバランス（キーストーン種）の問題
 const { KATA, assignmentQuestion, distinctNumbers } = __m["questions/common.js"];
-const { simulate, SCALE } = __m["models/keystone.js"];
+const { simulate, SCALE, yMaxFor } = __m["models/keystone.js"];
 
 const B5 = [
   {
@@ -4278,10 +5478,10 @@ const B5 = [
       const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c4', dash: 'dot' }];
       const aq = assignmentQuestion(labels, order);
       return {
-        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは3種の個体数（相対値）の変化を表している。ア〜ウの組合せとして正しいものはどれか。',
+        text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは、3種の量（ラッコ・ウニは個体数、ケルプは現存量）を、それぞれ乱獲前を100とした相対値で表している。ア〜ウの組合せとして正しいものはどれか。',
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
           vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
           alt: '3種の個体数の変化ア・イ・ウ',
@@ -4332,7 +5532,7 @@ const B5 = [
           text: '台風や山火事などで生態系が乱されても、その程度が小さければやがて元の状態に戻る。生態系のこのような性質を何というか。',
           correct: '復元力',
           wrong: ['生物濃縮', '富栄養化', '間接効果'],
-          explanation: 'これは生態系の復元力である。撹乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
+          explanation: 'これは生態系の復元力である。かく乱が小さければ、残った生物の成長や周りからの移入で元の状態に戻るから、生態系のバランスが保たれる。',
         };
       }
       return {
@@ -4370,10 +5570,10 @@ const B5 = [
       const target = rng.pick(['ウニ', 'ケルプ']);
       const up = target === 'ウニ';
       return {
-        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニ・ケルプの個体数（相対値）である。乱獲後に十分時間がたったとき、${target}の個体数は乱獲前と比べてどうなったか。`,
+        text: `図は、20年目からラッコの乱獲が始まった海域のラッコ・ウニの個体数とケルプの現存量を、それぞれ乱獲前を100とした相対値で表したものである。乱獲後に十分時間がたったとき、${target}の${up ? '個体数' : '量'}は乱獲前と比べてどうなったか。`,
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: 105, label: '個体数（相対値）', step: 20 },
+          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
           series: [
             { points: run.map((r) => [r.t, r.o * SCALE.o]), color: 'c4', dash: 'dashdot', width: 3, label: 'ラッコ' },
             { points: run.map((r) => [r.t, r.u * SCALE.u]), color: 'c2', dash: 'dash', width: 3, label: 'ウニ' },
@@ -4415,6 +5615,1227 @@ const B5 = [
 return { B5 };
 })();
 
+// ---- questions/b6.js ----
+__m["questions/b6.js"] = (function () {
+// B6 酸素解離曲線 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { saturation, LUNG } = __m["models/oxygen.js"];
+const { sample } = __m["lib/series.js"];
+
+function curves(co2s, labels, styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }]) {
+  return co2s.map((c, i) => ({ points: sample((p) => saturation(p, c), 0, 100, 200), ...styles[i], width: 3, label: labels[i], labelAt: i === 0 ? 22 : 66 }));
+}
+
+const releaseText = (sL, sT) => `（${sL} − ${sT}）÷ ${sL} × 100`;
+
+const B6 = [
+  {
+    id: 'b6-release-calc',
+    stage: 'b6',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const sL = rng.int(90, 95);
+      const sT = rng.pick([20, 25, 30, 35, 40, 45, 50]);
+      const ans = ((sL - sT) / sL) * 100;
+      const d = distinctNumbers(ans, [sL - sT, (sT / sL) * 100, ans + 10, ans - 10, 100 - sT].filter((v) => v < 100 && Math.abs(v - ans) >= 2), '%', 0);
+      return {
+        text: `肺胞では酸素ヘモグロビンの割合が ${sL}%、ある組織では ${sT}% であった。肺で酸素と結合していたヘモグロビンのうち、この組織で酸素を放出したものは何%か（小数第1位を四捨五入）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `放出した割合 ＝ ${releaseText(sL, sT)} ≒ ${fmt(ans, 0)}% となる。組織で酸素を離したのは ${sL}% のうち ${sL - sT}% 分で、問われているのは「肺で結合していたもの」に対する割合だから、肺での割合 ${sL}% でわる。`,
+      };
+    },
+  },
+  {
+    id: 'b6-graph-release',
+    stage: 'b6',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const tisO2 = rng.pick([20, 25, 30, 35, 40]);
+      const tisCO2 = 70;
+      const sL = Math.round(saturation(LUNG.pO2, LUNG.pCO2));
+      const sT = Math.round(saturation(tisO2, tisCO2));
+      const ans = ((sL - sT) / sL) * 100;
+      const sWrongCurve = Math.round(saturation(tisO2, LUNG.pCO2));
+      const d = distinctNumbers(ans, [((sL - sWrongCurve) / sL) * 100, sL - sT, (sT / sL) * 100, 100 - ans + 10], '%', 0);
+      return {
+        text: `図は、CO₂分圧が ${LUNG.pCO2} と ${tisCO2} のときの酸素解離曲線である（分圧はいずれも相対値）。肺胞（O₂分圧 ${LUNG.pO2}、CO₂分圧 ${LUNG.pCO2}）で酸素と結合していたヘモグロビンのうち、組織（O₂分圧 ${tisO2}、CO₂分圧 ${tisCO2}）で酸素を放出したものはおよそ何%か。図中の横線の値を使って求めよ。`,
+        chart: {
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
+          y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
+          series: curves([LUNG.pCO2, tisCO2], [`CO₂ ${LUNG.pCO2}`, `CO₂ ${tisCO2}`]),
+          hlines: [
+            { y: sL, color: 'c1', dash: 'dot', width: 1, label: `${sL}%` },
+            { y: sT, color: 'c2', dash: 'dot', width: 1, label: `${sT}%`, align: 'right' },
+            { y: sWrongCurve, color: 'muted', dash: 'dot', width: 1, label: `${sWrongCurve}%`, align: 'right' },
+          ],
+          vlines: [{ x: tisO2, color: 'muted', dash: 'dot' }],
+          alt: 'CO₂分圧の異なる2本の酸素解離曲線',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `肺胞はCO₂ ${LUNG.pCO2} の曲線から ${sL}%、組織はCO₂ ${tisCO2} の曲線から ${sT}% と読むので、${releaseText(sL, sT)} ≒ ${fmt(ans, 0)}% となる。組織ではCO₂分圧が高いから、CO₂ ${tisCO2} の曲線（右側の曲線）を読まなければならない。`,
+      };
+    },
+  },
+  {
+    id: 'b6-read-curve',
+    stage: 'b6',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const p = rng.pick([20, 30, 40, 50, 60]);
+      const v = saturation(p, LUNG.pCO2);
+      const r = Math.round(v / 5) * 5;
+      const opts = [r - 40, r - 25, r + 25, r - 15, r + 15].filter((x) => x >= 5 && x <= 100);
+      const d = distinctNumbers(r, opts, '%', 0);
+      return {
+        text: `図はCO₂分圧 ${LUNG.pCO2}（相対値）のときの酸素解離曲線である。O₂分圧（相対値）が ${p} のとき、酸素ヘモグロビンの割合はおよそ何%か。`,
+        chart: {
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
+          y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 10 },
+          series: curves([LUNG.pCO2], [`CO₂ ${LUNG.pCO2}`]),
+          vlines: [{ x: p, color: 'muted', dash: 'dot', label: `${p}` }],
+          alt: '酸素解離曲線',
+        },
+        correct: '約' + d.correct,
+        wrong: d.wrong.slice(0, 4).map((s) => '約' + s),
+        explanation: `O₂分圧 ${p} の縦線と曲線の交点を横に読むと、約 ${r}% である。酸素解離曲線は、各O₂分圧でヘモグロビンのうち何%が酸素と結合しているかを表したグラフだから、交点の縦軸の値を読めばよい。`,
+      };
+    },
+  },
+  {
+    id: 'b6-which-tissue',
+    stage: 'b6',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle([LUNG.pCO2, 70]);
+      const highIdx = order.indexOf(70);
+      const lab = KATA.slice(0, 2);
+      return {
+        text: '図のア・イは、CO₂分圧だけを変えて測定した酸素解離曲線である。CO₂分圧が高い（組織に近い）条件の曲線はどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
+          y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
+          series: order.map((c, i) => ({ points: sample((p) => saturation(p, c), 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: c === 70 ? 60 : 28 })),
+          alt: '2本の酸素解離曲線ア・イ',
+        },
+        correct: `${lab[highIdx]}：同じO₂分圧で酸素ヘモグロビンの割合が小さい（右にある）から`,
+        wrong: [
+          `${lab[1 - highIdx]}：同じO₂分圧で酸素ヘモグロビンの割合が大きい（左にある）から`,
+          `${lab[1 - highIdx]}：同じO₂分圧で酸素ヘモグロビンの割合が小さい（右にある）から`,
+          `${lab[highIdx]}：同じO₂分圧で酸素ヘモグロビンの割合が大きい（左にある）から`,
+        ],
+        explanation: `CO₂分圧が高い条件の曲線は${lab[highIdx]}である。CO₂分圧が高いとヘモグロビンは酸素を離しやすくなるため、同じO₂分圧でも酸素ヘモグロビンの割合が小さくなり、曲線は右にずれる。`,
+      };
+    },
+  },
+  {
+    id: 'b6-shift-term',
+    stage: 'b6',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'CO₂分圧が高いときの酸素解離曲線の変化と、その意味として正しいものはどれか。',
+        correct: '曲線が右にずれ、CO₂を多く出す組織で酸素を離しやすくなる',
+        wrong: ['曲線が左にずれ、CO₂を多く出す組織で酸素を離しやすくなる', '曲線が右にずれ、CO₂を多く出す組織で酸素と結合しやすくなる', '曲線は変わらず、O₂分圧だけで酸素ヘモグロビンの割合が決まる'],
+        explanation: 'CO₂分圧が高いと曲線は右にずれ、同じO₂分圧でも酸素ヘモグロビンの割合が小さくなる。さかんに呼吸してCO₂を多く出している組織ほど、ヘモグロビンが酸素を離しやすいので、多くの酸素を受け取れる。',
+      };
+    },
+  },
+  {
+    id: 'b6-s-shape',
+    stage: 'b6',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '酸素解離曲線がS字形であることの利点として最も適当なものはどれか。',
+        correct: '組織程度の低いO₂分圧の範囲で、わずかな分圧の低下によって多くの酸素を放出できる',
+        wrong: ['O₂分圧が低いほど、ヘモグロビンが酸素と強く結合できる', 'O₂分圧が0になるまで、ヘモグロビンが酸素をまったく離さない', '肺胞のO₂分圧が少し下がるだけで、肺で酸素と結合できなくなる'],
+        explanation: 'S字形の曲線は、組織のO₂分圧にあたる範囲で傾きが大きい。そのため組織のO₂分圧がわずかに下がるだけで酸素ヘモグロビンの割合が大きく下がり、多くの酸素を放出できる一方、肺胞付近の高い分圧の範囲は平らなので、肺ではほぼ飽和まで酸素と結合できる。',
+      };
+    },
+  },
+  {
+    id: 'b6-volume-calc',
+    stage: 'b6',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const full = 20;
+      const sL = rng.pick([95, 96, 98]);
+      const sT = rng.pick([20, 30, 40, 50, 60]);
+      const ans = (full * (sL - sT)) / 100;
+      const d = distinctNumbers(ans, [(full * sL) / 100, (full * sT) / 100, ((sL - sT) / sL) * full, (full * (100 - sT)) / 100, ans * 2], ' mL', 1);
+      return {
+        text: `血液100 mL中のヘモグロビンがすべて酸素ヘモグロビンになると、酸素を ${full} mL 運べるとする。肺胞での酸素ヘモグロビンの割合が ${sL}%、組織では ${sT}% のとき、血液100 mL が組織で放出する酸素は何 mL か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `組織で酸素を離したのは全ヘモグロビンの（${sL} − ${sT}）＝ ${sL - sT}% なので、${full} × ${sL - sT}／100 ＝ ${fmt(ans, 1)} mL となる。ここでは血液に含まれる全ヘモグロビンに対する量を求めるから、肺での割合でわる必要はない。`,
+      };
+    },
+  },
+  {
+    id: 'b6-hb-term',
+    stage: 'b6',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const qs = [
+        { text: 'ヘモグロビンを含み、酸素の運搬を行う血液の成分はどれか。', correct: '赤血球', wrong: ['白血球', '血小板', '血しょう'], explanation: '酸素を運ぶのは赤血球である。赤血球には鉄を含むタンパク質であるヘモグロビンが多量に含まれ、ヘモグロビンが酸素と結合するからである。' },
+        { text: '酸素分圧の高い肺胞で、ヘモグロビンが酸素と結合したものを何というか。', correct: '酸素ヘモグロビン', wrong: ['ミオグロビン', 'フィブリン', 'グリコーゲン'], explanation: 'ヘモグロビンが酸素と結合したものを酸素ヘモグロビンという。酸素分圧の高い肺胞ではヘモグロビンが酸素と結合し、酸素分圧の低い組織では酸素を離すから、酸素を肺から組織へ運べる。' },
+        { text: '肺胞と組織の酸素分圧の関係として正しいものはどれか。', correct: '肺胞のほうが高いので、肺胞で酸素と結合し組織で離す', wrong: ['組織のほうが高いので、組織で酸素と結合し肺胞で離す', '同じなので、酸素ヘモグロビンの割合は変わらない', '肺胞のほうが高いが、組織では酸素を離さない'], explanation: '肺胞は外気に近いため酸素分圧が高く、組織は呼吸で酸素を消費するので酸素分圧が低い。この差によって、ヘモグロビンは肺胞で酸素と結合し、組織で酸素を離す。' },
+      ];
+      return rng.pick(qs);
+    },
+  },
+  {
+    id: 'b6-exercise',
+    stage: 'b6',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '激しい運動をしている筋肉では、安静時に比べてヘモグロビンからの酸素の放出がどうなるか。理由とともに最も適当なものを選べ。',
+        correct: '増える。筋肉のO₂分圧が下がり、CO₂分圧が上がるから',
+        wrong: ['減る。筋肉のO₂分圧が上がり、CO₂分圧が下がるから', '増える。筋肉のO₂分圧が上がるから', '変わらない。酸素の放出は肺胞のO₂分圧だけで決まるから'],
+        explanation: '運動中の筋肉は呼吸で酸素を多く使い、CO₂を多く出す。O₂分圧が下がるうえに、CO₂分圧が上がって曲線が右にずれるので、酸素ヘモグロビンの割合がさらに下がり、多くの酸素が放出される。',
+      };
+    },
+  },
+  {
+    id: 'b6-fetal',
+    stage: 'b6',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const fetalFirst = rng.chance(0.5);
+      const lab = KATA.slice(0, 2);
+      const fetalIdx = fetalFirst ? 0 : 1;
+      const curve = (shift) => (p) => saturation(p, LUNG.pCO2 + shift);
+      const fns = fetalFirst ? [curve(-22), curve(0)] : [curve(0), curve(-22)];
+      return {
+        text: '【発展】図のア・イは、同じ条件で測定した母親（おとな）のヘモグロビンと胎児のヘモグロビンの酸素解離曲線である。胎盤で母親の血液から胎児の血液へ酸素が渡されることから考えて、胎児のヘモグロビンの曲線はどちらか。',
+        chart: {
+          x: { min: 0, max: 100, label: 'O₂分圧（相対値）', step: 10 },
+          y: { min: 0, max: 100, label: '酸素ヘモグロビン（%）', step: 20 },
+          series: fns.map((f, i) => ({ points: sample(f, 0, 100, 200), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: lab[i], labelAt: i === fetalIdx ? 14 : 42 })),
+          alt: '2本の酸素解離曲線ア・イ',
+        },
+        correct: `${lab[fetalIdx]}：同じO₂分圧で酸素と結合しやすい（左にある）から`,
+        wrong: [`${lab[1 - fetalIdx]}：同じO₂分圧で酸素を離しやすい（右にある）から`, `${lab[1 - fetalIdx]}：同じO₂分圧で酸素と結合しやすい（左にある）から`, `${lab[fetalIdx]}：同じO₂分圧で酸素を離しやすい（右にある）から`],
+        explanation: `胎児のヘモグロビンは${lab[fetalIdx]}で、母親のヘモグロビンより左にある。胎盤の同じO₂分圧で、母親のヘモグロビンが離した酸素を胎児のヘモグロビンが受け取るには、胎児のほうが酸素と結合しやすくなければならないからである。`,
+      };
+    },
+  },
+];
+return { B6 };
+})();
+
+// ---- questions/b7.js ----
+__m["questions/b7.js"] = (function () {
+// B7 腎臓のはたらき の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { SUBSTANCES, substanceById } = __m["models/kidney.js"];
+
+const RATIO_SUBS = ['urea', 'uric', 'creatinine', 'k', 'na'];
+
+const B7 = [
+  {
+    id: 'b7-ratio-calc',
+    stage: 'b7',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const s = substanceById(rng.pick(RATIO_SUBS));
+      const ratio = s.urine / s.plasma;
+      const d = distinctNumbers(ratio, [ratio * 10, ratio / 10, ratio * 2, ratio / 2, ratio + (ratio < 10 ? 1 : 10)], '', ratio < 10 ? 2 : 1);
+      return {
+        text: `ある人の血しょう中の${s.name}の濃度は ${s.plasma}%、尿中の濃度は ${s.urine}% であった。${s.name}の濃縮率はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `濃縮率 ＝ 尿中の濃度 ÷ 血しょう中の濃度 ＝ ${s.urine} ÷ ${s.plasma} ＝ ${fmt(ratio, ratio < 10 ? 2 : 1)} となる。濃縮率は、尿中で血しょう中の何倍に濃くなったかを表す値だからである。`,
+      };
+    },
+  },
+  {
+    id: 'b7-filtrate-calc',
+    stage: 'b7',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const perMin = rng.chance(0.5);
+      const cP = 0.1;
+      const ratio = rng.pick([100, 110, 120, 125, 130, 140]);
+      const cU = (cP * ratio).toFixed(1).replace(/\.0$/, '');
+      if (perMin) {
+        const U = rng.pick([0.8, 1, 1.2, 1.5]);
+        const F = U * ratio;
+        const d = distinctNumbers(F, [F * 1.5, F / 1.5, F / 10, F + ratio, F * 10], ' mL', 1);
+        return {
+          text: `イヌリンを静脈に注射したところ、血しょう中のイヌリン濃度は ${cP}%、尿中の濃度は ${cU}% になった。1分間の尿量が ${U} mL のとき、1分間につくられる原尿の量は何 mL か。ただし、イヌリンはろ過されるが再吸収も分泌もされない。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          ordered: true,
+          explanation: `イヌリンの濃縮率は ${cU} ÷ ${cP} ＝ ${ratio} なので、原尿量 ＝ 尿量 × 濃縮率 ＝ ${U} × ${ratio} ＝ ${fmt(F, 1)} mL となる。イヌリンは再吸収されないから、原尿中のイヌリンはすべて尿に出ており、水が再吸収されて体積が 1／${ratio} になった分だけ濃縮されている。`,
+        };
+      }
+      const U = rng.pick([1, 1.2, 1.5, 1.8, 2]);
+      const F = U * ratio;
+      const d = distinctNumbers(F, [F * 1.5, F / 10, F / 1.5, U + ratio, F * 10], ' L', 1);
+      return {
+        text: `ある人の血しょう中のイヌリン濃度は ${cP}%、尿中の濃度は ${cU}% であった。1日の尿量が ${U} L のとき、1日につくられる原尿の量は何 L か。ただし、イヌリンはろ過されるが再吸収も分泌もされない。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `イヌリンの濃縮率は ${cU} ÷ ${cP} ＝ ${ratio} なので、原尿量 ＝ 尿量 × 濃縮率 ＝ ${U} × ${ratio} ＝ ${fmt(F, 1)} L となる。イヌリンは再吸収も分泌もされないから、尿中のイヌリンの量は原尿中の量と等しい。`,
+      };
+    },
+  },
+  {
+    id: 'b7-water-reabs',
+    stage: 'b7',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const U = rng.pick([1, 1.5, 2]);
+      const ratio = rng.pick([100, 120, 125, 150]);
+      const F = U * ratio;
+      const r = ((F - U) / F) * 100;
+      const d = distinctNumbers(r, [(U / F) * 100, 90, 95, 99.9, r - 1, ((F - U) / (F + U)) * 100, 100 - ratio / 10], '%', 1);
+      return {
+        text: `1日の原尿量が ${fmt(F, 1)} L、尿量が ${U} L であった。原尿中の水のうち、再吸収された水の割合は何%か（小数第2位を四捨五入）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `再吸収された水は ${fmt(F, 1)} − ${U} ＝ ${fmt(F - U, 1)} L なので、再吸収率は ${fmt(F - U, 1)} ÷ ${fmt(F, 1)} × 100 ≒ ${fmt(r, 1)}% となる。原尿中の水の大部分は細尿管と集合管で血液にもどるから、尿として出る量はごくわずかである。`,
+      };
+    },
+  },
+  {
+    id: 'b7-reabs-calc',
+    stage: 'b7',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const s = substanceById(rng.pick(['urea', 'na', 'k', 'uric']));
+      const ratioIn = rng.pick([100, 120, 125, 150]);
+      const U = rng.pick([1, 1.5, 2]);
+      const F = U * ratioIn;
+      const filtered = (F * 1000 * s.filtrate) / 100;
+      const excreted = (U * 1000 * s.urine) / 100;
+      const askRate = rng.chance(0.5);
+      const rate = ((filtered - excreted) / filtered) * 100;
+      const cInU = (0.1 * ratioIn).toFixed(1).replace(/\.0$/, '');
+      const head = `血しょう中のイヌリン濃度は 0.1%、尿中のイヌリン濃度は ${cInU}%、1日の尿量は ${U} L である。${s.name}の濃度は原尿中で ${s.filtrate}%、尿中で ${s.urine}% であった（1 mL を 1 g とする）。`;
+      if (askRate) {
+        const d = distinctNumbers(rate, [(excreted / filtered) * 100, 100 - (s.urine / s.filtrate), (1 - s.filtrate / s.urine) * 100, rate / 2], '%', 1);
+        return {
+          text: `${head}${s.name}の再吸収率は何%か（小数第2位を四捨五入）。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          ordered: true,
+          explanation: `原尿量は ${U} × ${ratioIn} ＝ ${fmt(F, 1)} L なので、原尿中の${s.name}は ${fmt(F * 1000, 0)} × ${s.filtrate}／100 ＝ ${fmt(filtered, 2)} g、尿中は ${fmt(U * 1000, 0)} × ${s.urine}／100 ＝ ${fmt(excreted, 2)} g となる。再吸収率 ＝ （${fmt(filtered, 2)} − ${fmt(excreted, 2)}）÷ ${fmt(filtered, 2)} × 100 ≒ ${fmt(rate, 1)}% と求められるのは、原尿中にあって尿中に出なかった分が再吸収された量だからである。`,
+        };
+      }
+      const re = filtered - excreted;
+      const d = distinctNumbers(re, [filtered, excreted, filtered + excreted, re * 10, re / 10], ' g', 2);
+      return {
+        text: `${head}1日に再吸収された${s.name}は何 g か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `原尿量は ${U} × ${ratioIn} ＝ ${fmt(F, 1)} L なので、原尿中の${s.name}は ${fmt(filtered, 2)} g、尿中は ${fmt(excreted, 2)} g である。再吸収量 ＝ 原尿中の量 − 尿中の量 ＝ ${fmt(re, 2)} g となるのは、原尿中にあって尿として出なかった分が血液にもどったからである。`,
+      };
+    },
+  },
+  {
+    id: 'b7-glucose-protein',
+    stage: 'b7',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '健康な人では、グルコースは原尿中に含まれるが尿中にはほとんど含まれない。その理由として正しいものはどれか。',
+          correct: '糸球体でろ過されたあと、細尿管ですべて再吸収されるから',
+          wrong: ['分子が大きく、糸球体でろ過されないから', '集合管で尿中から分泌されないから', 'ぼうこうで分解されるから'],
+          explanation: 'グルコースは糸球体からボーマンのうへろ過されるので原尿中に含まれる。しかし体に必要な物質なので、細尿管ですべて再吸収されるから、健康な人の尿には出てこない。',
+        };
+      }
+      return {
+        text: 'タンパク質が血しょう中には含まれるが、原尿中には含まれない理由として正しいものはどれか。',
+        correct: '分子が大きく、糸球体からボーマンのうへろ過されないから',
+        wrong: ['ろ過されたあと、細尿管ですべて再吸収されるから', 'ろ過されたあと、集合管ですべて分解されるから', '肝臓ですべて尿素に変えられるから'],
+        explanation: '糸球体ではタンパク質や血球のような大きなものはろ過されない。そのためタンパク質は、再吸収されるのではなく、はじめからろ過されないので原尿に含まれない。',
+      };
+    },
+  },
+  {
+    id: 'b7-inulin-why',
+    stage: 'b7',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '原尿量を求めるときにイヌリンを用いる理由として最も適当なものはどれか。',
+        correct: 'ろ過されるが、再吸収も分泌もされないから',
+        wrong: ['ろ過されず、すべて血液中に残るから', 'ろ過されたあと、すべて再吸収されるから', '体内でつくられ、尿中にだけ含まれるから'],
+        explanation: 'イヌリンは糸球体でろ過されるが、細尿管や集合管で再吸収も分泌もされない。そのため原尿中のイヌリンはすべて尿中に出るので、原尿量 ＝ 尿量 × イヌリンの濃縮率 で求められる。',
+      };
+    },
+  },
+  {
+    id: 'b7-structure',
+    stage: 'b7',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const qs = [
+        { text: '血液がろ過されて原尿がつくられるのは、腎臓のどこからどこへか。', correct: '糸球体からボーマンのうへ', wrong: ['ボーマンのうから糸球体へ', '細尿管から集合管へ', '集合管から腎う（腎盂）へ'], explanation: '血液は糸球体でろ過され、ボーマンのうへ出たものが原尿である。糸球体は毛細血管が集まった球状の構造で、血圧によって血しょうの成分がこし出されるからである。' },
+        { text: '糸球体とボーマンのうをあわせた構造を何というか。', correct: '腎小体', wrong: ['ネフロン', '集合管', '腎う（腎盂）'], explanation: '糸球体とボーマンのうをあわせて腎小体（マルピーギ小体）という。腎小体と細尿管をあわせた単位をネフロン（腎単位）とよび、尿をつくる基本単位なので区別して覚える。' },
+        { text: '原尿から水や必要な物質が再吸収される場所の組合せとして正しいものはどれか。', correct: '細尿管（腎細管）と集合管', wrong: ['糸球体とボーマンのう', '輸尿管とぼうこう', '腎小体と輸尿管'], explanation: '原尿中の水・グルコース・無機塩類などは、細尿管と集合管を流れる間に周りの毛細血管へ再吸収される。糸球体とボーマンのうはろ過を行う場所なので、再吸収の場所ではない。' },
+      ];
+      return rng.pick(qs);
+    },
+  },
+  {
+    id: 'b7-hormone',
+    stage: 'b7',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '体内の水が不足して体液の濃度が上がったときのしくみとして正しいものはどれか。',
+          correct: '脳下垂体後葉からバソプレシンの分泌が増え、集合管での水の再吸収が促進されて尿量が減る',
+          wrong: ['脳下垂体後葉からバソプレシンの分泌が減り、集合管での水の再吸収が促進されて尿量が減る', '脳下垂体前葉からバソプレシンの分泌が増え、尿量が増える', '副腎皮質から鉱質コルチコイドの分泌が減り、水の再吸収が促進される'],
+          explanation: '体液の濃度が上がると、脳下垂体後葉からバソプレシンが多く分泌される。バソプレシンは集合管での水の再吸収を促進するので、尿量が減って体液の濃度が下がる（負のフィードバック）。',
+        };
+      }
+      return {
+        text: '腎臓の細尿管でのナトリウムイオンの再吸収を促進するホルモンはどれか。',
+        correct: '鉱質コルチコイド（副腎皮質）',
+        wrong: ['バソプレシン（脳下垂体後葉）', 'インスリン（すい臓）', 'チロキシン（甲状腺）'],
+        explanation: '副腎皮質から分泌される鉱質コルチコイドは、細尿管でのナトリウムイオンの再吸収を促進する。これによって体液中の無機塩類の濃度が調節されるので、体内環境が一定に保たれる。',
+      };
+    },
+  },
+  {
+    id: 'b7-ratio-graph',
+    stage: 'b7',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const ids = rng.shuffle(['glucose', 'na', 'urea', 'inulin']);
+      const subs = ids.map(substanceById);
+      const ratios = subs.map((s) => s.urine / s.plasma);
+      const ask = rng.pick(['glucose', 'urea', 'na', 'inulin']);
+      const idx = ids.indexOf(ask);
+      const why = {
+        glucose: '濃縮率が0なので、ろ過されたあとすべて再吸収されたグルコース',
+        na: '濃縮率が1に近いので、水と同じくらいの割合で再吸収されたナトリウムイオン',
+        urea: '濃縮率が大きいが、再吸収されないイヌリンよりは小さいので、一部が再吸収された尿素',
+        inulin: '濃縮率が最も大きいので、まったく再吸収されないイヌリン',
+      };
+      return {
+        text: `図は、グルコース・ナトリウムイオン・尿素・イヌリンのいずれかである物質ア〜エの濃縮率（尿中の濃度 ÷ 血しょう中の濃度）を表したものである。${substanceById(ask).name}はどれか。`,
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 140, label: '濃縮率', step: 20 },
+          bars: { categories: KATA.slice(0, 4), groups: [{ label: '濃縮率', values: ratios, color: 'c1' }] },
+          texts: ratios.map((r, i) => ({ x: (i + 0.5) / 4, y: Math.min(r + 8, 132), text: fmt(r, r < 10 ? 1 : 0) })),
+          alt: '物質ア〜エの濃縮率の棒グラフ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 4).filter((k, i) => i !== idx),
+        explanation: `${KATA[idx]}は${why[ask]}である。再吸収される割合が大きい物質ほど尿中で濃縮されにくいから、濃縮率の大小から再吸収の程度がわかる。`,
+      };
+    },
+  },
+];
+return { B7 };
+})();
+
+// ---- questions/b8.js ----
+__m["questions/b8.js"] = (function () {
+// B8 バイオーム の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { BIOMES, classify, polygons, T_MIN, T_MAX, P_MAX, VERTICAL, LAPSE, warmthIndex, biomeByWI, WI_ZONES, JAPAN_HORIZONTAL } = __m["models/biome.js"];
+
+const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+
+// 図：区画の名前を出す／隠して記号にする
+function biomeChart({ labels = true, marks = [], point = null }) {
+  return {
+    x: { min: T_MIN, max: T_MAX, label: '年平均気温（℃）', step: 5, grid: false },
+    y: { min: 0, max: P_MAX, label: '年降水量（mm）', step: 1000 },
+    polygons: polygons().map((p) => ({ points: p.points, fill: FILL[BIOMES[p.id].kind], stroke: 'muted', label: labels ? BIOMES[p.id].name : null, at: p.at })),
+    texts: marks.map((m) => ({ x: m.at[0], y: m.at[1], text: m.label, color: 'c2' })),
+    markers: point ? [{ x: point[0], y: point[1], color: 'c2', shape: 'diamond', label: point[2] || null }] : [],
+    alt: 'バイオームと気候の関係の図',
+  };
+}
+
+// 境界から十分離れた点を選ぶ（周囲の点も同じ区画になるもの）
+function interiorPoint(rng, id) {
+  for (let i = 0; i < 400; i++) {
+    const T = rng.int(T_MIN * 2, T_MAX * 2) / 2;
+    const P = rng.int(0, P_MAX / 50) * 50;
+    if (classify(T, P) !== id) continue;
+    const ok = [[-2, 0], [2, 0], [0, -150], [0, 150], [-2, -150], [2, 150], [-2, 150], [2, -150]].every(([dT, dP]) => classify(T + dT, P + dP) === id);
+    if (ok) return [T, P];
+  }
+  return null;
+}
+
+const ALL = Object.keys(BIOMES);
+
+const B8 = [
+  {
+    id: 'b8-classify-point',
+    stage: 'b8',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const id = rng.pick(ALL);
+      const pt = interiorPoint(rng, id);
+      if (!pt) return this.make(rng);
+      const [T, P] = pt;
+      const B = BIOMES[id];
+      return {
+        text: `図は、年平均気温と年降水量によるバイオームの分布を表している。年平均気温 ${fmt(T, 1)}℃、年降水量 ${P} mm の地域（図の◆）に成立するバイオームはどれか。`,
+        chart: biomeChart({ labels: true, point: [T, P] }),
+        correct: B.name,
+        wrong: rng.shuffle(ALL.filter((k) => k !== id)).map((k) => BIOMES[k].name),
+        explanation: id === 'tundra' ? '図の◆はツンドラの区画に入る。年平均気温が非常に低いので樹木が育たず、コケ植物・地衣類などがまばらに生える荒原になるからである。' : `図の◆は${B.name}の区画に入る。陸上では降水量が多いと森林、少ないと草原、非常に少ないと荒原になり、森林や草原の種類は主に気温で決まるから、2つの値の組合せでバイオームが決まる。`,
+      };
+    },
+  },
+  {
+    id: 'b8-letter',
+    stage: 'b8',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const pool = ['tropical', 'laurel', 'temperate', 'taiga', 'savanna', 'steppe', 'desert', 'tundra', 'sclerophyll', 'monsoon', 'subtropical'];
+      const ids = rng.sample(pool, 4);
+      const polys = polygons();
+      const marks = ids.map((id, i) => ({ label: KATA[i], at: polys.find((p) => p.id === id).at }));
+      const ask = rng.pick([0, 1, 2, 3]);
+      const B = BIOMES[ids[ask]];
+      const desc = {
+        tropical: '一年中高温で降水量が多く、高木が何層にも重なる常緑広葉樹の森林',
+        subtropical: '熱帯よりやや気温が低く、降水量の多い地域の常緑広葉樹林（日本では南西諸島）',
+        monsoon: '雨季と乾季がある熱帯の地域で、乾季に葉を落とす樹木からなる森林',
+        savanna: '熱帯で降水量が少ない地域の、イネのなかまの草本と樹木がまばらに生える草原',
+        steppe: '温帯で降水量が少ない地域の、イネのなかまの草本が中心の草原',
+        desert: '降水量が非常に少なく、乾燥に強い植物がまばらに生える荒原',
+        tundra: '年平均気温が非常に低く、コケ植物・地衣類が中心の荒原',
+        taiga: '冬の寒さがきびしい地域の、トウヒ・モミなどの針葉樹が中心の森林',
+        temperate: '冬に葉を落とすブナ・ミズナラなどの落葉広葉樹が中心の森林',
+        laurel: 'スダジイ・タブノキなど、葉の表面に光沢のある常緑広葉樹が中心の森林',
+        sclerophyll: '夏に乾燥し冬に雨が多い地域の、オリーブ・コルクガシなど硬く小さい葉をもつ常緑樹の森林',
+      };
+      return {
+        text: `図のア〜エは、年平均気温と年降水量で区切ったバイオームの区画のいずれかを示している。「${desc[ids[ask]]}」が成立するのはどの区画か。`,
+        chart: biomeChart({ labels: false, marks }),
+        correct: KATA[ask],
+        wrong: KATA.slice(0, 4).filter((_, i) => i !== ask),
+        explanation: `この説明は${B.name}で、図の${KATA[ask]}にあたる。${B.kind === '森林' ? '降水量が十分に多いので森林になり、気温によって森林の種類が決まる' : B.kind === '草原' ? '降水量が少なく森林が成立しないので草原になる' : '気温が非常に低いか降水量が非常に少ないので、植物がまばらな荒原になる'}からである。`,
+      };
+    },
+  },
+  {
+    id: 'b8-trees',
+    stage: 'b8',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { trees: 'ブナ・ミズナラ', a: '夏緑樹林', why: '冬に葉を落とす落葉広葉樹で、冷温帯に分布する' },
+        { trees: 'スダジイ・タブノキ・アラカシ', a: '照葉樹林', why: '葉の表面にクチクラ層が発達して光沢のある常緑広葉樹で、暖温帯に分布する' },
+        { trees: 'エゾマツ・トドマツ', a: '針葉樹林', why: '寒さに強い常緑針葉樹で、亜寒帯（北海道の東北部など）に分布する' },
+        { trees: 'ガジュマル・アコウ・ヘゴ', a: '亜熱帯多雨林', why: 'ガジュマル・アコウは常緑広葉樹、ヘゴは木生シダで、亜熱帯の南西諸島に分布する' },
+      ];
+      const x = rng.pick(Q);
+      return {
+        text: `日本で、${x.trees}が代表的な樹木であるバイオームはどれか。`,
+        correct: x.a,
+        wrong: Q.map((y) => y.a).filter((a) => a !== x.a).concat(['硬葉樹林', '雨緑樹林']),
+        explanation: `${x.trees}は${x.a}の代表的な樹木である。${x.why}からである。`,
+      };
+    },
+  },
+  {
+    id: 'b8-horizontal',
+    stage: 'b8',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const r = rng.pick(JAPAN_HORIZONTAL);
+      return {
+        text: `日本の水平分布で、${r.where}の低地に成立するバイオームはどれか。`,
+        correct: BIOMES[r.biome].name,
+        wrong: JAPAN_HORIZONTAL.filter((x) => x !== r).map((x) => BIOMES[x.biome].name).concat(['ステップ']),
+        explanation: `${r.where}の低地は${r.zone}にあたり、${BIOMES[r.biome].name}（${r.trees}など）が成立する。日本はどこでも降水量が十分に多いので森林が成立し、緯度による気温の違いで森林の種類が変わるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b8-vertical-zone',
+    stage: 'b8',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const v = rng.pick(VERTICAL);
+      const range = v.to >= 4000 ? `標高 約${v.from} m 以上` : `標高 約${v.from}〜${v.to} m`;
+      return {
+        text: `本州中部の垂直分布で、${v.zone}（${range}）に見られる植生はどれか。`,
+        correct: v.veg,
+        wrong: VERTICAL.filter((x) => x !== v).map((x) => x.veg).concat(['硬葉樹林（オリーブ・コルクガシ）']),
+        explanation: `${v.zone}の植生は${v.veg}である。標高が高くなるほど気温が下がるので、水平分布で北へ向かうのと同じ順に、照葉樹林→夏緑樹林→針葉樹林と変わっていくからである。`,
+      };
+    },
+  },
+  {
+    id: 'b8-lapse-calc',
+    stage: 'b8',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const baseT = rng.int(12, 18);
+      const rate = rng.pick([0.5, 0.6]);
+      if (rng.chance(0.5)) {
+        const elev = rng.pick([1000, 1500, 2000, 2500, 3000]);
+        const ans = baseT - (rate * elev) / 100;
+        const d = distinctNumbers(ans + 100, [baseT - rate * elev + 100, baseT - (rate * elev) / 1000 + 100, baseT + (rate * elev) / 100 + 100, ans + 102, ans + 99], '', 1);
+        const un = (s) => fmt(Number(s) - 100, 1).replace('-', '−') + ' ℃';
+        return {
+          text: `標高0 m の地点の年平均気温が ${baseT}℃ の山がある。標高が100 m 高くなるごとに気温が ${rate}℃ 下がるとすると、標高 ${elev} m の地点の年平均気温は何℃か。`,
+          correct: un(d.correct),
+          wrong: d.wrong.map(un),
+          ordered: true,
+          explanation: `${elev} m は100 m の ${elev / 100} 倍なので、気温は ${rate} × ${elev / 100} ＝ ${fmt((rate * elev) / 100, 1)}℃ 下がり、${baseT} − ${fmt((rate * elev) / 100, 1)} ＝ ${fmt(ans, 1)}℃ となる。標高が高いほど気温が下がるので、山では標高によってバイオームが変わる（垂直分布）からである。`,
+        };
+      }
+      const target = rng.pick([0, 2, 4, 6]);
+      const elev = ((baseT - target) / rate) * 100;
+      const d = distinctNumbers(elev, [(baseT - target) * rate * 100, ((baseT + target) / rate) * 100, (baseT - target) * 100, elev / 2, elev + 500], ' m', 0);
+      return {
+        text: `標高0 m の地点の年平均気温が ${baseT}℃ の山がある。標高が100 m 高くなるごとに気温が ${rate}℃ 下がるとすると、年平均気温が ${target}℃ になるのは標高何 m の地点か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `気温が ${baseT} − ${target} ＝ ${baseT - target}℃ 下がる標高を求めるので、${baseT - target} ÷ ${rate} × 100 ＝ ${fmt(elev, 0)} m となる。100 m ごとに ${rate}℃ ずつ下がるから、下がる温度を ${rate} でわれば100 m がいくつ分かがわかる。`,
+      };
+    },
+  },
+  {
+    id: 'b8-wi-calc',
+    stage: 'b8',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      // 1月が最も寒く7〜8月が最も暑い、整数の月平均気温（5℃以下の月がまざる）
+      const mean = rng.int(6, 16);
+      const amp = rng.int(8, 12);
+      const months = Array.from({ length: 12 }, (_, i) => Math.round(mean - amp * Math.cos((2 * Math.PI * (i - 0.5)) / 12)));
+      const wi = warmthIndex(months);
+      const wrongAll = months.reduce((a, t) => a + (t - 5), 0);
+      const wrongSum = months.filter((t) => t > 5).reduce((a, t) => a + t, 0);
+      const d = distinctNumbers(wi, [wrongAll, wrongSum, wi + 5 * months.filter((t) => t <= 5).length, wi - 10, wi + 12], '', 0);
+      if (d.wrong.length < 3 || wrongAll === wi) return this.make(rng);
+      const biome = BIOMES[biomeByWI(wi)].name;
+      const z = WI_ZONES.find((zz) => wi >= zz.lo && wi < zz.hi);
+      const zoneText = Number.isFinite(z.hi) ? `${z.lo}〜${z.hi}` : `${z.lo}以上`;
+      return {
+        text: `【発展】ある地点の月平均気温（℃）は、1月から順に ${months.map((t) => String(t).replace('-', '−')).join('、')} である。この地点の暖かさの指数はいくらか。ただし、暖かさの指数は月平均気温が5℃をこえる月について（月平均気温 − 5）を合計した値である。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `5℃をこえる月だけについて（月平均気温 − 5）をたすと ${months.filter((t) => t > 5).map((t) => t - 5).join('＋')} ＝ ${wi} となり、${zoneText}の範囲なので${biome}が成立する気候である。5℃以下の月は植物の生育にほとんど寄与しないとみなすから、合計に入れない。`,
+      };
+    },
+  },
+  {
+    id: 'b8-grassland',
+    stage: 'b8',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'サバンナとステップの違いとして正しいものはどれか。',
+          correct: 'サバンナは熱帯の草原で樹木がまばらに生え、ステップは温帯の草原で樹木がほとんどない',
+          wrong: ['サバンナは温帯の草原で、ステップは熱帯の草原である', 'サバンナは降水量が多い地域の森林で、ステップは草原である', 'どちらも降水量が非常に少ない荒原である'],
+          explanation: 'どちらも降水量が少なく森林が成立しない地域の草原である。熱帯の草原がサバンナで樹木がまばらに生え、温帯の草原がステップで樹木がほとんど見られないから、気温の違いで区別される。',
+        };
+      }
+      return {
+        text: '年平均気温が同じでも、森林・草原・荒原のどれが成立するかが変わる主な原因はどれか。',
+        correct: '年降水量の違い',
+        wrong: ['土壌の色の違い', '昼の長さの違い', '標高の違いによる気温の差'],
+        explanation: '年平均気温が同じでも、年降水量が多ければ森林、少なければ草原、非常に少なければ荒原になる。樹木が育つには多くの水が必要だから、降水量が少ない地域では森林が成立しない。',
+      };
+    },
+  },
+  {
+    id: 'b8-deciduous',
+    stage: 'b8',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '夏緑樹林の樹木が秋に葉を落とす理由として最も適当なものはどれか。',
+          correct: '冬の低温で光合成がほとんどできない時期に、葉を維持する損失を避けるため',
+          wrong: ['夏の乾燥で水が不足する時期に、蒸散を防ぐため', '雨季に葉が傷むのを防ぐため', '冬に光が強くなりすぎるのを防ぐため'],
+          explanation: '夏緑樹林が分布する冷温帯は冬の寒さがきびしく、冬には光合成がほとんどできない。葉をつけたままでは呼吸や凍結による損失が大きいので、秋に落葉して冬を越すからである。',
+        };
+      }
+      return {
+        text: '雨緑樹林の樹木が葉を落とすのはいつか。',
+        correct: '乾季',
+        wrong: ['雨季', '冬の低温期', '一年中落葉しない'],
+        explanation: '雨緑樹林は、雨季と乾季がはっきりした熱帯・亜熱帯に分布する。乾季には水が不足するので、葉を落として蒸散を抑えるからである。',
+      };
+    },
+  },
+  {
+    id: 'b8-treeline',
+    stage: 'b8',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '本州中部の高い山で、標高約2500 m より上に高木の森林が見られなくなる境界を何というか。',
+        correct: '森林限界',
+        wrong: ['極相', '林床', '環境収容力'],
+        explanation: 'この境界を森林限界という。標高が高くなると気温が低く、風も強くなるので高木が育たず、それより上はハイマツなどの低木林や高山草原（お花畑）になるからである。',
+      };
+    },
+  },
+];
+return { B8 };
+})();
+
+// ---- questions/b9.js ----
+__m["questions/b9.js"] = (function () {
+// B9 DNAとタンパク質合成 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { transcribe, complement, translate, CODON_TABLE, AMINO, aminoSequence, substitute, deleteAt } = __m["models/dna.js"];
+
+const SENSE = Object.keys(CODON_TABLE).filter((c) => CODON_TABLE[c] !== null && c !== 'AUG');
+const STOPS = ['UAA', 'UAG', 'UGA'];
+const toTemplate = (mrna) => [...mrna].map((b) => ({ A: 'T', U: 'A', G: 'C', C: 'G' })[b]).join('');
+const aaNames = (keys) => keys.map((k) => AMINO[k]).join('－');
+
+// 開始コドン＋n個のコドン＋終止コドンの mRNA（アミノ酸がすべて異なるもの）
+function randomGene(rng, n) {
+  for (let t = 0; t < 200; t++) {
+    const cods = ['AUG'];
+    for (let i = 0; i < n; i++) cods.push(rng.pick(SENSE));
+    const keys = cods.map((c) => CODON_TABLE[c]);
+    if (new Set(keys).size === keys.length) return { codons: [...cods, rng.pick(STOPS)], keys };
+  }
+  return null;
+}
+
+// 問題文に添える遺伝暗号表の抜粋
+function tableExcerpt(rng, codons, extra = 3) {
+  const set = new Set(codons);
+  const others = rng.shuffle(Object.keys(CODON_TABLE).filter((c) => !set.has(c)));
+  for (let i = 0; i < extra; i++) set.add(others[i]);
+  return [...set].sort().map((c) => `${c}：${CODON_TABLE[c] === null ? '終止' : AMINO[CODON_TABLE[c]]}`).join('、');
+}
+
+const B9 = [
+  {
+    id: 'b9-transcribe',
+    stage: 'b9',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const len = 9;
+      let tpl = '';
+      for (let i = 0; i < len; i++) tpl += rng.pick(['A', 'T', 'G', 'C']);
+      const mrna = transcribe(tpl);
+      const wrongDNA = complement(tpl); // U ではなく T を使う誤り
+      const same = tpl.replace(/T/g, 'U'); // 相補にしない誤り
+      const swapAU = [...tpl].map((b) => ({ A: 'T', T: 'A', G: 'C', C: 'G' })[b]).join('').replace(/A/g, 'U').replace(/T/g, 'A');
+      const r = (x) => `5′-${x}-3′`;
+      return {
+        text: `DNAの鋳型となる鎖の塩基配列が 3′-${tpl}-5′ であるとき、転写によってつくられるmRNAの塩基配列はどれか。ただし、mRNAは鋳型鎖と塩基どうしが向かい合うように、左からそろえて書くものとする。`,
+        correct: r(mrna),
+        wrong: [wrongDNA, same, swapAU, substitute(mrna, 4, mrna[4] === 'G' ? 'C' : 'G'), substitute(mrna, 1, mrna[1] === 'A' ? 'U' : 'A')].map(r),
+        explanation: `鋳型鎖の A・T・G・C に対して、mRNAには U・A・C・G が対応するので ${mrna} となる。RNAはT（チミン）の代わりにU（ウラシル）をもつから、DNAのAに対応するのはUである。`,
+      };
+    },
+  },
+  {
+    id: 'b9-translate',
+    stage: 'b9',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const g = randomGene(rng, 3);
+      if (!g) return this.make(rng);
+      const mrna = g.codons.join('');
+      const lead = rng.pick(['G', 'CU', 'GCA', 'UC']);
+      const seq = lead + mrna;
+      const correct = aaNames(g.keys);
+      const shifted = aminoSequence(seq.slice(1), false).slice(0, 4);
+      const wrong = [
+        aaNames(g.keys.slice().reverse()),
+        aaNames([...g.keys.slice(0, 3), g.keys[3] === 'Met' ? 'Gly' : 'Met']),
+        aaNames(g.keys.slice(1)) + '－終止',
+        shifted.length >= 3 ? aaNames(shifted) : aaNames(['Met', g.keys[1], g.keys[3], g.keys[2]]),
+        aaNames(['Met', g.keys[2], g.keys[1], g.keys[3]]),
+      ];
+      return {
+        text: `あるmRNAの塩基配列は ${seq} である。翻訳は最初のAUG（開始コドン）から始まり、終止コドンで終わる。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, g.codons)}）。指定されるアミノ酸の配列はどれか。`,
+        correct,
+        wrong,
+        explanation: `最初のAUGから3塩基ずつ区切ると ${g.codons.join('｜')} となり、${correct} のあと終止コドンで翻訳が終わる。mRNAの3つの塩基の並び（コドン）が1つのアミノ酸を指定し、終止コドンに対応するアミノ酸はないからである。`,
+      };
+    },
+  },
+  {
+    id: 'b9-template-aa',
+    stage: 'b9',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const g = randomGene(rng, 2);
+      if (!g) return this.make(rng);
+      const mrna = g.codons.join('');
+      const tpl = toTemplate(mrna);
+      const correct = aaNames(g.keys);
+      // よくある誤り：鋳型鎖をそのまま（T→U）mRNAとして読む
+      const asIs = tpl.replace(/T/g, 'U');
+      const wrongRead = aminoSequence(asIs, false).slice(0, 3);
+      const wrong = [
+        wrongRead.length === 3 ? aaNames(wrongRead) : aaNames(['Met', g.keys[2], g.keys[1]]),
+        aaNames(['Met', g.keys[2], g.keys[1]]),
+        aaNames(g.keys.slice(1)),
+        aaNames([g.keys[1], g.keys[2], 'Met']),
+      ];
+      return {
+        text: `DNAの鋳型となる鎖の塩基配列が 3′-${tpl}-5′ である（左端から転写されるmRNAの塩基と向かい合う）。この部分から転写されたmRNAが翻訳されるとき、指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...asIs.match(/.{3}/g)], 1)}）。`,
+        correct,
+        wrong,
+        explanation: `鋳型鎖に相補的なmRNAは ${g.codons.join('｜')} で、これを開始コドンから読むと ${correct} となる。鋳型鎖の塩基配列をそのまま読むのではなく、相補的な塩基をもつmRNAに直してからコドンを読むからである。`,
+      };
+    },
+  },
+  {
+    id: 'b9-count-calc',
+    stage: 'b9',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const n = rng.pick([100, 150, 200, 250, 300, 400, 500]);
+      const ask = rng.pick(['mrna', 'dna', 'aa']);
+      if (ask === 'aa') {
+        const bases = 3 * n;
+        const d = distinctNumbers(n, [bases, bases / 2, bases / 6, n - 1, n * 2], ' 個', 0);
+        return {
+          text: `あるmRNAのうち、開始コドンから終止コドンの直前までの塩基数は ${bases} 個であった。このmRNAから翻訳されるタンパク質のアミノ酸の数は何個か。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          ordered: true,
+          explanation: `3つの塩基で1つのアミノ酸が指定されるので、${bases} ÷ 3 ＝ ${n} 個となる。終止コドンはアミノ酸を指定しないから、終止コドンの直前までの塩基数を3でわればよい。`,
+        };
+      }
+      if (ask === 'mrna') {
+        const d = distinctNumbers(3 * n, [n, 2 * n, 6 * n, 4 * n, 3 * n + 3], ' 個', 0);
+        return {
+          text: `アミノ酸 ${n} 個からなるタンパク質を指定するmRNAの部分（終止コドンは含めない）は、少なくとも何個の塩基からなるか。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          ordered: true,
+          explanation: `1つのアミノ酸はmRNAの3つの塩基（コドン）で指定されるので、${n} × 3 ＝ ${3 * n} 個となる。終止コドンを含めない場合は、アミノ酸の数の3倍だけの塩基が必要だからである。`,
+        };
+      }
+      const d = distinctNumbers(6 * n, [3 * n, n, 2 * n, 12 * n, 6 * n + 6], ' 個', 0);
+      return {
+        text: `アミノ酸 ${n} 個からなるタンパク質を指定する2本鎖DNAの部分（終止コドンに対応する部分は含めない）には、塩基が全部で少なくとも何個あるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `mRNAでは ${n} × 3 ＝ ${3 * n} 個の塩基が必要で、DNAは2本鎖なので塩基の数はその2倍の ${6 * n} 個となる。転写されるのは2本鎖のうちの1本（鋳型鎖）だが、相補的なもう1本の鎖にも同じ数の塩基があるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b9-triplet',
+    stage: 'b9',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '遺伝暗号で、1つのアミノ酸が3つの塩基の並びで指定されている理由として最も適当なものはどれか。',
+        correct: '2つの塩基の並びでは4²＝16通りで、20種類のアミノ酸を区別できないが、3つなら4³＝64通りあるから',
+        wrong: ['3つの塩基でちょうど20通りの組合せになるから', 'DNAが3本の鎖からできているから', '2つの塩基の並びでは4×2＝8通りしかないから'],
+        explanation: '塩基は4種類なので、2つの並びでは16通りしかなく20種類のアミノ酸に足りない。3つの並びなら64通りになり、20種類のアミノ酸と終止の指定に十分なので、1つのアミノ酸を複数のコドンが指定することもある。',
+      };
+    },
+  },
+  {
+    id: 'b9-mutation-term',
+    stage: 'b9',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '【生物の内容】遺伝子の途中で1塩基が欠失したとき、つくられるタンパク質への影響として最も適当なものはどれか。',
+          correct: 'それより後ろのコドンの読み枠がずれ、多くのアミノ酸が変わったり途中で翻訳が止まったりする',
+          wrong: ['欠失した塩基を含むコドンのアミノ酸が1つだけ変わる', 'アミノ酸が1つだけ減り、ほかはすべて同じになる', 'タンパク質にはまったく影響しない'],
+          explanation: '1塩基の欠失では、それより後ろのコドンの区切りが1つずつずれる（フレームシフト）。そのため後ろのアミノ酸が次々に変わったり、途中に終止コドンが現れたりするから、タンパク質のはたらきが失われやすい。',
+        };
+      }
+      return {
+        text: '【生物の内容】遺伝子の1塩基が別の塩基に置換されても、つくられるタンパク質のアミノ酸配列が変わらないことがある。その理由として最も適当なものはどれか。',
+        correct: '1つのアミノ酸を指定するコドンが複数あり、置換後のコドンも同じアミノ酸を指定することがあるから',
+        wrong: ['置換された塩基はすぐに元の塩基に戻されるから', 'mRNAは3つ目ごとの塩基しか読まれないから', '置換が起こるとその遺伝子は転写されなくなるから'],
+        explanation: '遺伝暗号は64通りで、20種類のアミノ酸より多いので、1つのアミノ酸を複数のコドンが指定することが多い。置換によってコドンが変わっても、同じアミノ酸を指定するコドンになれば、アミノ酸配列は変わらないからである。',
+      };
+    },
+  },
+  {
+    id: 'b9-mutation-calc',
+    stage: 'b9',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const g = randomGene(rng, 3);
+      if (!g) return this.make(rng);
+      const mrna = g.codons.join('');
+      const tpl = toTemplate(mrna);
+      const del = rng.chance(0.5);
+      const pos = rng.int(3, 8); // 2番目〜3番目のコドンの中（0始まり）
+      const ci = Math.floor(pos / 3);
+      const mut = del ? deleteAt(tpl, pos) : substitute(tpl, pos, rng.pick(['A', 'T', 'G', 'C'].filter((x) => x !== tpl[pos])));
+      const after = transcribe(mut);
+      // 開始コドンから4つ目のコドンまでを読む（終止コドンが先に来たらそこまで）
+      const read4 = (m) => {
+        const out = [];
+        for (let i = 0; i + 3 <= m.length && out.length < 4; i += 3) {
+          const k = CODON_TABLE[m.slice(i, i + 3)];
+          if (k === null) return aaNames(out) + '（ここで終止）';
+          out.push(k);
+        }
+        return aaNames(out);
+      };
+      const correct = read4(after);
+      // よくある誤り：欠失なのに変異したコドンだけが変わると考える／置換なのに後ろがすべてずれると考える
+      const inFrame = g.keys.slice(0, 4);
+      const mutCodon = CODON_TABLE[after.slice(ci * 3, ci * 3 + 3)];
+      const oneChanged = mutCodon == null ? aaNames(inFrame.slice(0, ci)) + '（ここで終止）' : aaNames(inFrame.map((k, i) => (i === ci ? mutCodon : k)));
+      const shifted = read4(transcribe(deleteAt(tpl, pos)));
+      const subst = read4(transcribe(substitute(tpl, pos, tpl[pos] === 'A' ? 'G' : 'A')));
+      const swap = aaNames([inFrame[0], inFrame[2], inFrame[1], inFrame[3]]);
+      const wrongs = [aaNames(inFrame), del ? oneChanged : shifted, del ? subst : oneChanged, swap, aaNames([inFrame[0], inFrame[1], inFrame[3], inFrame[2]]), aaNames(inFrame.slice().reverse())];
+      const codonsAfter = after.slice(0, Math.min(12, Math.floor(after.length / 3) * 3)).match(/.{3}/g);
+      return {
+        text: `【生物の内容】DNAの鋳型鎖 3′-${tpl}-5′ から転写・翻訳されると ${aaNames(g.keys)} のアミノ酸配列ができる。この鋳型鎖の左から${pos + 1}番目の塩基が${del ? '欠失' : `${mut[pos]}に置換`}したとき、開始コドン（左端のAUG）から4つ目のコドンまでに指定されるアミノ酸の配列はどれか。必要な遺伝暗号は次のとおり（${tableExcerpt(rng, [...g.codons, ...codonsAfter], 0)}）。`,
+        correct,
+        wrong: wrongs.filter((w) => w !== correct),
+        explanation: `変異後の鋳型鎖から転写されるmRNAは ${codonsAfter.join('｜')}… で、開始コドンから読むと ${correct} となる。${del ? '欠失では変異した位置より後ろの読み枠が1塩基ずれるので、後ろのアミノ酸が次々に変わりやすいからである。' : '置換では変異したコドンだけが変わり、ほかのコドンの読み方は変わらないからである。'}`,
+      };
+    },
+  },
+  {
+    id: 'b9-rna-graph',
+    stage: 'b9',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      // ア〜ウ：2本鎖DNA・mRNA・どちらでもない（Tをもち、A≠Tの例として1本鎖DNA）のいずれか
+      const a = rng.int(22, 32);
+      const dsDNA = { A: a, T: a, G: 50 - a, C: 50 - a, U: 0 };
+      const r1 = rng.int(20, 34), r2 = rng.int(16, 28), r3 = rng.int(18, 30);
+      const rna = { A: r1, T: 0, G: r2, C: r3, U: 100 - r1 - r2 - r3 };
+      const order = rng.shuffle(['dna', 'rna']);
+      const data = { dna: dsDNA, rna };
+      const ask = rng.pick(['dna', 'rna']);
+      const idx = order.indexOf(ask);
+      const cats = ['A', 'T', 'G', 'C', 'U'];
+      return {
+        text: `図のア・イは、ある生物から取り出した2本鎖DNAとmRNAのいずれかの塩基組成（%）である。${ask === 'rna' ? 'mRNA' : '2本鎖DNA'}はどちらか。理由とともに選べ。`,
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 50, label: '割合（%）', step: 10 },
+          bars: { categories: cats, groups: order.map((k, i) => ({ label: KATA[i], values: cats.map((c) => data[k][c]), color: i ? 'c2' : 'c1' })) },
+          alt: '2種類の核酸ア・イの塩基組成の棒グラフ',
+        },
+        correct: ask === 'rna' ? `${KATA[idx]}：Tの代わりにUを含むから` : `${KATA[idx]}：Tを含み、A＝T、G＝Cになっているから`,
+        wrong: ask === 'rna'
+          ? [`${KATA[1 - idx]}：Tの代わりにUを含むから`, `${KATA[1 - idx]}：A＝T、G＝Cになっているから`, `${KATA[idx]}：A＝T、G＝Cになっているから`]
+          : [`${KATA[1 - idx]}：Tを含み、A＝T、G＝Cになっているから`, `${KATA[1 - idx]}：Uを含むから`, `${KATA[idx]}：Uを含むから`],
+        explanation: `${ask === 'rna' ? 'mRNA' : '2本鎖DNA'}は${KATA[idx]}である。RNAは塩基にTではなくUをもち、2本鎖DNAではAとT、GとCが対をつくるのでA＝T、G＝Cになるから、塩基組成で区別できる。`,
+      };
+    },
+  },
+  {
+    id: 'b9-central-term',
+    stage: 'b9',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: 'DNAの塩基配列をもとにmRNAがつくられる過程を何というか。', correct: '転写', wrong: ['翻訳', '複製', '分化'], explanation: 'この過程を転写という。DNAの遺伝情報を、相補的な塩基をもつRNAに写しとる過程だからである。' },
+        { text: 'mRNAの塩基配列をもとにタンパク質がつくられる過程を何というか。', correct: '翻訳', wrong: ['転写', '複製', '分化'], explanation: 'この過程を翻訳という。塩基の並びという情報を、アミノ酸の並びという別の情報に置きかえる過程だからである。' },
+        { text: 'RNAについての説明として正しいものはどれか。', correct: '糖はリボースで、塩基はA・U・G・Cの4種類であり、ふつう1本鎖である', wrong: ['糖はデオキシリボースで、塩基はA・T・G・Cの4種類である', '糖はリボースで、塩基はA・T・G・C・Uの5種類である', 'ふつう2本鎖で、二重らせん構造をとる'], explanation: 'RNAの糖はリボースで、塩基はA・U・G・Cの4種類であり、ふつう1本鎖である。DNAとちがって塩基のTの代わりにUをもつので、DNAとは構成が異なる。' },
+        { text: '真核生物の細胞で、転写と翻訳が行われる場所の組合せとして正しいものはどれか。', correct: '転写は核の中、翻訳は細胞質（リボソーム）', wrong: ['転写は細胞質、翻訳は核の中', 'どちらも核の中', 'どちらもミトコンドリアの中'], explanation: '転写は核の中、翻訳は細胞質のリボソームで行われる。DNAは核の中にあるので転写は核内で起こり、できたmRNAが核膜孔から細胞質へ出て翻訳されるからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+];
+return { B9 };
+})();
+
+// ---- questions/b10.js ----
+__m["questions/b10.js"] = (function () {
+// B10 DNAの塩基組成 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { compositionFromA, strandComposition, NM_PER_BP } = __m["models/dna.js"];
+
+// 10のべき乗の表示（例：3.4 × 10⁹）
+const SUP = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+function sci(x) {
+  const e = Math.floor(Math.log10(x) + 1e-9);
+  const m = x / Math.pow(10, e);
+  return `${fmt(m, 2)} × 10${String(e).split('').map((c) => SUP[c]).join('')}`;
+}
+
+const B10 = [
+  {
+    id: 'b10-chargaff-a',
+    stage: 'b10',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const a = rng.int(15, 35);
+      const c = compositionFromA(a);
+      const ask = rng.pick(['G', 'C', 'T']);
+      const ans = c[ask];
+      const d = distinctNumbers(ans, [100 - a, 100 - 2 * a, a / 2, 50 - a / 2, (100 - a) / 3, ask === 'T' ? c.G : a], '%', 1);
+      return {
+        text: `ある生物の2本鎖DNAに含まれる塩基のうち、A（アデニン）の割合は ${a}% であった。このDNAの ${ask}（${{ G: 'グアニン', C: 'シトシン', T: 'チミン' }[ask]}）の割合は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: ask === 'T'
+          ? `2本鎖DNAではAとTが対をつくるので、T ＝ A ＝ ${a}% となる。AとT、GとCが相補的に結合しているから、AとTの数、GとCの数はそれぞれ等しい。`
+          : `T ＝ A ＝ ${a}% なので G＋C ＝ 100 − ${a}×2 ＝ ${100 - 2 * a}%、G ＝ C ＝ ${fmt(ans, 1)}% となる。2本鎖DNAではAとT、GとCがそれぞれ対をつくるから、A＝T、G＝Cが成り立つ。`,
+      };
+    },
+  },
+  {
+    id: 'b10-chargaff-gc',
+    stage: 'b10',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const gc = rng.pick([36, 40, 42, 44, 46, 50, 52, 56, 60, 64]);
+      const a = (100 - gc) / 2;
+      const d = distinctNumbers(a, [100 - gc, gc / 2, gc, 50 - gc / 4, a + 10], '%', 1);
+      return {
+        text: `ある生物の2本鎖DNAでは、G（グアニン）とC（シトシン）の割合の合計が ${gc}% であった。A（アデニン）の割合は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `A＋T ＝ 100 − ${gc} ＝ ${100 - gc}% で、A ＝ T なので A ＝ ${100 - gc} ÷ 2 ＝ ${fmt(a, 1)}% となる。2本鎖DNAではAとTが相補的に対をつくるから、AとTの割合は等しい。`,
+      };
+    },
+  },
+  {
+    id: 'b10-strand',
+    stage: 'b10',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const A = rng.int(15, 35), T = rng.int(10, 30), G = rng.int(10, 30);
+      const C = 100 - A - T - G;
+      if (C < 8 || A === T) return this.make(rng);
+      const r = strandComposition({ A, T, G, C });
+      const ask = rng.pick(['s2A', 's2G', 'bothA', 'bothG']);
+      const map = { s2A: [r.s2.A, '相補的なもう一方の鎖（鎖2）の A'], s2G: [r.s2.G, '相補的なもう一方の鎖（鎖2）の G'], bothA: [r.both.A, '2本鎖全体の A'], bothG: [r.both.G, '2本鎖全体の G'] };
+      const [ans, label] = map[ask];
+      const d = distinctNumbers(ans, [A, T, G, C, (A + G) / 2, (A + C) / 2, (T + G) / 2, 100 - ans], '%', 1);
+      const why = {
+        s2A: `鎖2のAは鎖1のTと対をつくるので、鎖2のA ＝ 鎖1のT ＝ ${T}% となる`,
+        s2G: `鎖2のGは鎖1のCと対をつくるので、鎖2のG ＝ 鎖1のC ＝ 100 −（${A}＋${T}＋${G}）＝ ${C}% となる`,
+        bothA: `2本鎖全体のAは（鎖1のA＋鎖2のA）÷2 ＝（${A}＋${T}）÷2 ＝ ${fmt(ans, 1)}% となる`,
+        bothG: `鎖1のCは 100 −（${A}＋${T}＋${G}）＝ ${C}% なので、2本鎖全体のGは（鎖1のG＋鎖2のG）÷2 ＝（${G}＋${C}）÷2 ＝ ${fmt(ans, 1)}% となる`,
+      };
+      return {
+        text: `ある2本鎖DNAの一方の鎖（鎖1）の塩基組成は、A ${A}%、T ${T}%、G ${G}%（残りはC）であった。${label}の割合は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${why[ask]}。鎖1と鎖2は相補的で、鎖1のAには鎖2のT、鎖1のGには鎖2のCが必ず向かい合うから、一方の鎖の組成からもう一方の鎖の組成が決まる。`,
+      };
+    },
+  },
+  {
+    id: 'b10-length',
+    stage: 'b10',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        const bp = rng.pick([1000, 2000, 3000, 5000, 10000, 20000, 50000]);
+        const nm = bp * NM_PER_BP;
+        const d = distinctNumbers(nm, [bp * 3.4, bp / 10, bp * 0.68, bp * 0.034, nm * 2], ' nm', 1);
+        return {
+          text: `2本鎖DNAは10塩基対でらせんが1回転し、その長さは3.4 nmである。${bp.toLocaleString('ja-JP')} 塩基対のDNAの長さは何 nm か。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          ordered: true,
+          explanation: `1塩基対あたりの長さは 3.4 ÷ 10 ＝ 0.34 nm なので、${bp.toLocaleString('ja-JP')} × 0.34 ＝ ${fmt(nm, 1)} nm となる。DNAの長さは塩基対の数に比例するから、1塩基対あたりの長さをかければよい。`,
+        };
+      }
+      const turns = rng.pick([50, 100, 150, 200, 300, 500]);
+      const nm = turns * 3.4;
+      const bp = turns * 10;
+      const d = distinctNumbers(bp, [turns, turns * 2, turns * 20, turns * 3.4, nm / 3.4 / 2], ' 塩基対', 0);
+      return {
+        text: `長さ ${fmt(nm, 0)} nm の2本鎖DNAがある。DNAは10塩基対でらせんが1回転し、その長さは3.4 nmである。このDNAは何塩基対か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `らせんの回転数は ${fmt(nm, 0)} ÷ 3.4 ＝ ${turns} 回で、1回転が10塩基対なので ${turns} × 10 ＝ ${bp} 塩基対となる。1塩基対あたり 0.34 nm だから、${fmt(nm, 0)} ÷ 0.34 と計算しても同じになる。`,
+      };
+    },
+  },
+  {
+    id: 'b10-genome-calc',
+    stage: 'b10',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        // ヒトの体細胞のDNAの全長
+        const hap = 3.0e9;
+        const total = hap * 2 * NM_PER_BP * 1e-9; // m
+        const d = distinctNumbers(total, [hap * NM_PER_BP * 1e-9, total * 10, total / 10, hap * 3.4 * 1e-9], ' m', 2);
+        return {
+          text: 'ヒトのゲノム（1組）は約30億（3.0 × 10⁹）塩基対からなる。体細胞1個に含まれるDNAをすべてつなぐと、およそ何 m になるか。ただし、1塩基対の長さを 0.34 nm（1 nm ＝ 10⁻⁹ m）とする。',
+          correct: '約' + d.correct,
+          wrong: d.wrong.map((w) => '約' + w),
+          ordered: true,
+          explanation: `体細胞には両親から受け継いだゲノムが2組あるので、3.0 × 10⁹ × 2 × 0.34 × 10⁻⁹ ≒ ${fmt(total, 2)} m となる。ゲノム1組分（約1 m）ではなく、2組分を計算しなければならないからである。`,
+        };
+      }
+      const genes = rng.pick([2.0e4, 2.2e4]);
+      const aa = rng.pick([300, 400, 500]);
+      const coding = genes * aa * 3;
+      const pct = (coding / 3.0e9) * 100;
+      const d = distinctNumbers(pct, [pct * 2, pct / 3, pct * 3, pct * 10, (genes * aa) / 3.0e9 * 100], '%', 2);
+      return {
+        text: `ヒトのゲノムは約 3.0 × 10⁹ 塩基対で、遺伝子は約 ${sci(genes)} 個ある。1つの遺伝子が平均 ${aa} 個のアミノ酸を指定するとすると、アミノ酸を指定する部分の塩基対の数は、ゲノム全体のおよそ何%か（終止コドンは考えない）。`,
+        correct: '約' + d.correct,
+        wrong: d.wrong.map((w) => '約' + w),
+        ordered: true,
+        explanation: `アミノ酸1個に3塩基対が必要なので、${sci(genes)} × ${aa} × 3 ＝ ${sci(coding)} 塩基対となり、${sci(coding)} ÷ (3.0 × 10⁹) × 100 ≒ ${fmt(pct, 2)}% である。ヒトのゲノムではアミノ酸を指定する部分はごく一部で、大部分は翻訳されない領域だからである。`,
+      };
+    },
+  },
+  {
+    id: 'b10-graph',
+    stage: 'b10',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      // ア〜エ：2本鎖DNA 1つと、A≠T または G≠C の試料（1本鎖DNA）3つ
+      const make2 = () => {
+        const a = rng.int(18, 32);
+        return { A: a, T: a, G: 50 - a, C: 50 - a };
+      };
+      const make1 = () => {
+        for (;;) {
+          const A = rng.int(15, 35), T = rng.int(12, 33), G = rng.int(12, 30);
+          const C = 100 - A - T - G;
+          if (C >= 10 && Math.abs(A - T) >= 6 && Math.abs(G - C) >= 4) return { A, T, G, C };
+        }
+      };
+      const idx = rng.int(0, 3);
+      const samples = [0, 1, 2, 3].map((i) => (i === idx ? make2() : make1()));
+      const cats = ['A', 'T', 'G', 'C'];
+      return {
+        text: '図のア〜エは、4種類のDNA試料の塩基組成（%）である。このうち1つだけが2本鎖DNAで、残りは1本鎖DNAである。2本鎖DNAはどれか。',
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 45, label: '割合（%）', step: 5 },
+          bars: { categories: KATA.slice(0, 4), groups: cats.map((c, ci) => ({ label: c, values: samples.map((s) => s[c]), color: ['c1', 'c2', 'c3', 'c4'][ci] })) },
+          alt: 'DNA試料ア〜エの塩基組成の棒グラフ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 4).filter((_, i) => i !== idx),
+        explanation: `${KATA[idx]}だけがAとT、GとCの割合がそれぞれ等しい。2本鎖DNAではAとT、GとCが相補的に対をつくるので、A＝T、G＝Cになるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b10-pair-term',
+    stage: 'b10',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: 'DNAの2本の鎖の間で対をつくる塩基の組合せとして正しいものはどれか。', correct: 'AとT、GとC', wrong: ['AとG、TとC', 'AとC、GとT', 'AとU、GとC'], explanation: 'DNAではAとT、GとCが対をつくる。この相補的な塩基対によって2本の鎖が結びついているから、一方の鎖の塩基配列が決まればもう一方も決まる。' },
+        { text: 'DNAを構成する基本単位（ヌクレオチド）の成分の組合せとして正しいものはどれか。', correct: 'リン酸・糖（デオキシリボース）・塩基', wrong: ['リン酸・糖（リボース）・塩基', 'アミノ酸・糖・塩基', 'リン酸・脂肪酸・塩基'], explanation: 'DNAのヌクレオチドは、リン酸・糖（デオキシリボース）・塩基からなる。RNAのヌクレオチドは糖がリボースなので、糖の種類でDNAと区別できる。' },
+        { text: '「どの生物の2本鎖DNAでも、Aの割合とTの割合、Gの割合とCの割合はそれぞれ等しい」ことを発見した人物はだれか。', correct: 'シャルガフ', wrong: ['ワトソンとクリック', 'メンデル', 'グリフィス'], explanation: 'この規則はシャルガフが発見した（シャルガフの規則）。この規則は、AとT、GとCが対をつくる二重らせんのモデル（ワトソンとクリック）の手がかりになったので重要である。' },
+        { text: 'DNAの立体構造として正しいものはどれか。', correct: '2本の鎖が塩基どうしで結合し、ねじれた二重らせん構造', wrong: ['1本の鎖が折りたたまれた球状の構造', '3本の鎖がねじれた三重らせん構造', '2本の鎖が糖どうしで結合した平らなはしご構造'], explanation: 'DNAは、2本のヌクレオチド鎖が内側の塩基どうしで結合し、全体がねじれた二重らせん構造をとる。ワトソンとクリックがX線回折の結果などをもとに提唱したモデルで、塩基の相補性からA＝T、G＝Cも説明できるからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b10-genome-term',
+    stage: 'b10',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'ゲノムの説明として最も適当なものはどれか。',
+          correct: 'その生物が生命活動を営むのに必要な、1組の遺伝情報（DNA）の全体',
+          wrong: ['体細胞に含まれるすべてのタンパク質の全体', 'DNAのうち、タンパク質のアミノ酸配列を指定する部分だけ', '1本の染色体に含まれる1つの遺伝子'],
+          explanation: 'ゲノムは、その生物が生きていくのに必要な1組の遺伝情報の全体である。ヒトの体細胞は両親からゲノムを1組ずつ受け継ぐので、ゲノムを2組もっている。',
+        };
+      }
+      return {
+        text: 'ヒトのゲノムについての説明として最も適当なものはどれか。',
+        correct: '約30億塩基対からなり、遺伝子の数は約2万個で、アミノ酸を指定する部分は全体のごく一部である',
+        wrong: ['約30億塩基対からなり、そのすべてがアミノ酸を指定している', '約2万塩基対からなり、遺伝子は約30億個ある', '体細胞ごとに異なり、皮膚の細胞と肝臓の細胞ではゲノムが違う'],
+        explanation: 'ヒトのゲノムは約30億塩基対で、遺伝子は約2万個ある。アミノ酸を指定する部分は全体の1〜2%程度にすぎない。体のどの細胞も同じゲノムをもつが、細胞の種類によってはたらく遺伝子が違うから、さまざまな細胞ができる。',
+      };
+    },
+  },
+];
+return { B10 };
+})();
+
 // ---- questions/a1.js ----
 __m["questions/a1.js"] = (function () {
 // A1 酵素の反応速度 の問題
@@ -4444,7 +6865,7 @@ const A1 = [
       const v = (Vmax * n) / (n + 1);
       const d = distinctNumbers(v, [Vmax / 2, (Vmax * S) / Km, Vmax, Vmax - v, (Vmax * Km) / (Km + S), v / 2, v + Vmax / 10], '', 2);
       return {
-        text: `ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素の反応速度 v は v ＝ Vmax[S]／(Km ＋ [S]) で表され、Vmax ＝ ${Vmax}、Km ＝ ${Km} である。基質濃度 [S] ＝ ${fmt(S, 2)} のときの反応速度はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -4478,8 +6899,10 @@ const A1 = [
       const k = rng.pick(['competitive', 'noncompetitive']);
       const Vmax = rng.pick([40, 50, 60, 80]);
       const Km = rng.pick([2, 3, 4]);
-      const I = rng.pick([2, 4, 6]);
+      // 競争的阻害は阻害剤を薄くし、横軸を広げて、高い基質濃度で最大速度に近づく様子が見えるようにする
+      const I = k === 'competitive' ? 2 : rng.pick([2, 4, 6]);
       const cur = inhibited(k, Vmax, Km, I, 2);
+      const sMax = 200;
       const A = {
         competitive: '競争的阻害（基質濃度を高くすると、阻害の影響が小さくなる）',
         noncompetitive: '非競争的阻害（基質濃度を高くしても、最大速度は回復しない）',
@@ -4487,11 +6910,11 @@ const A1 = [
       return {
         text: '図は、ある酵素の基質濃度と反応速度の関係を、阻害剤を加えない場合（実線）と加えた場合（破線）で比べたものである。この阻害剤による阻害として最も適当なものはどれか。',
         chart: {
-          x: { min: 0, max: 60, label: '基質濃度', step: 10 },
+          x: { min: 0, max: sMax, label: '基質濃度', step: sMax / 5 },
           y: { min: 0, max: Vmax * 1.2, label: '反応速度', step: 10 },
           series: [
-            { points: sample((S) => rate(S, Vmax, Km), 0, 60, 200), color: 'c1', width: 3, label: '阻害剤なし' },
-            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, 60, 200), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
+            { points: sample((S) => rate(S, Vmax, Km), 0, sMax, 300), color: 'c1', width: 3, label: '阻害剤なし' },
+            { points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, sMax, 300), color: 'c2', dash: 'dash', width: 3, label: '阻害剤あり' },
           ],
           alt: '阻害剤のありなしで比べた反応速度のグラフ',
         },
@@ -4516,7 +6939,7 @@ const A1 = [
       ];
       const x = rng.pick(Q);
       return {
-        text: `反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
+        text: `【発展：教科書の範囲外】反応速度の逆数 1/v を縦軸に、基質濃度の逆数 1/[S] を横軸にとったグラフ（ラインウィーバー・バークのプロット）は直線になる。この直線の${x.q}が表すものはどれか。`,
         correct: x.a,
         wrong: ['1/Vmax', '−1/Km', 'Km/Vmax', 'Vmax', 'Km', 'Vmax/Km'],
         explanation: `ミカエリス・メンテンの式の逆数をとると 1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax となるので、${x.q}は ${x.a} を表す。1次関数 y ＝ ax ＋ b と同じ形になるから、傾きが Km/Vmax、y切片が 1/Vmax、y＝0 とおいた x切片が −1/Km になる。`,
@@ -4538,7 +6961,7 @@ const A1 = [
       const cands = ask === 'Vmax' ? [yi, Km, -xi, Vmax * 2, Vmax / 2, Vmax / Km, Vmax * 10, Vmax / 10] : [-xi, Vmax, yi, Km * 2, Km / 2, Km * Vmax, Km * 10, Km / 10];
       const d = distinctNumbers(ans, cands, '', 3);
       return {
-        text: `ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
+        text: `【発展：教科書の範囲外】ある酵素について、1/v を縦軸、1/[S] を横軸にとってグラフにすると直線になり、縦軸との交点（y切片）は ${fmt(yi, 4)}、横軸との交点（x切片）は ${fmt(xi, 4)} であった。この酵素の ${ask} はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -4942,7 +7365,7 @@ const A3 = [
       return {
         text: '個体群密度が高くなると、食物や生活空間の不足、排出物の増加などによって個体の発育や増殖率が変化する。このような影響を何というか。',
         correct: '密度効果',
-        wrong: ['環境収容力', '間接効果', '相変異', '競争的排除'],
+        wrong: ['環境収容力', '間接効果', '生物濃縮', '競争的排除'],
         explanation: 'これは密度効果である。密度が高くなると1個体あたりの資源が減るから、出生率が下がったり死亡率が上がったりして、個体群の成長がおさえられる。',
       };
     },
@@ -5159,12 +7582,17 @@ const { B2 } = __m["questions/b2.js"];
 const { B3 } = __m["questions/b3.js"];
 const { B4 } = __m["questions/b4.js"];
 const { B5 } = __m["questions/b5.js"];
+const { B6 } = __m["questions/b6.js"];
+const { B7 } = __m["questions/b7.js"];
+const { B8 } = __m["questions/b8.js"];
+const { B9 } = __m["questions/b9.js"];
+const { B10 } = __m["questions/b10.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...A1, ...A2, ...A3];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -5297,11 +7725,11 @@ const ids = (course) => STAGES.filter((s) => !course || s.course === course).map
 // progress(p) は [現在値, 目標値]
 const BADGES = [
   { id: 'first', icon: '🌱', name: 'はじめの一問', desc: '4択ラッシュで1問解答する', progress: (p) => [sum(p, 'answered'), 1] },
-  { id: 'dojo-all', icon: '🧭', name: '道場めぐり', desc: '全8ステージの図解道場をひらく', progress: (p) => [STAGES.filter((s) => p.stages[s.id].visited > 0).length, STAGES.length] },
+  { id: 'dojo-all', icon: '🧭', name: '道場めぐり', desc: `全${STAGES.length}ステージの図解道場をひらく`, progress: (p) => [STAGES.filter((s) => p.stages[s.id].visited > 0).length, STAGES.length] },
   { id: 'task-10', icon: '🔬', name: 'やってみよう10', desc: '「やってみよう」課題を10個達成する', progress: (p) => [tasksDone(p, ids()), 10] },
-  { id: 'task-basic', icon: '🧪', name: '生物基礎の探究者', desc: '生物基礎（B1〜B5）の「やってみよう」をすべて達成する', progress: (p) => [tasksDone(p, ids('basic')), tasksTotal(ids('basic'))] },
-  { id: 'task-adv', icon: '🧬', name: '生物の探究者', desc: '生物発展（A1〜A3）の「やってみよう」をすべて達成する', progress: (p) => [tasksDone(p, ids('advanced')), tasksTotal(ids('advanced'))] },
-  { id: 'all-stages', icon: '🗺️', name: '全ステージ挑戦', desc: '8ステージすべての4択ラッシュで解答する', progress: (p) => [STAGES.filter((s) => p.stages[s.id].answered > 0).length, STAGES.length] },
+  { id: 'task-basic', icon: '🧪', name: '生物基礎の探究者', desc: `生物基礎（${ids('basic').length}ステージ）の「やってみよう」をすべて達成する`, progress: (p) => [tasksDone(p, ids('basic')), tasksTotal(ids('basic'))] },
+  { id: 'task-adv', icon: '🧬', name: '生物の探究者', desc: `生物発展（${ids('advanced').length}ステージ）の「やってみよう」をすべて達成する`, progress: (p) => [tasksDone(p, ids('advanced')), tasksTotal(ids('advanced'))] },
+  { id: 'all-stages', icon: '🗺️', name: '全ステージ挑戦', desc: `${STAGES.length}ステージすべての4択ラッシュで解答する`, progress: (p) => [STAGES.filter((s) => p.stages[s.id].answered > 0).length, STAGES.length] },
   { id: 'streak-10', icon: '🔥', name: '10連続正解', desc: '4択で10問連続正解する', progress: (p) => [p.bestStreak, 10] },
   { id: 'streak-30', icon: '⚡', name: '30連続正解', desc: '4択で30問連続正解する', progress: (p) => [p.bestStreak, 30] },
   { id: 'perfect', icon: '💯', name: 'パーフェクト', desc: '4択ラッシュの1ラウンドを全問正解する', progress: (p) => [p.perfect, 1] },
@@ -5312,7 +7740,7 @@ const BADGES = [
     id: 'rate-80',
     icon: '🏅',
     name: '安定した理解',
-    desc: '全8ステージでそれぞれ10問以上解答し、どのステージも正答率80%以上にする',
+    desc: `全${STAGES.length}ステージでそれぞれ10問以上解答し、どのステージも正答率80%以上にする`,
     progress: (p) => [STAGES.filter((s) => p.stages[s.id].answered >= 10 && p.stages[s.id].correct / p.stages[s.id].answered >= 0.8).length, STAGES.length],
   },
   { id: 'summary', icon: '📝', name: '提出の準備', desc: 'ミスサマリーを画像として保存する', progress: (p) => [p.flags.savedSummary ? 1 : 0, 1] },
@@ -5823,8 +8251,8 @@ const GLOSSARY = {
     { term: 'M期（分裂期）', desc: '核分裂と細胞質分裂が起こる時期。前期・中期・後期・終期に分けられる。終わりにDNA量が4から2に戻る。' },
     { term: '間期', desc: 'G1期・S期・G2期をまとめた呼び名。細胞周期の大部分を占めるので、観察すると多くの細胞が間期にある。' },
     { term: '中期', desc: 'M期のうち、染色体が細胞の中央（赤道面）に並ぶ時期。染色体の形や数の観察に適している。' },
-    { term: '細胞質分裂', desc: '核分裂のあと、細胞質が2つに分かれること。これによって複製されたDNAが2つの娘細胞に等しく分配される。' },
-    { term: '各期の長さの求め方', desc: '各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 観察した細胞の総数）。細胞が各時期にばらばらに分布しているときに使える。' },
+    { term: '細胞質分裂', desc: '核分裂のあと、細胞質が2つに分かれること。核分裂（後期）で両極に分かれた染色体がそれぞれの娘細胞に入り、細胞1個あたりのDNA量はここで半分（4→2）になる。' },
+    { term: '各期の長さの求め方', desc: '各期の時間 ＝ 全周期の時間 ×（その期の細胞数 ÷ 調べた細胞の総数）。細胞が各時期にばらばらに分布しているときに使える。間期のG1期・S期・G2期は顕微鏡では区別できないので、細胞1個あたりのDNA量を測定して見分ける。' },
   ],
   b2: [
     { term: '血糖値', desc: '血液中のグルコース濃度。健康な人の空腹時は約100 mg/100mL（約0.1%）に保たれている。' },
@@ -5868,20 +8296,73 @@ const GLOSSARY = {
     { term: 'キーストーン種', desc: '個体数は多くなくても、生態系のバランスを保つうえで大きな影響をもつ種。例：ラッコ、岩礁のヒトデ。' },
     { term: '間接効果', desc: 'ある生物が、直接の捕食・被食関係のない生物に、ほかの生物を介して影響をおよぼすこと。' },
     { term: '生態系のバランス', desc: '生物の種類や個体数が変動しながらも、一定の範囲内に保たれている状態。' },
-    { term: '復元力', desc: '撹乱を受けても、その程度が小さければ元の状態に戻る生態系の性質。' },
+    { term: '復元力', desc: 'かく乱を受けても、その程度が小さければ元の状態に戻る生態系の性質。' },
     { term: 'ケルプ', desc: 'コンブのなかまの大型の褐藻。海中に森のような群落（ケルプの森）をつくり、多くの生物のすみかになる。' },
-    { term: '撹乱', desc: '台風・山火事・人間の活動などで、生態系の状態が乱されること。' },
+    { term: 'かく乱', desc: '台風・山火事・人間の活動などで、生態系の状態が乱されること。' },
+  ],
+  b6: [
+    { term: 'ヘモグロビン', desc: '赤血球に含まれる、鉄を含むタンパク質。酸素分圧の高いところで酸素と結合し、低いところで酸素を離す。' },
+    { term: '酸素ヘモグロビン', desc: 'ヘモグロビンが酸素と結合したもの。肺胞でつくられ、組織で酸素を離してヘモグロビンにもどる。' },
+    { term: '酸素解離曲線', desc: '酸素分圧と、全ヘモグロビンのうち酸素ヘモグロビンになっているものの割合（%）の関係を表したグラフ。S字形になる。' },
+    { term: '分圧', desc: '混合気体の中で、ある気体が占める圧力。肺胞はO₂分圧が高くCO₂分圧が低い。組織はO₂分圧が低くCO₂分圧が高い。教科書の図では相対値で示すことが多い（例：肺胞 O₂ 100・CO₂ 40、組織 O₂ 30・CO₂ 70）。' },
+    { term: 'CO₂分圧の影響', desc: 'CO₂分圧が高いほど曲線は右にずれ、同じO₂分圧でも酸素ヘモグロビンの割合が小さくなる。さかんに呼吸する組織ほど酸素を受け取りやすい。' },
+    { term: '組織で放出される酸素の割合', desc: '肺で酸素と結合していたヘモグロビンのうち、組織で酸素を離したものの割合 ＝（肺での割合 − 組織での割合）÷ 肺での割合 × 100。' },
+    { term: '胎児のヘモグロビン（発展）', desc: '母親のヘモグロビンより酸素と結合しやすい（曲線が左にある）。そのため胎盤で母親の血液から酸素を受け取れる。' },
+  ],
+  b7: [
+    { term: 'ネフロン（腎単位）', desc: '腎小体と細尿管からなる、尿をつくる基本単位。ヒトの腎臓1個に約100万個ある。' },
+    { term: '腎小体', desc: '糸球体とそれを包むボーマンのうをあわせた構造（マルピーギ小体）。ここで血液がろ過される。' },
+    { term: 'ろ過', desc: '糸球体の血液から、血球やタンパク質以外の成分がボーマンのうへこし出されること。こし出された液が原尿。' },
+    { term: '再吸収', desc: '原尿が細尿管（腎細管）・集合管を流れる間に、水・グルコース・無機塩類などが毛細血管へもどされること。グルコースはふつうすべて再吸収される。' },
+    { term: '濃縮率', desc: '尿中の濃度 ÷ 血しょう中の濃度。尿中で何倍に濃くなったかを表す。再吸収されにくい物質ほど大きい。' },
+    { term: 'イヌリン', desc: '植物がつくる多糖類。静脈に注射すると、ろ過されるが再吸収も分泌もされないので、原尿量 ＝ 尿量 × イヌリンの濃縮率 で原尿量を求められる。' },
+    { term: '再吸収率', desc: '（原尿中の量 − 尿中の量）÷ 原尿中の量。原尿中の量 ＝ 原尿量 × 濃度、尿中の量 ＝ 尿量 × 濃度。' },
+    { term: 'バソプレシン', desc: '脳下垂体後葉から分泌されるホルモン。集合管での水の再吸収を促進し、尿量を減らす。' },
+    { term: '鉱質コルチコイド', desc: '副腎皮質から分泌されるホルモン。細尿管でのナトリウムイオンの再吸収を促進する。' },
+  ],
+  b8: [
+    { term: 'バイオーム（生物群系）', desc: 'その地域の気候に応じて成立する植生と、そこにすむ動物などの生物のまとまり。陸上では主に年平均気温と年降水量で決まる。' },
+    { term: '森林・草原・荒原', desc: '年降水量が多いと森林、少ないと草原、非常に少ないか気温が非常に低いと荒原になる。' },
+    { term: '熱帯多雨林・亜熱帯多雨林', desc: '高温多雨の地域の常緑広葉樹林。熱帯多雨林は種類が非常に多く、高木が層をなす。日本の南西諸島には亜熱帯多雨林（ガジュマル・アコウ・ヘゴ、海岸のマングローブ）が分布する。' },
+    { term: '照葉樹林', desc: '暖温帯の常緑広葉樹林。葉の表面に光沢がある。日本では関東〜九州の低地（スダジイ・タブノキ・アラカシ）。' },
+    { term: '夏緑樹林', desc: '冷温帯の落葉広葉樹林。冬に葉を落とす。日本では東北地方・北海道南西部など（ブナ・ミズナラ）。' },
+    { term: '針葉樹林', desc: '亜寒帯の、おもに常緑針葉樹からなる森林（落葉針葉樹のカラマツ類も含む）。日本では北海道東北部（エゾマツ・トドマツ）や本州中部の亜高山帯（シラビソ・オオシラビソ・コメツガ）。' },
+    { term: '硬葉樹林・雨緑樹林', desc: '硬葉樹林は夏に乾燥し冬に雨が多い地域の常緑樹林（オリーブ・コルクガシ）。雨緑樹林は雨季と乾季のある熱帯の、乾季に落葉する森林（チーク）。' },
+    { term: 'サバンナ・ステップ', desc: 'どちらも降水量の少ない地域の草原。熱帯の草原がサバンナ（樹木がまばら）、温帯の草原がステップ。' },
+    { term: '砂漠・ツンドラ', desc: '荒原。砂漠は降水量が非常に少ない地域、ツンドラは年平均気温が非常に低い地域（コケ植物・地衣類）。' },
+    { term: '水平分布', desc: '緯度（主に気温）に応じたバイオームの分布。日本では南から亜熱帯多雨林→照葉樹林→夏緑樹林→針葉樹林。' },
+    { term: '垂直分布', desc: '標高に応じたバイオームの分布。本州中部では丘陵帯（照葉樹林）・山地帯（夏緑樹林）・亜高山帯（針葉樹林）・高山帯。標高が100 m 上がるごとに気温は約0.5〜0.6℃下がる。' },
+    { term: '森林限界', desc: 'それより高い所では高木の森林が成立しなくなる境界。本州中部では標高約2500 m。上の高山帯にはハイマツや高山草原（お花畑）が見られる。' },
+    { term: '暖かさの指数（発展）', desc: '月平均気温が5℃をこえる月について（月平均気温 − 5）を合計した値。0〜15 ツンドラ、15〜45 針葉樹林、45〜85 夏緑樹林、85〜180 照葉樹林、180〜240 亜熱帯多雨林、240以上 熱帯多雨林。' },
+  ],
+  b9: [
+    { term: '転写', desc: 'DNAの塩基配列をもとに、相補的な塩基をもつmRNAがつくられること。真核生物では核の中で起こる。' },
+    { term: '翻訳', desc: 'mRNAの塩基配列をもとにアミノ酸がつながり、タンパク質がつくられること。細胞質のリボソームで起こる。' },
+    { term: '鋳型鎖', desc: 'DNAの2本の鎖のうち、転写のときに写しとられる側の鎖。mRNAは鋳型鎖と相補的な塩基配列になる。「生物」では、DNAの鎖に5′末端・3′末端の向きがあり、mRNAは鋳型鎖と逆向き（5′→3′の向き）に合成されることを学ぶ。' },
+    { term: 'RNA', desc: '糖がリボース、塩基がA・U（ウラシル）・G・Cの核酸。ふつう1本鎖。DNAのAに対してはUが対応する。' },
+    { term: 'コドン', desc: 'mRNAの連続した3つの塩基の並び。1つのコドンが1つのアミノ酸（または終止）を指定する。4³＝64通りある。' },
+    { term: '遺伝暗号表', desc: 'コドンとアミノ酸の対応表。AUGはメチオニンを指定し、翻訳の開始点（開始コドン）にもなる。UAA・UAG・UGAは終止コドン。' },
+    { term: '突然変異（置換）', desc: '1つの塩基が別の塩基に置きかわること。アミノ酸が1つ変わる、変わらない、途中に終止コドンができる、などが起こる（終止コドンがなくなる、開始コドンがこわれる場合もある）。「生物」で詳しく学ぶ。' },
+    { term: '突然変異（欠失・挿入）', desc: '塩基がなくなる・加わること。1塩基（3の倍数でない数）の欠失・挿入では、それより後ろの読み枠がずれ（フレームシフト）、多くのアミノ酸が変わりやすい。「生物」で詳しく学ぶ。' },
+  ],
+  b10: [
+    { term: 'ヌクレオチド', desc: 'リン酸・糖・塩基が結合したもの。DNAの糖はデオキシリボースで、塩基はA（アデニン）・T（チミン）・G（グアニン）・C（シトシン）。' },
+    { term: '二重らせん構造', desc: '2本のヌクレオチド鎖が内側の塩基どうしで結合し、ねじれた構造。ワトソンとクリックが提唱した。' },
+    { term: '相補性', desc: 'AとT、GとCが必ず対をつくる性質。一方の鎖の塩基配列が決まれば、もう一方の鎖の塩基配列も決まる。' },
+    { term: 'シャルガフの規則', desc: 'どの生物の2本鎖DNAでも、Aの割合＝Tの割合、Gの割合＝Cの割合となる規則。AとTの割合は生物によって異なる。' },
+    { term: '塩基対とDNAの長さ', desc: '2本鎖DNAは10塩基対でらせんが1回転し、その長さは約3.4 nm（1塩基対あたり0.34 nm）。' },
+    { term: 'ゲノム', desc: 'その生物が生命活動を営むのに必要な1組の遺伝情報。ヒトのゲノムは約30億塩基対で、遺伝子は約2万個。体細胞はゲノムを2組もつ。' },
   ],
   a1: [
     { term: '酵素', desc: '生体内の化学反応を促進する触媒としてはたらくタンパク質。反応の前後で変化せず、くり返しはたらく。' },
     { term: '基質・活性部位', desc: '酵素が作用する物質が基質。酵素の中で基質が結合して反応が起こる部分が活性部位。' },
     { term: '基質特異性', desc: '酵素が特定の基質にだけ作用する性質。活性部位の立体構造に合う基質としか結合できないため。' },
     { term: '酵素−基質複合体', desc: '酵素と基質が一時的に結合したもの。基質濃度が十分高いとほぼすべての酵素がこの状態になり、反応速度が最大（Vmax）になる。' },
-    { term: 'ミカエリス・メンテンの式', desc: 'v ＝ Vmax[S]／(Km＋[S])。基質濃度 [S] と反応速度 v の関係を表す。' },
-    { term: 'ミカエリス定数 Km', desc: '反応速度が最大速度の半分（Vmax/2）になるときの基質濃度。小さいほど酵素と基質が結合しやすい。' },
+    { term: 'ミカエリス・メンテンの式（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。v ＝ Vmax[S]／(Km＋[S])。基質濃度 [S] と反応速度 v の関係を表す。' },
+    { term: 'ミカエリス定数 Km（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。反応速度が最大速度の半分（Vmax/2）になるときの基質濃度。小さいほど酵素と基質が結合しやすい。' },
     { term: '競争的阻害', desc: '基質と似た阻害剤が活性部位を基質と奪い合う阻害。見かけの Km が大きくなるが、Vmax は変わらない。基質濃度を高くすると影響が小さくなる。' },
     { term: '非競争的阻害', desc: '阻害剤が活性部位以外に結合して酵素のはたらきを失わせる阻害。Vmax が小さくなり、Km は変わらない。' },
-    { term: 'ラインウィーバー・バークのプロット', desc: '1/v を縦軸、1/[S] を横軸にとったグラフ。1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax の直線になり、y切片が 1/Vmax、x切片が −1/Km、傾きが Km/Vmax。' },
+    { term: 'ラインウィーバー・バークのプロット（発展）', desc: '高校の教科書の範囲外（大学で学ぶ内容）。1/v を縦軸、1/[S] を横軸にとったグラフ。1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax の直線になり、y切片が 1/Vmax、x切片が −1/Km、傾きが Km/Vmax。' },
     { term: '最適温度・失活', desc: '反応速度が最大になる温度が最適温度。高温では酵素タンパク質が熱変性して失活し、温度を下げても戻らない（不可逆的）。' },
     { term: '最適pH', desc: '酵素が最もよくはたらく pH。ペプシン約2、だ液アミラーゼ約7、トリプシン約8。' },
   ],
@@ -5903,7 +8384,7 @@ const GLOSSARY = {
     { term: '指数関数的成長', desc: '資源に制限がないとき、個体数に比例した速さで増え続ける成長（dN/dt ＝ rN）。J字形の曲線になる。' },
     { term: 'ロジスティック成長', desc: 'dN/dt ＝ rN(K − N)/K で表される成長。増加速度は N ＝ K/2 で最大になり、個体数は環境収容力 K に近づく。' },
     { term: '環境収容力', desc: 'ある環境で維持できる最大の個体数（K）。食物・空間などの資源で決まる。' },
-    { term: '内的自然増加率', desc: '資源に制限がないときの、1個体あたりの増加の速さ（r）。' },
+    { term: '内的自然増加率（発展）', desc: '高校の教科書の範囲外。資源に制限がないときの、1個体あたりの増加の速さ（r）。' },
     { term: '密度効果', desc: '個体群密度の変化が、個体の発育や増殖率などに影響をおよぼすこと。' },
     { term: '被食者−捕食者相互関係', desc: '被食者が増えると捕食者が遅れて増え、捕食者が増えると被食者が減る…という周期的な変動が起こることがある。' },
     { term: '標識再捕法', desc: '捕まえた個体に標識をつけて放し、再び捕まえたときの標識個体の割合から全体の数を推定する方法。全体 ＝ 標識数 × 再捕獲数 ÷ 再捕獲中の標識数。' },

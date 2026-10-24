@@ -39,7 +39,7 @@ export const dojo = {
     top.append(leg, table);
 
     const segC = segmented({ label: '交配', options: [{ value: 'mono', label: 'Aa × Aa' }, { value: 'testMono', label: 'Aa × aa（検定交雑）' }, { value: 'di', label: 'AaBb × AaBb' }], value: st.cross, onChange: (v) => { st.cross = v; update(); } });
-    const sN = slider({ label: '子の数 n（交配の回数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
+    const sN = slider({ label: '子の数 n（調べた子の個体数）', min: 1, max: 4, step: 0.01, value: st.logN, format: (v) => Math.round(Math.pow(10, v)).toLocaleString('ja-JP') + ' 個体', onInput: (v) => { st.logN = v; update(); } });
     const sR = slider({ label: '組換え価 r', min: 0, max: 50, step: 1, value: st.r, format: (v) => v + ' %', onInput: (v) => { st.r = v; update(); } });
     const again = h('button', { type: 'button', class: 'btn primary', onclick: () => { st.seed = randomSeed(); st.rerolls += 1; update(); } }, '🎲 もう一度交配');
     const ctlRatio = h('div', null, segC.el);
