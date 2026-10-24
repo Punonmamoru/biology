@@ -143,15 +143,17 @@ function drawOperon(canvas, s, mutant) {
     g.stroke();
   }
 
-  // RNAポリメラーゼ
+  // RNAポリメラーゼ（リプレッサーがオペレーターに結合しているときは、プロモーターに結合できない）
   const polX = mid('pro');
+  const polY = s.repressorBound ? 58 : bandY - 2;
   g.fillStyle = c1;
   g.strokeStyle = fg;
   g.lineWidth = 1.5;
   g.beginPath();
-  g.ellipse(polX, bandY - 2, 20, 13, 0, 0, Math.PI * 2);
+  g.ellipse(polX, polY, 20, 13, 0, 0, Math.PI * 2);
   g.fill();
   g.stroke();
+  if (s.repressorBound) text('× 結合できない', polX, polY - 22, c1, 'center', true);
 
   // 転写（mRNA）
   if (s.level !== 'off') {
@@ -184,14 +186,14 @@ export const dojo = {
     { id: 'on', text: 'ラクトースあり・グルコースなしにして、転写がオンになることを確かめよう。', short: 'ラクトースあり → オン' },
     { id: 'glc', text: '（発展）ラクトースとグルコースが両方あるとき、転写がわずかしか起こらないことを確かめよう。', short: 'グルコースがあるとき' },
     { id: 'mut', text: '「変異」を切り替えて、ラクトースがなくても転写される変異を見つけよう。', short: 'つねに転写される変異' },
-    { id: 'diauxie', text: '②で時刻を動かし、グルコースがなくなったあとで転写がオンになり、酵素が増えることを確かめよう。', short: '二段階の増殖' },
+    { id: 'diauxie', text: '（発展）②で時刻を動かし、グルコースがなくなったあとで転写がオンになり、酵素が増えることを確かめよう。', short: '二段階の増殖' },
   ],
   mount(root, ctx) {
     const st = { tab: 'switch', lactose: false, glucose: false, mutant: 'none', t: 2, touched: 0 };
     const run = diauxie();
     const tG = glucoseOutTime(run);
 
-    const tabs = segmented({ label: '表示', options: [{ value: 'switch', label: '①スイッチの切替' }, { value: 'culture', label: '②培養の時間変化' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const tabs = segmented({ label: '表示', options: [{ value: 'switch', label: '①スイッチの切替' }, { value: 'culture', label: '②培養の時間変化（発展）' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
     const top = panel(null);
     root.append(tabs.el, top);
     top.append(h('h2', null, 'ラクトースオペロン（大腸菌） ', modelNote()));
@@ -211,7 +213,7 @@ export const dojo = {
     const segM = segmented({ label: '変異', options: Object.entries(MUTANTS).map(([value, m]) => ({ value, label: m.short })), value: st.mutant, onChange: (v) => { st.mutant = v; st.touched++; update(); } });
     const ctlSwitch = h('div', null, segL.el, segG.el, segM.el);
     const sT = slider({ label: '培養をはじめてからの時間', min: 0, max: T, step: 0.1, value: st.t, format: (v) => `${fmt(v, 1)} 時間`, onInput: (v) => { st.t = v; update(); } });
-    const ctlCulture = h('div', null, h('p', { class: 'small' }, 'グルコースとラクトースを両方含む培地で、野生型の大腸菌を培養する。'), sT.el);
+    const ctlCulture = h('div', null, h('p', { class: 'small' }, '（発展）グルコースとラクトースを両方含む培地で、野生型の大腸菌を培養する。グルコースがあると転写を促進するタンパク質（CRP）がはたらかないため、大腸菌はグルコースを先に使う。'), sT.el);
     const exp = explainBox();
     root.append(panel('操作', ctlSwitch, ctlCulture), panel('いま何が起きているか', exp.el));
 
@@ -259,13 +261,13 @@ export const dojo = {
         lines.push('調節遺伝子に変異があってリプレッサーがつくられないので、オペレーターに結合するものがない。RNAポリメラーゼはいつでも転写を進められるので、ラクトースがなくても構造遺伝子が転写される。');
       } else if (s.repressorBound) {
         lines.push(cond.mutant === 'noInducer' && cond.lactose
-          ? 'リプレッサーが、ラクトースからできる物質と結合できない変異をもつので、ラクトースがあってもリプレッサーはオペレーターに結合したまま。構造遺伝子は転写されない。'
-          : '調節遺伝子からつくられたリプレッサー（調節タンパク質）がオペレーターに結合している。そのため、RNAポリメラーゼがプロモーターに結合しても転写を進められず、構造遺伝子は転写されない。');
+          ? '調節遺伝子の変異で、ラクトースからできる物質と結合できないリプレッサーがつくられるので、ラクトースがあってもリプレッサーはオペレーターに結合したまま。構造遺伝子は転写されない。'
+          : '調節遺伝子からつくられたリプレッサー（調節タンパク質）がオペレーターに結合している。そのため、RNAポリメラーゼがプロモーターに結合できず、構造遺伝子は転写されない。');
         lines.push('ラクトースがないときに、ラクトースを分解する酵素をつくらないことで、むだなエネルギーや材料を使わずにすむ。');
       } else if (cond.mutant === 'operator') {
         lines.push('オペレーターの塩基配列が変わってリプレッサーが結合できないので、ラクトースの有無に関係なく転写を止められない。');
       } else {
-        lines.push('ラクトースがあると、ラクトースからできる物質がリプレッサーに結合する。するとリプレッサーの形が変わってオペレーターに結合できなくなり、RNAポリメラーゼが構造遺伝子を転写する。');
+        lines.push('ラクトースがあると、ラクトースからできる物質がリプレッサーに結合する。するとリプレッサーの形が変わってオペレーターに結合できなくなり、RNAポリメラーゼがプロモーターに結合して構造遺伝子を転写する。');
       }
       if (s.level !== 'off') {
         lines.push(s.level === 'high'
@@ -274,10 +276,10 @@ export const dojo = {
       }
       if (q) {
         lines.push(q.G > 0.5
-          ? `培養 ${fmt(st.t, 1)} 時間：グルコースが残っているので、大腸菌はグルコースを使って増えている。ラクトースオペロンはほとんど転写されず、β-ガラクトシダーゼはほとんどない。`
+          ? `（発展）培養 ${fmt(st.t, 1)} 時間：グルコースが残っているので、大腸菌はグルコースを使って増えている。ラクトースオペロンはほとんど転写されず、β-ガラクトシダーゼはほとんどない。`
           : q.L > 0.5
-            ? `培養 ${fmt(st.t, 1)} 時間：グルコースは約 ${fmt(tG, 1)} 時間でなくなった。そのあと転写がオンになり、β-ガラクトシダーゼがつくられるまで増殖がいったん止まる。酵素がそろうと、ラクトースを使って再び増える（二段階の増殖）。`
-            : `培養 ${fmt(st.t, 1)} 時間：ラクトースも使い切ったので、増殖は止まった。ラクトースがなくなるとリプレッサーが再びオペレーターに結合し、転写はオフにもどる。`);
+            ? `（発展）培養 ${fmt(st.t, 1)} 時間：グルコースは約 ${fmt(tG, 1)} 時間でなくなった。そのあと転写がオンになり、β-ガラクトシダーゼがつくられるまで増殖がいったん止まる。酵素がそろうと、ラクトースを使って再び増える（二段階の増殖）。`
+            : `（発展）培養 ${fmt(st.t, 1)} 時間：ラクトースも使い切ったので、増殖は止まった。ラクトースがなくなるとリプレッサーが再びオペレーターに結合し、転写はオフにもどる。ただし、すでにつくられた酵素はすぐにはなくならない（増殖しないのでうすまらない）ので、グラフの酵素の量は高いまま残る。`);
         drawCulture();
       }
       exp.set(lines);

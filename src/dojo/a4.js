@@ -76,8 +76,8 @@ export const dojo = {
         regions,
         series: [{ points: sample((t) => membrane(t, stim), 0, T_END, 360), color: 'c1', width: 3 }],
         hlines: [
-          { y: REST, color: 'c3', dash: 'dot', label: `静止電位 ${REST} mV`, align: 'right' },
-          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値 ${THRESHOLD} mV` },
+          { y: REST, color: 'c3', dash: 'dot', label: `静止電位 ${REST} mV` },
+          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値に相当する膜電位 ${THRESHOLD} mV`, align: 'right' },
         ],
         vlines: [{ x: 1, color: 'c4', dash: 'dot' }],
         markers: on ? [{ x: PEAK_TIME, y: PEAK, color: 'c1' }] : [],
@@ -111,7 +111,7 @@ export const dojo = {
       } else if (!on) {
         lines.push(`刺激の強さ ${stim} は閾値（${THRESHOLD_STIM}）より小さいので、膜電位が少し上がるだけで、すぐにもとにもどる。活動電位は生じない。`);
       } else {
-        lines.push(`刺激の強さ ${stim} は閾値（${THRESHOLD_STIM}）以上なので、活動電位が生じる。電位依存性のナトリウムチャネルが開いて Na⁺ が細胞内に流入し、膜電位が急に上がって内側が正になる（脱分極）。`);
+        lines.push(`刺激の強さ ${stim} は閾値（${THRESHOLD_STIM}）以上なので、活動電位が生じる。電位依存性のナトリウムチャネルが開いて Na⁺ が細胞内に流入し、膜電位が急に上がって（脱分極）、内側が正になる。脱分極とは、膜電位が静止電位より正の方向へ変化することである。`);
         lines.push('すぐにナトリウムチャネルは閉じ、電位依存性のカリウムチャネルが開いて K⁺ が流出するので、膜電位は下がって静止電位にもどる（再分極）。一時的に静止電位より低くなってからもとにもどる。');
         lines.push(`閾値以上なら、刺激をどれだけ強くしても活動電位の大きさ（${PEAK - REST} mV）は変わらない（全か無かの法則）。刺激の強さの情報は、活動電位の大きさではなく、発生する頻度で伝えられる。`);
       }
@@ -146,7 +146,7 @@ export const dojo = {
         ],
       });
       leg.replaceChildren(legend([{ label: `点B（筋肉から ${st.dB} mm）を刺激`, color: 'c1' }, { label: `点A（筋肉から ${st.dA} mm）を刺激`, color: 'c2', dash: 'dash' }]));
-      note.textContent = '座骨神経と腓腹筋（ふくらはぎの筋肉）の標本で、神経上の2点A・Bを刺激し、筋肉が収縮しはじめるまでの時間をはかる実験の模式。';
+      note.textContent = '座骨神経と腓腹筋（ふくらはぎの筋肉）の標本で、神経上の2点A・Bを刺激し、筋肉が収縮しはじめるまでの時間をはかる実験の模式。' + (st.fiber === 'plain' ? '「無髄神経繊維」は、伝導速度を比べるために、仮に神経が無髄神経繊維だった場合を示した模式（実際の骨格筋の運動神経は有髄神経繊維）。' : '');
       chart2.draw({
         alt: '神経と筋肉と刺激点の位置',
         x: { min: -20, max: 100, label: '筋肉からの距離（mm）', ticks: [0, 20, 40, 60, 80, 100] },
@@ -157,7 +157,7 @@ export const dojo = {
           { x: st.dB, y: 0.5, color: 'c1', label: `B（${st.dB} mm）` },
           { x: st.dA, y: 0.5, color: 'c2', shape: 'square', label: `A（${st.dA} mm）` },
         ],
-        texts: [{ x: 70, y: 0.2, text: '神経（座骨神経）', color: 'muted' }],
+        texts: [{ x: 70, y: 0.2, text: st.fiber === 'plain' ? '神経（仮に無髄とした場合）' : '神経（座骨神経）', color: 'muted' }],
       });
       leg2.replaceChildren();
       note2.textContent = '';
