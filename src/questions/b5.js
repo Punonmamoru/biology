@@ -1,5 +1,5 @@
 // B5 生態系のバランス（キーストーン種）の問題
-import { KATA, assignmentQuestion } from './common.js';
+import { KATA, assignmentQuestion, distinctNumbers } from './common.js';
 import { simulate, SCALE } from '../models/keystone.js';
 
 export const B5 = [
@@ -177,6 +177,27 @@ export const B5 = [
           ? ['減って、乱獲前より少ない値で落ち着いた', '一時的に増えたが、乱獲前と同じ値に戻った', 'ラッコと同じ割合で減り続けた']
           : ['増えて、乱獲前より多い値で落ち着いた', '一時的に減ったが、乱獲前と同じ値に戻った', 'ラッコと同じ割合で増え続けた'],
         explanation: `${target}は乱獲前の約${Math.round(before[up ? 'u' : 'k'] * SCALE[up ? 'u' : 'k'])}から約${Math.round(end[up ? 'u' : 'k'] * SCALE[up ? 'u' : 'k'])}になって落ち着いた。ラッコが減るとウニを食べる量が減ってウニが増え、増えたウニがケルプを多く食べるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b5-survey-calc',
+    stage: 'b5',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const u0 = rng.pick([2, 3, 4, 5]);
+      const k = rng.pick([3, 4, 5, 6, 8, 10]);
+      const u1 = u0 * k;
+      const kelp0 = rng.pick([60, 70, 80, 90]);
+      const kelp1 = rng.pick([5, 10, 15, 20]);
+      const d = distinctNumbers(k, [u1 - u0, k + 1, kelp0 / kelp1, 1 / k, k - 1, k * 2, u1 + u0], ' 倍', 2);
+      return {
+        text: `ある海域で、ラッコが乱獲される前と後に調査を行った。ウニの密度は 1m² あたり ${u0}個体から ${u1}個体に、ケルプがおおう面積の割合は ${kelp0}% から ${kelp1}% に変化した。ウニの密度は何倍になったか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${u1} ÷ ${u0} ＝ ${k}倍になった。ラッコに食べられなくなったウニが増え、そのウニがケルプを食べたので、ケルプの割合は ${kelp0}% から ${kelp1}% に減ったと考えられる（間接効果）。`,
       };
     },
   },

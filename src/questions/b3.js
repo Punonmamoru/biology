@@ -1,6 +1,7 @@
 // B3 免疫の一次応答・二次応答 の問題
 import { antibodyModel, responseShape, PRIMARY, SECONDARY, FLOOR, peakDelay } from '../models/immune.js';
 import { sample } from '../lib/series.js';
+import { distinctNumbers } from './common.js';
 
 function twoExposureChart(d1, d2, antigen2, log) {
   const m = antibodyModel([{ day: d1, antigen: 'A' }, { day: d2, antigen: antigen2 }]);
@@ -189,6 +190,28 @@ export const B3 = [
         correct: x.a,
         wrong: Q.map((y) => y.a).concat(['拒絶反応']),
         explanation: `これは${x.a}である。${x.why}。`,
+      };
+    },
+  },
+  {
+    id: 'b3-peak-day-calc',
+    stage: 'b3',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const d1 = rng.int(1, 10);
+      const d2 = d1 + rng.int(20, 60);
+      const p1 = peakDelay(PRIMARY);
+      const p2 = peakDelay(SECONDARY);
+      const ask = rng.pick([1, 2]);
+      const ans = ask === 1 ? d1 + p1 : d2 + p2;
+      const d = distinctNumbers(ans, ask === 1 ? [d1 + p2, d1, d1 + p1 * 2, d2] : [d2 + p1, d2, d2 + p2 * 2, d1 + p1], ' 日目', 0);
+      return {
+        text: `ある抗原を注射すると、初めての注射では約${p1}日後に、同じ抗原の2回目以降の注射では約${p2}日後に、血液中の抗体量が最大になるとする。${d1}日目に1回目、${d2}日目に2回目の注射をしたとき、${ask}回目の注射による抗体量の最大はおよそ何日目か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${ask}回目は${ask === 1 ? '一次応答' : '二次応答'}なので、${ask === 1 ? d1 : d2} ＋ ${ask === 1 ? p1 : p2} ＝ ${ans}日目となる。${ask === 1 ? '初めての抗原では、対応するリンパ球が活性化・増殖するまで時間がかかるからである。' : '2回目は記憶細胞がすぐにはたらくので、一次応答より速く最大になるからである。'}`,
       };
     },
   },

@@ -1,5 +1,6 @@
 // B2 血糖値の調節 の問題
-import { KATA, assignmentQuestion } from './common.js';
+import { KATA, assignmentQuestion, distinctNumbers } from './common.js';
+import { fmt } from '../lib/format.js';
 import { PRESETS, simulate, summarize, hormoneRef } from '../models/glucose.js';
 import { thin } from '../lib/series.js';
 
@@ -276,6 +277,27 @@ export const B2 = [
         correct: lab(ans),
         wrong: opts.map(lab),
         explanation: `グラフの山の位置から、血糖値は食後約${ans}分で最大になる。そのあとはインスリンのはたらきで細胞へのグルコースの取り込みが進むから、2時間ほどで空腹時の値近くまで戻る。`,
+      };
+    },
+  },
+  {
+    id: 'b2-glucose-amount',
+    stage: 'b2',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const L = rng.pick([4, 4.5, 5, 5.5, 6]);
+      const g0 = rng.pick([90, 95, 100]);
+      const g1 = g0 + rng.pick([20, 30, 40, 50, 60]);
+      const dL = L * 10; // 100 mL 単位の数
+      const ans = ((g1 - g0) * dL) / 1000; // g
+      const d = distinctNumbers(ans, [(g1 * dL) / 1000, ans * 10, ans / 10, ((g1 - g0) * L) / 1000, (g0 * dL) / 1000], ' g', 3);
+      return {
+        text: `ある人の血糖値が、空腹時の ${g0} mg/100mL から食後に ${g1} mg/100mL に上がった。この人の血液の量を ${fmt(L, 1)} L とすると、血液中のグルコースは何 g 増えたか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${fmt(L, 1)} L は 100 mL の ${fmt(dL, 0)} 倍なので、増えた量は (${g1} − ${g0}) × ${fmt(dL, 0)} ＝ ${fmt((g1 - g0) * dL, 0)} mg ＝ ${fmt(ans, 3)} g となる。血糖値は 100 mL あたりの量で表されているから、血液全体の量に換算する必要がある。`,
       };
     },
   },
