@@ -89,7 +89,7 @@ export function renderRush(app, key) {
       box.append(wrap);
       const c = createChart(wrap, { aspect: 0.62, maxHeight: 340, label: q.chart.alt || '問題の図' });
       c.draw(q.chart);
-      if ((q.chart.series || []).some((s) => s.label && s.label.length > 1)) wrap.append(legendFromSpec(q.chart));
+      if (q.chart.bars || (q.chart.series || []).some((s) => s.label && s.label.length > 1)) wrap.append(legendFromSpec(q.chart));
       wrap.append(h('div', { class: 'small muted' }, 'モデルによる模式図'));
     }
     const choiceBox = h('div', { class: 'choices', role: 'group', 'aria-label': '選択肢' });
