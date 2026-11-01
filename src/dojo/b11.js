@@ -45,12 +45,12 @@ export const dojo = {
         x: { min: 0, max: end, label: '年数', step: st.mode === 'primary' ? 100 : 25 },
         y: { min: 0, max: 110, label: '相対値（%）', step: 20 },
         series: [
-          { points: sample((t) => state(eff(t)).floorLight, 0, end, 300), color: 'c5', width: 3, label: '林床の相対照度' },
-          { points: sample((t) => state(eff(t)).sunTrees, 0, end, 300), color: 'c2', dash: 'dash', width: 3, label: '陽樹' },
+          { points: sample((t) => state(eff(t)).floorLight, 0, end, 300), color: 'c5', width: 3, label: '林床の相対照度', labelAt: end * 0.12 },
+          { points: sample((t) => state(eff(t)).sunTrees, 0, end, 300), color: 'c2', dash: 'dash', width: 3, label: '陽樹', labelAt: st.mode === 'primary' ? 260 : 60 },
           { points: sample((t) => state(eff(t)).shadeTrees, 0, end, 300), color: 'c3', dash: 'dot', width: 3, label: '陰樹' },
           { points: sample((t) => (state(eff(t)).height / 25) * 100, 0, end, 300), color: 'c1', dash: 'dashdot', width: 2, label: '高さ', labelAt: end * 0.15 },
         ],
-        hlines: [{ y: COMP.sun, color: 'c2', dash: 'dot', width: 1, label: '陽樹の芽ばえが育つ明るさの目安', align: 'right' }],
+        hlines: [{ y: COMP.sun, color: 'c2', dash: 'dot', width: 1 }],
         vlines: [{ x: st.t, color: 'fg', dash: 'dot' }],
       });
       leg.replaceChildren(legend([
@@ -58,6 +58,7 @@ export const dojo = {
         { label: '陽樹の割合（森林の高木に占める）', color: 'c2', dash: 'dash' },
         { label: '陰樹の割合', color: 'c3', dash: 'dot' },
         { label: '植生の高さ（最大＝100）', color: 'c1', dash: 'dashdot' },
+        { label: `相対照度 ${COMP.sun}%（陽樹の芽ばえが育つ明るさの目安）`, color: 'c2', dash: 'dot' },
       ]));
       const sunOk = seedlingGrows('sun', s.floorLight);
       const shadeOk = seedlingGrows('shade', s.floorLight);

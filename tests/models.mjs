@@ -23,6 +23,11 @@ import * as mu from '../src/models/muscle.js';
 import * as ph2 from '../src/models/phylo.js';
 import * as ax from '../src/models/auxin.js';
 import * as pr from '../src/models/production.js';
+import * as su from '../src/models/succession.js';
+import * as sy from '../src/models/synapse.js';
+import * as bt from '../src/models/biotech.js';
+import * as bh from '../src/models/behavior.js';
+import * as pp from '../src/models/photoperiod.js';
 import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
 
 const results = [];
@@ -743,6 +748,68 @@ section('A13 生態系の物質生産');
   check('森林：総生産量は頭打ち、呼吸量は増え続け、純生産量は若い時期に最大となってその後減少', ages.every((q, i) => i === 0 || q.resp > ages[i - 1].resp) && near(ages[149].gross, ages[99].gross, 0.5) && iBest > 5 && iBest < 60 && ages[149].net < ages[iBest].net * 0.7, `純生産量が最大の林齢 ${iBest + 1} 年`);
   const ages2 = Array.from({ length: 1000 }, (_, i) => pr.forest(i + 1));
   check('森林：どの林齢でも呼吸量は総生産量より小さく、純生産量は正（1〜1000年）', ages2.every((q) => q.resp < q.gross && q.net > 0), `1000年で純生産量 ${f(ages2[999].net, 1)}`);
+}
+
+// ---------- B11 ----------
+section('B11 植生の遷移');
+{
+  const order = [0, 60, 130, 200, 320, 500].map((t) => su.stageAt(t).id).join();
+  check('遷移の順：荒原 → 草原 → 低木林 → 陽樹林 → 混交林 → 陰樹林', order === 'bare,grass,shrub,sun,mixed,climax', order);
+  let mono = true;
+  for (let t = 1; t <= 600; t++) if (su.state(t).floorLight > su.state(t - 1).floorLight + 1e-9) mono = false;
+  check('林床の相対照度は遷移とともに小さくなる（単調に減少）', mono);
+  const sunEnd = su.STAGES.find((x) => x.id === 'mixed').from;
+  check('陽樹林の段階のうちに林床が暗くなり（相対照度10%未満）、陽樹の芽ばえが育たなくなる', !su.seedlingGrows('sun', su.state(sunEnd - 10).floorLight) && su.seedlingGrows('sun', su.state(su.STAGES.find((x) => x.id === 'sun').from - 30).floorLight), `混交林の直前 ${f(su.state(sunEnd - 10).floorLight, 1)}%`);
+  check('極相林の林床（相対照度 約3%）でも陰樹の芽ばえは育つ', su.seedlingGrows('shade', su.state(600).floorLight) && !su.seedlingGrows('sun', su.state(600).floorLight), `${f(su.state(600).floorLight, 1)}%`);
+  check('陽樹の割合はいったん増えてから減り、陰樹は後半に増えて優占する', su.state(250).sunTrees > 70 && su.state(600).sunTrees < 5 && su.state(600).shadeTrees > 95);
+  check('相対照度 ＝ 林床 ÷ 林外 × 100（5 ÷ 100 → 5%）', su.relativeLight(5, 100) === 5);
+}
+
+// ---------- A14 ----------
+section('A14 シナプスと興奮の統合');
+{
+  const peak = (inp) => { let m = -999; for (let t = 0; t <= sy.T_END; t += 0.05) m = Math.max(m, sy.potential(t, inp)); return m; };
+  const fires = (c) => sy.firstCrossing(sy.buildInputs(c)) != null;
+  check('EPSP 1回（＋8 mV）では閾値（−55 mV）に達しない', !fires({ nA: 1 }) && near(peak(sy.buildInputs({ nA: 1 })), -62, 0.01));
+  check('時間的加重：短い間隔（2ミリ秒）の2回で閾値に達し、長い間隔（20ミリ秒）では達しない', fires({ nA: 2, interval: 2 }) && !fires({ nA: 2, interval: 20 }));
+  check('空間的加重：A と B の同時入力で閾値に達する', fires({ nA: 1, useB: true }));
+  check('抑制性シナプス（IPSP）が加わると閾値に達しなくなる', !fires({ nA: 1, useB: true, useC: true }) && peak(sy.buildInputs({ nA: 1, useC: true })) < peak(sy.buildInputs({ nA: 1 })));
+  check('同時入力の単純な和：EPSP 8 mV × 2 − IPSP 5 mV → −59 mV', sy.summedPeak(2, 1) === -59);
+}
+
+// ---------- A15 ----------
+section('A15 PCRと電気泳動');
+{
+  check('PCR：n サイクルで 2ⁿ 倍（1分子 → 10サイクルで1024、30サイクルで約10億）', bt.copies(1, 10) === 1024 && bt.copies(1, 30) === 1073741824 && bt.cyclesToReach(1, 1e6) === 20);
+  check('PCR の温度：熱変性 ＞ 伸長 ＞ アニーリング（95・72・55℃）', bt.STEPS[0].temp > bt.STEPS[2].temp && bt.STEPS[2].temp > bt.STEPS[1].temp);
+  let mono = true;
+  for (let i = 1; i < bt.LADDER.length; i++) if (!(bt.distanceOf(bt.LADDER[i]) > bt.distanceOf(bt.LADDER[i - 1]))) mono = false;
+  check('短い断片ほど遠くまで移動し、移動距離から長さを逆算できる', mono && near(bt.lengthOf(bt.distanceOf(1234)), 1234, 1e-6));
+  const fr = (c) => bt.fragments(6000, c).join();
+  check('環状DNAの断片：1か所 → 全長1本、2か所 → 2本（合計は全長）', fr([500]) === '6000' && fr([500, 2500]) === '4000,2000' && fr([1500, 4500]) === '3000,3000');
+}
+
+// ---------- A16 ----------
+section('A16 動物の行動');
+{
+  check('ダンスの角度：太陽と同じ方位 → 真上（0°）、反対 → 真下（180°）', bh.danceAngle(180, 180) === 0 && Math.abs(bh.danceAngle(90, 270)) === 180);
+  check('太陽の方向から時計回り90°のえさ場 → 真上から右へ90°（太陽 南、えさ場 西）', bh.danceAngle(180, 270) === 90 && bh.danceAngle(180, 90) === -90);
+  let inv = true;
+  for (const sun of [90, 135, 180, 225, 270]) for (let food = 0; food < 360; food += 15) if (bh.foodAzimuth(sun, bh.danceAngle(sun, food)) !== food) inv = false;
+  check('ダンスの角度と太陽の方位から、えさ場の方位を正しく逆算できる', inv);
+  check('近いと円形ダンス、遠いと8の字ダンス。遠いほど回数が少ない', bh.danceType(50) === 'round' && bh.danceType(500) === 'waggle' && bh.dancesPer15s(2000) < bh.dancesPer15s(500));
+}
+
+// ---------- A17 ----------
+section('A17 光周性と花芽形成');
+{
+  const cr = 10.5;
+  check('短日植物：暗期14時間で花芽形成、暗期10時間ではしない', pp.flowers('short', 14, cr) && !pp.flowers('short', 10, cr));
+  check('長日植物：暗期10時間で花芽形成、暗期14時間ではしない', pp.flowers('long', 10, cr) && !pp.flowers('long', 14, cr));
+  const dp = pp.darkPeriods(10, 6, 1);
+  check('光中断：暗期14時間を6時間後に1時間中断 → 6時間と7時間に分かれ、最長7時間', dp.periods.join() === '6,7' && dp.longest === 7);
+  check('光中断で、短日植物は花芽を形成しなくなり、長日植物は形成するようになる', !pp.flowers('short', dp.longest, cr) && pp.flowers('long', dp.longest, cr));
+  check('中性植物は日長に関係なく花芽を形成する', [4, 10, 20].every((d) => pp.flowers('neutral', d, cr)));
 }
 
 const ng = results.filter((r) => !r.ok);

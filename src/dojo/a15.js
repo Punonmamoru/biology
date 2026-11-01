@@ -115,7 +115,6 @@ export const dojo = {
         texts: [
           ...LADDER.map((bp) => ({ x: 0.62, y: -distanceOf(bp), text: bp.toLocaleString('ja-JP'), align: 'right', color: 'muted' })),
           ...uniq.map((bp) => ({ x: 2.4, y: -distanceOf(bp), text: `${bp.toLocaleString('ja-JP')}${frs.filter((x) => x === bp).length > 1 ? '（2本分）' : ''}`, align: 'left', color: 'c1' })),
-          { x: 2.55, y: 4, text: '－（ウェル）', align: 'right', color: 'fg' },
         ],
       });
       leg.replaceChildren(h('p', { class: 'small muted' }, '上のウェルに DNA を入れ、上が陰極（－）、下が陽極（＋）。マーカーの数字は塩基対。'));
