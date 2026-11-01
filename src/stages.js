@@ -23,6 +23,11 @@ export const STAGES = [
   { id: 'a6', code: 'A6', course: 'advanced', title: '集団遺伝', unit: '生物の進化', lead: 'ハーディー・ワインベルグの法則の計算と、集団の大きさによる遺伝的浮動のちがい。' },
   { id: 'a7', code: 'A7', course: 'advanced', title: '遺伝子発現の調節', unit: '遺伝情報の発現と発生', lead: 'ラクトースオペロン。リプレッサーの結合で転写のオン・オフが切りかわる。' },
   { id: 'a8', code: 'A8', course: 'advanced', title: '生存曲線', unit: '生態と環境', lead: '早死型・平均型・晩死型の比較と、生命表からの死亡率の計算。' },
+  { id: 'a9', code: 'A9', course: 'advanced', title: '呼吸と発酵', unit: '生命現象と物質', lead: '呼吸商と呼吸基質、酵母の呼吸とアルコール発酵の割合を、O₂とCO₂の量から計算する。' },
+  { id: 'a10', code: 'A10', course: 'advanced', title: '筋収縮', unit: '生物の環境応答', lead: '刺激の頻度と単収縮・強縮、サルコメアの長さと張力（滑り説）。' },
+  { id: 'a11', code: 'A11', course: 'advanced', title: '分子系統と分子時計', unit: '生物の進化', lead: 'アミノ酸の違いの数から分岐年代を求め、違いの数の表から系統樹をつくる。' },
+  { id: 'a12', code: 'A12', course: 'advanced', title: '植物ホルモン（オーキシン）', unit: '生物の環境応答', lead: 'オーキシン濃度と根・芽・茎の成長。水平に置いた芽ばえの重力屈性。' },
+  { id: 'a13', code: 'A13', course: 'advanced', title: '生態系の物質生産', unit: '生態と環境', lead: '総生産量・純生産量・成長量と、栄養段階ごとのエネルギー効率の計算。' },
 ];
 
 export function stageById(id) {

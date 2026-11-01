@@ -18,6 +18,11 @@ import * as lm from '../src/models/limiting.js';
 import * as pg from '../src/models/popgen.js';
 import * as op from '../src/models/operon.js';
 import * as sv from '../src/models/survival.js';
+import * as rs from '../src/models/respiration.js';
+import * as mu from '../src/models/muscle.js';
+import * as ph2 from '../src/models/phylo.js';
+import * as ax from '../src/models/auxin.js';
+import * as pr from '../src/models/production.js';
 import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
 
 const results = [];
@@ -637,6 +642,103 @@ section('A8 生存曲線');
   check('晩死型は若い区分の死亡率が低く老齢で高い、早死型は最初の区分の死亡率が最も高い', mLate[0] < 0.01 && mLate[8] > 0.5 && mEarly[0] === Math.max(...mEarly) && mEarly[0] > 0.9, `晩死型 ${f(mLate[0], 3)}→${f(mLate[8], 2)}、早死型 区分1 ${f(mEarly[0], 3)}`);
   check('生命表：死亡率 ＝ 死亡数 ÷ はじめの生存数（1000・700・420 → 0.3・0.4）', sv.lifeTable([1000, 700, 420]).map((r) => f(r.mortality, 3)).join() === '0.3,0.4');
   check('生命表から型を判定（死亡率一定 → 平均型、初期が高い → 早死型、老齢が高い → 晩死型）', sv.typeOfTable([1000, 500, 250, 125, 63]) === 'mid' && sv.typeOfTable([1000, 100, 50, 40, 32]) === 'early' && sv.typeOfTable([1000, 980, 951, 856, 428]) === 'late');
+}
+
+// ---------- A9 ----------
+section('A9 呼吸と発酵');
+{
+  check('呼吸商：炭水化物 1.0、脂肪（トリステアリン）114/163 ≒ 0.70、タンパク質 約0.8', rs.SUBSTRATES.carb.rq === 1 && near(rs.SUBSTRATES.fat.rq, 0.70, 0.005) && rs.SUBSTRATES.protein.rq === 0.8, `${f(rs.SUBSTRATES.fat.rq, 3)}`);
+  // 反応式の原子の数がつり合っているか（C・H・O）
+  const atoms = (c, h2, o) => ({ C: c, H: h2, O: o });
+  const sum = (...xs) => xs.reduce((a, x) => ({ C: a.C + x.C, H: a.H + x.H, O: a.O + x.O }), { C: 0, H: 0, O: 0 });
+  const mul = (k, x) => ({ C: k * x.C, H: k * x.H, O: k * x.O });
+  const eqs = [
+    [sum(atoms(6, 12, 6), mul(6, atoms(0, 0, 2)), mul(6, atoms(0, 2, 1))), sum(mul(6, atoms(1, 0, 2)), mul(12, atoms(0, 2, 1)))],
+    [sum(mul(2, atoms(57, 110, 6)), mul(163, atoms(0, 0, 2))), sum(mul(114, atoms(1, 0, 2)), mul(110, atoms(0, 2, 1)))],
+    [sum(mul(2, atoms(51, 98, 6)), mul(145, atoms(0, 0, 2))), sum(mul(102, atoms(1, 0, 2)), mul(98, atoms(0, 2, 1)))],
+    [sum(mul(2, atoms(57, 104, 6)), mul(160, atoms(0, 0, 2))), sum(mul(114, atoms(1, 0, 2)), mul(104, atoms(0, 2, 1)))],
+    [atoms(6, 12, 6), sum(mul(2, atoms(2, 6, 1)), mul(2, atoms(1, 0, 2)))],
+  ];
+  check('反応式の原子の数がつり合う（グルコースの呼吸、トリステアリン・トリパルミチン・トリオレイン、アルコール発酵）', eqs.every(([l, r]) => l.C === r.C && l.H === r.H && l.O === r.O));
+  const r = rs.fromRespirometer(10, 3);
+  check('呼吸計：KOH側 10・水側 3 → O₂ 10、CO₂ 7、呼吸商 0.7', r.o2 === 10 && r.co2 === 7 && near(r.rq, 0.7, 1e-12));
+  let splitOk = true;
+  for (const fr of [0, 0.25, 0.5, 0.75, 0.9]) {
+    const y = rs.yeast(6, fr);
+    const sp = rs.splitGlucose(y.o2, y.co2);
+    if (!(near(sp.aer, y.aer, 1e-9) && near(sp.fer, y.fer, 1e-9))) splitOk = false;
+  }
+  check('O₂吸収量とCO₂放出量から、呼吸と発酵のグルコースを正しく逆算できる', splitOk);
+  check('発酵の割合が大きいほど CO₂÷O₂ が大きく、発酵75%で2になる', rs.yeast(6, 0.75).rq === 2 && rs.yeast(6, 0.5).rq < rs.yeast(6, 0.75).rq && rs.yeast(6, 0).rq === 1);
+}
+
+// ---------- A10 ----------
+section('A10 筋収縮');
+{
+  let peakT = 0;
+  let peak = 0;
+  for (let t = 0; t <= 0.3; t += 0.0005) { const v = mu.tension(t, [0]); if (v > peak) { peak = v; peakT = t; } }
+  check('単収縮：潜伏期 約0.01秒、ピーク 約0.03秒、約0.1秒でほぼもとにもどる', mu.tension(0.009, [0]) === 0 && peakT > 0.02 && peakT < 0.05 && mu.tension(0.12, [0]) < peak * 0.1, `ピーク ${f(peakT, 3)} 秒、0.12秒で ${f(mu.tension(0.12, [0]) / peak * 100, 1)}%`);
+  const types = [2, 5, 15, 30, 60, 100].map((x) => mu.contractionType(x).type);
+  check('刺激の頻度を上げると 単収縮 → 不完全強縮 → 完全強縮', types.join() === 'single,single,incomplete,incomplete,complete,complete', types.join('・'));
+  const tet = mu.contractionType(100).max / mu.SINGLE_PEAK;
+  check('完全強縮の張力は単収縮の数倍（2〜4倍）', tet >= 2 && tet <= 4, `${f(tet, 2)} 倍`);
+  check('サルコメアの長さと張力：2.0〜2.2 μm で最大、3.6 μm で0、2.2 μm より長いと直線的に減少', mu.sarcomereTension(2.0) === 1 && mu.sarcomereTension(2.2) === 1 && mu.sarcomereTension(3.6) === 0 && near(mu.sarcomereTension(2.9), 0.5, 1e-9));
+  check('2.0 μm より短いと張力は減少する', mu.sarcomereTension(1.8) < 1 && mu.sarcomereTension(1.5) < mu.sarcomereTension(1.8));
+  const b1 = mu.bands(2.6);
+  const b2 = mu.bands(2.2);
+  check('収縮（2.6 → 2.2 μm）で暗帯は不変、明帯とH帯は短くなる', b1.A === b2.A && b2.I < b1.I && b2.H < b1.H && near(b1.H, 0.6, 1e-9) && near(b1.I, 1.0, 1e-9));
+}
+
+// ---------- A11 ----------
+section('A11 分子系統と分子時計');
+{
+  check('違いの数は分岐年代に比例（D ＝ 2rt）', ph2.diffs(100, 0.2) === 40 && near(ph2.divergenceTime(40, 0.2), 100, 1e-9));
+  check('比例による分岐年代の推定：80百万年で18 → 72 なら 320 百万年', near(ph2.proportionalTime(80, 18, 72), 320, 1e-9));
+  let treeOk = true;
+  for (const pair of [['A', 'B'], ['A', 'C'], ['B', 'C']]) {
+    const m = ph2.distanceMatrix({ pair, t1: 30, t2: 90, t3: 250, rate: 0.2 });
+    const { steps } = ph2.upgma(m);
+    if (!(steps[0].members.sort().join() === [...pair].sort().join() && steps[1].members.length === 3 && !steps[1].members.includes('D'))) treeOk = false;
+    if (!near(steps[0].height / 0.2, 30, 1e-9) || !near(steps[2].height / 0.2, 250, 1e-9)) treeOk = false;
+  }
+  check('違いの数の表から、正しい形の系統樹と分岐年代を復元できる（3通りの形）', treeOk);
+  check('分子進化の速度の順：フィブリノペプチド ＞ ヘモグロビン ＞ シトクロム c ＞ ヒストン', ph2.RATE_ORDER.join() === 'フィブリノペプチド,ヘモグロビン,シトクロム c,ヒストン H4');
+}
+
+// ---------- A12 ----------
+section('A12 植物ホルモン（オーキシン）');
+{
+  const opt = (o) => {
+    let best = -99;
+    let bx = 0;
+    for (let x = ax.X_MIN; x <= ax.X_MAX; x += 0.01) { const e = ax.effect(o, x); if (e > best) { best = e; bx = x; } }
+    return bx;
+  };
+  const o = { root: opt('root'), bud: opt('bud'), stem: opt('stem') };
+  check('最適濃度は 根 ＜ 芽 ＜ 茎（約10⁻¹⁰・10⁻⁸・10⁻⁵ mol/L）', o.root < o.bud && o.bud < o.stem && near(o.root, -10, 0.05) && near(o.stem, -5, 0.05), `${f(o.root, 1)}・${f(o.bud, 1)}・${f(o.stem, 1)}`);
+  check('高濃度では抑制（効果が負）、低濃度では効果ほぼ0', ['root', 'bud', 'stem'].every((k) => ax.effect(k, ax.zeroPoint(k) + 0.5) < 0 && ax.effect(k, ax.ORGANS[k].opt - 4) < 0.01));
+  check('茎の成長を促進する濃度（10⁻⁶）で、根の成長は抑制される', ax.effect('stem', -6) > 0.3 && ax.effect('root', -6) < -0.5);
+  let smooth = true;
+  for (const k of ['root', 'bud', 'stem']) for (let x = ax.X_MIN; x < ax.X_MAX; x += 0.01) if (Math.abs(ax.effect(k, x + 0.01) - ax.effect(k, x)) > 0.02) smooth = false;
+  check('効果の曲線はなめらか（段差なし）', smooth);
+  const s = ax.horizontal('stem', -7.5, 4);
+  const r = ax.horizontal('root', -7.5, 4);
+  check('水平に置くと（上側 10⁻⁷·⁵、下側4倍）茎は上へ、根は下へ曲がる', s.bend === 'up' && r.bend === 'down');
+}
+
+// ---------- A13 ----------
+section('A13 生態系の物質生産');
+{
+  const b = pr.budget();
+  check('生産者：純生産量 ＝ 総生産量 − 呼吸量 ＝ 成長量 ＋ 被食量 ＋ 枯死量', near(b.P.net, b.P.gross - b.P.resp, 1e-9) && near(b.P.net, b.P.growth + b.P.grazed + b.P.dead, 1e-9));
+  check('消費者：同化量 ＝ 摂食量 − 不消化排出量、生産量 ＝ 同化量 − 呼吸量 ＝ 成長量 ＋ 被食量 ＋ 死滅量', [b.C1, b.C2].every((c) => near(c.assim, c.intake - c.undigested, 1e-9) && near(c.prod, c.assim - c.resp, 1e-9) && near(c.prod, c.growth + c.grazed + c.dead, 1e-9)));
+  check('生産者の被食量 ＝ 一次消費者の摂食量、一次消費者の被食量 ＝ 二次消費者の摂食量', b.P.grazed === b.C1.intake && b.C1.grazed === b.C2.intake);
+  const e = pr.efficiency(b);
+  check('上の栄養段階ほど同化量が小さく、エネルギー効率は数%〜十数%', b.C1.assim < b.P.gross && b.C2.assim < b.C1.assim && e.c1 > 1 && e.c1 < 20, `一次 ${f(e.c1, 1)}%・二次 ${f(e.c2, 1)}%`);
+  const ages = Array.from({ length: 150 }, (_, i) => pr.forest(i + 1));
+  const iBest = ages.reduce((bi, q, i) => (q.net > ages[bi].net ? i : bi), 0);
+  check('森林：総生産量は頭打ち、呼吸量は増え続け、純生産量は若い時期に最大となってその後減少', ages.every((q, i) => i === 0 || q.resp > ages[i - 1].resp) && near(ages[149].gross, ages[99].gross, 0.5) && iBest > 5 && iBest < 60 && ages[149].net < ages[iBest].net * 0.5, `純生産量が最大の林齢 ${iBest + 1} 年`);
 }
 
 const ng = results.filter((r) => !r.ok);

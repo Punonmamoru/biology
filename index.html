@@ -344,7 +344,7 @@ table.data tr.hl td { background: var(--accent-soft); font-weight: 700; }
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script>
 (function () {
-const __BUILD__ = {"version":"1.0.0","date":"2026-10-24"};
+const __BUILD__ = {"version":"1.0.0","date":"2026-11-01"};
 window.__BIOLOGY_BUILD__ = __BUILD__;
 'use strict';
 
@@ -1084,6 +1084,11 @@ const STAGES = [
   { id: 'a6', code: 'A6', course: 'advanced', title: '集団遺伝', unit: '生物の進化', lead: 'ハーディー・ワインベルグの法則の計算と、集団の大きさによる遺伝的浮動のちがい。' },
   { id: 'a7', code: 'A7', course: 'advanced', title: '遺伝子発現の調節', unit: '遺伝情報の発現と発生', lead: 'ラクトースオペロン。リプレッサーの結合で転写のオン・オフが切りかわる。' },
   { id: 'a8', code: 'A8', course: 'advanced', title: '生存曲線', unit: '生態と環境', lead: '早死型・平均型・晩死型の比較と、生命表からの死亡率の計算。' },
+  { id: 'a9', code: 'A9', course: 'advanced', title: '呼吸と発酵', unit: '生命現象と物質', lead: '呼吸商と呼吸基質、酵母の呼吸とアルコール発酵の割合を、O₂とCO₂の量から計算する。' },
+  { id: 'a10', code: 'A10', course: 'advanced', title: '筋収縮', unit: '生物の環境応答', lead: '刺激の頻度と単収縮・強縮、サルコメアの長さと張力（滑り説）。' },
+  { id: 'a11', code: 'A11', course: 'advanced', title: '分子系統と分子時計', unit: '生物の進化', lead: 'アミノ酸の違いの数から分岐年代を求め、違いの数の表から系統樹をつくる。' },
+  { id: 'a12', code: 'A12', course: 'advanced', title: '植物ホルモン（オーキシン）', unit: '生物の環境応答', lead: 'オーキシン濃度と根・芽・茎の成長。水平に置いた芽ばえの重力屈性。' },
+  { id: 'a13', code: 'A13', course: 'advanced', title: '生態系の物質生産', unit: '生態と環境', lead: '総生産量・純生産量・成長量と、栄養段階ごとのエネルギー効率の計算。' },
 ];
 
 function stageById(id) {
@@ -5526,6 +5531,1194 @@ dojo.tasks[4].check = (s) => s.clsMoves >= 3;
 return { dojo };
 })();
 
+// ---- models/respiration.js ----
+__m["models/respiration.js"] = (function () {
+// A9 呼吸と発酵（呼吸商）
+// 呼吸商 RQ ＝ 放出したCO₂の体積 ÷ 吸収したO₂の体積（同じ温度・圧力のもとでは物質量の比と同じ）
+//   炭水化物（グルコース）：C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O → 6CO₂ ＋ 12H₂O　　RQ ＝ 6/6 ＝ 1.0
+//   脂肪（トリステアリン）：2C₅₇H₁₁₀O₆ ＋ 163O₂ → 114CO₂ ＋ 110H₂O　　RQ ＝ 114/163 ≒ 0.70
+//   タンパク質：約0.8（アミノ酸の種類によって異なる。窒素は尿素などとして排出される）
+// アルコール発酵：C₆H₁₂O₆ → 2C₂H₅OH ＋ 2CO₂（O₂を使わない）
+const SUBSTRATES = {
+  carb: { name: '炭水化物', example: 'グルコース', rq: 1.0, eq: 'C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O → 6CO₂ ＋ 12H₂O', o2: 6, co2: 6 },
+  fat: { name: '脂肪', example: 'トリステアリン', rq: 114 / 163, eq: '2C₅₇H₁₁₀O₆ ＋ 163O₂ → 114CO₂ ＋ 110H₂O', o2: 163, co2: 114 },
+  protein: { name: 'タンパク質', example: 'アミノ酸', rq: 0.8, eq: '（アミノ酸の種類によって異なる。約0.8）', o2: null, co2: null },
+};
+
+function rq(co2, o2) {
+  return co2 / o2;
+}
+
+// 呼吸計（KOH を入れたフラスコと水を入れたフラスコ）
+//   KOH はCO₂を吸収するので、KOH側の気体の減少量 ＝ 吸収したO₂の量
+//   水側の気体の減少量 ＝ 吸収したO₂ − 放出したCO₂
+function respirometer(o2, co2) {
+  return { koh: o2, water: o2 - co2 };
+}
+function fromRespirometer(kohDecrease, waterDecrease) {
+  const o2 = kohDecrease;
+  const co2 = kohDecrease - waterDecrease;
+  return { o2, co2, rq: co2 / o2 };
+}
+
+// 酵母がグルコースを呼吸とアルコール発酵に使う。glucose：消費したグルコース［mol］、fermFrac：そのうち発酵に使った割合
+function yeast(glucose, fermFrac) {
+  const aer = glucose * (1 - fermFrac);
+  const fer = glucose * fermFrac;
+  const o2 = 6 * aer;
+  const co2 = 6 * aer + 2 * fer;
+  return { aer, fer, o2, co2, ethanol: 2 * fer, rq: o2 > 0 ? co2 / o2 : Infinity };
+}
+
+// O₂吸収量とCO₂放出量から、呼吸と発酵に使われたグルコースを求める
+//   呼吸：O₂ 6 につきグルコース 1、CO₂ 6　→ 呼吸のグルコース ＝ O₂ ÷ 6
+//   発酵：CO₂ 2 につきグルコース 1　　　　→ 発酵のグルコース ＝ (CO₂ − O₂) ÷ 2
+function splitGlucose(o2, co2) {
+  return { aer: o2 / 6, fer: (co2 - o2) / 2 };
+}
+
+// アルコール発酵ではグルコース1分子あたり ATP 2分子。呼吸ではそれよりずっと多い（教科書により最大約38分子など目安が異なるので、数値は問わない）
+const ATP_FERM = 2;
+return { SUBSTRATES, rq, respirometer, fromRespirometer, yeast, splitGlucose, ATP_FERM };
+})();
+
+// ---- dojo/a9.js ----
+__m["dojo/a9.js"] = (function () {
+// A9 呼吸と発酵（呼吸商）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { SUBSTRATES, respirometer, yeast, splitGlucose } = __m["models/respiration.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'fat', text: '①で脂肪を選び、呼吸商が約0.7になること、水を入れたフラスコでも気体が減ることを確かめよう。', short: '脂肪の呼吸商' },
+    { id: 'protein', text: '①でタンパク質を選び、呼吸商が約0.8になることを確かめよう。', short: 'タンパク質の呼吸商' },
+    { id: 'ferm', text: '②で発酵の割合を100%にして、O₂を吸収しないのにCO₂が放出されることを確かめよう。', short: '発酵だけのとき' },
+    { id: 'rq2', text: '②で、O₂吸収量とCO₂放出量の比（CO₂÷O₂）がちょうど2になる発酵の割合を見つけよう。', short: 'CO₂÷O₂＝2' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'rq', sub: 'carb', ferm: 0, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'rq', label: '①呼吸基質と呼吸商' }, { value: 'yeast', label: '②酵母の呼吸と発酵' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const eq = h('p', { class: 'small' });
+    top.append(eq);
+    const chart = createChart(top, { label: 'O₂吸収量とCO₂放出量の棒グラフ', aspect: 0.6 });
+    const leg = h('div');
+    const table = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, table, note);
+
+    const segS = segmented({ label: '呼吸基質', options: Object.entries(SUBSTRATES).map(([value, s]) => ({ value, label: s.name })), value: st.sub, onChange: (v) => { st.sub = v; st.touched++; update(); } });
+    const ctlRq = h('div', null, segS.el);
+    const sF = slider({ label: '消費したグルコースのうち、アルコール発酵に使われた割合', min: 0, max: 100, step: 5, value: st.ferm, format: (v) => `${v} %`, onInput: (v) => { st.ferm = v; st.touched++; update(); } });
+    const ctlYeast = h('div', null, h('p', { class: 'small' }, '酵母は、O₂があると呼吸を、O₂が少ないとアルコール発酵を行う。ここでは、グルコース 6 mol を消費したとする。'), sF.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlRq, ctlYeast), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlRq.hidden = st.tab !== 'rq';
+      ctlYeast.hidden = st.tab !== 'yeast';
+      update();
+    }
+
+    function drawRq() {
+      const s = SUBSTRATES[st.sub];
+      const o2 = 100;
+      const co2 = o2 * s.rq;
+      const r = respirometer(o2, co2);
+      title.replaceChildren(`${s.name}を呼吸基質にしたとき `, modelNote('O₂吸収量を100とした相対値'));
+      eq.textContent = `${s.example}：${s.eq}`;
+      const spec = {
+        alt: `O₂吸収量 100、CO₂放出量 ${fmt(co2, 0)}`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 120, label: '気体の量（相対値）', step: 20 },
+        bars: { categories: ['O₂ 吸収量', 'CO₂ 放出量'], groups: [{ values: [o2, co2], color: 'c1', label: '気体の体積（O₂吸収量を100とする）' }] },
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+      table.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '呼吸計'), h('th', null, '気体の減少量'), h('th', null, '意味'))),
+          h('tbody', null,
+            h('tr', null, h('td', null, 'KOH水溶液を入れたフラスコ'), h('td', null, fmt(r.koh, 0)), h('td', null, '吸収したO₂（CO₂はKOHに吸収される）')),
+            h('tr', null, h('td', null, '水を入れたフラスコ'), h('td', null, fmt(r.water, 0)), h('td', null, '吸収したO₂ − 放出したCO₂')),
+          ),
+        ),
+      );
+      note.textContent = '同じ温度・圧力では、気体の体積は物質量（分子の数）に比例する。発芽種子を2つのフラスコに入れて気体の減少量をはかる実験の模式。';
+      exp.set([
+        `呼吸商（RQ）＝ 放出したCO₂の体積 ÷ 吸収したO₂の体積 ＝ ${fmt(co2, 0)} ÷ ${o2} ＝ ${fmt(s.rq, 2)}。`,
+        st.sub === 'carb'
+          ? '炭水化物（グルコース）では、O₂ 6分子を吸収してCO₂ 6分子を放出するので、呼吸商は1.0になる。'
+          : st.sub === 'fat'
+            ? '脂肪は炭水化物に比べて分子中の酸素の割合が小さいので、CO₂と水にまで分解するのに多くのO₂が必要になり、呼吸商は約0.7と小さくなる。'
+            : 'タンパク質（アミノ酸）は、窒素がアンモニアなどとして取り除かれたあと呼吸に使われ、呼吸商は約0.8になる。',
+        `呼吸計の実験では、KOH側の減少量 ${fmt(r.koh, 0)} が吸収したO₂、両方の差 ${fmt(r.koh, 0)} − ${fmt(r.water, 0)} ＝ ${fmt(r.koh - r.water, 0)} が放出したCO₂を表すので、呼吸商 ＝ (KOH側 − 水側) ÷ KOH側 で求められる。`,
+      ]);
+      return { rq: s.rq };
+    }
+
+    function drawYeast() {
+      const y = yeast(6, st.ferm / 100);
+      title.replaceChildren('酵母の呼吸とアルコール発酵 ', modelNote('グルコース 6 mol を消費したとき'));
+      eq.textContent = '呼吸：C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O → 6CO₂ ＋ 12H₂O　　アルコール発酵：C₆H₁₂O₆ → 2C₂H₅OH ＋ 2CO₂';
+      const spec = {
+        alt: `O₂吸収 ${fmt(y.o2, 1)} mol、CO₂放出 ${fmt(y.co2, 1)} mol`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 40, label: '物質量（mol）', step: 5 },
+        bars: {
+          categories: ['O₂ 吸収量', 'CO₂ 放出量', 'エタノール'],
+          groups: [
+            { values: [y.o2, 6 * y.aer, 0], color: 'c1', label: '呼吸による' },
+            { values: [0, 2 * y.fer, y.ethanol], color: 'c2', label: 'アルコール発酵による' },
+          ],
+        },
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+      const sp = y.o2 > 0 ? splitGlucose(y.o2, y.co2) : null;
+      table.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, ''), h('th', null, '呼吸'), h('th', null, '発酵'), h('th', null, '合計'))),
+          h('tbody', null,
+            h('tr', null, h('td', null, 'グルコース（mol）'), h('td', null, fmt(y.aer, 2)), h('td', null, fmt(y.fer, 2)), h('td', null, '6')),
+            h('tr', null, h('td', null, 'O₂ 吸収（mol）'), h('td', null, fmt(y.o2, 2)), h('td', null, '0'), h('td', null, fmt(y.o2, 2))),
+            h('tr', null, h('td', null, 'CO₂ 放出（mol）'), h('td', null, fmt(6 * y.aer, 2)), h('td', null, fmt(2 * y.fer, 2)), h('td', null, fmt(y.co2, 2))),
+          ),
+        ),
+      );
+      note.textContent = 'O₂吸収量とCO₂放出量の比は、呼吸と発酵が同時に起こっているときは呼吸基質の呼吸商とは一致しない。';
+      const lines = [];
+      lines.push(y.o2 > 0
+        ? `CO₂放出量 ÷ O₂吸収量 ＝ ${fmt(y.co2, 2)} ÷ ${fmt(y.o2, 2)} ＝ ${fmt(y.rq, 2)}。発酵の割合が大きいほど、O₂を使わずに出るCO₂が増えるので、この比は1より大きくなる。`
+        : 'すべてアルコール発酵なので、O₂はまったく吸収せず、CO₂だけが放出される（比は求められない）。発酵ではグルコース1分子からCO₂とエタノールが2分子ずつできる。');
+      if (sp) lines.push(`逆に、O₂吸収量とCO₂放出量から求めると、呼吸に使ったグルコース ＝ O₂ ÷ 6 ＝ ${fmt(sp.aer, 2)} mol、発酵に使ったグルコース ＝ (CO₂ − O₂) ÷ 2 ＝ ${fmt(sp.fer, 2)} mol。呼吸ではO₂とCO₂が同じ量なので、O₂より多いCO₂はすべて発酵によるものだからである。`);
+      lines.push('アルコール発酵ではグルコース1分子あたりATPが2分子しかできないが、呼吸ではずっと多くのATPができる。そのため、O₂が十分にあると酵母は主に呼吸を行う。');
+      exp.set(lines);
+      return { rq: y.rq, o2: y.o2 };
+    }
+
+    function update() {
+      const r = st.tab === 'rq' ? drawRq() : drawYeast();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'rq' && s.sub === 'fat';
+dojo.tasks[1].check = (s) => s.tab === 'rq' && s.sub === 'protein';
+dojo.tasks[2].check = (s) => s.tab === 'yeast' && s.ferm === 100;
+dojo.tasks[3].check = (s) => s.tab === 'yeast' && s.o2 > 0 && Math.abs(s.rq - 2) < 1e-9;
+return { dojo };
+})();
+
+// ---- models/muscle.js ----
+__m["models/muscle.js"] = (function () {
+// A10 筋収縮
+// ① 刺激の頻度と収縮（カエルの腓腹筋を想定した模式）
+//   1回の刺激による収縮（単収縮）は約0.1秒：潜伏期 約0.01秒 → 収縮期 → 弛緩期。
+//   刺激の間隔が単収縮の時間より短いと、収縮が重なり合って大きくなる（不完全強縮 → 完全強縮）。
+//   重なり合いは「活性化の和 S」を張力に変換して表す：張力 ＝ T_MAX × (1 − e^(−S/C))（筋が出せる張力には上限がある）
+const LATENT = 0.01; // 潜伏期［秒］
+const TAU = 0.02; // 単収縮の形を決める時間［秒］（刺激後 約0.03秒でピーク、約0.1秒でほぼもとにもどる）
+const T_MAX = 1; // 張力の上限（相対値）
+const C = 2.8; // 単収縮のピークが上限の約3割になるように決めた値
+
+// 1回の刺激による活性化（刺激後 t 秒）
+function twitchActivation(t) {
+  const x = (t - LATENT) / TAU;
+  if (x <= 0) return 0;
+  return x * Math.exp(1 - x);
+}
+
+function stimulusTimes(freq, duration) {
+  if (freq <= 0) return [0];
+  const out = [];
+  for (let t = 0; t < duration - 1e-9; t += 1 / freq) out.push(Number(t.toFixed(6)));
+  return out;
+}
+
+function tension(t, stimuli) {
+  const S = stimuli.reduce((a, s) => a + (t >= s ? twitchActivation(t - s) : 0), 0);
+  return T_MAX * (1 - Math.exp(-S / C));
+}
+
+const SINGLE_PEAK = T_MAX * (1 - Math.exp(-1 / C));
+
+// 刺激を続けたときの後半の張力のゆれ（最大と最小の差）から、収縮のようすを判定する
+function contractionType(freq, duration = 1) {
+  const st = stimulusTimes(freq, duration);
+  const ts = [];
+  for (let t = duration * 0.5; t <= duration; t += 0.0005) ts.push(tension(t, st));
+  const max = Math.max(...ts);
+  const min = Math.min(...ts);
+  if (min < SINGLE_PEAK * 0.05) return { type: 'single', max, min };
+  if ((max - min) / max < 0.08) return { type: 'complete', max, min };
+  return { type: 'incomplete', max, min };
+}
+const TYPE_NAME = { single: '単収縮のくり返し', incomplete: '不完全強縮', complete: '完全強縮' };
+
+// ② サルコメア（筋節）の長さと張力（滑り説。カエルの骨格筋の測定にもとづく教科書の図の目安）
+//   太いフィラメント（ミオシン）1.6 μm、細いフィラメント（アクチン）は Z膜から各 1.0 μm、
+//   太いフィラメントの中央の、ミオシン頭部のない部分 0.2 μm。
+const MYOSIN = 1.6;
+const ACTIN = 1.0;
+const BARE = 0.2;
+const L_PLATEAU_LO = 2 * ACTIN; // 2.0：これより短いと細いフィラメントどうしが重なる
+const L_PLATEAU_HI = 2 * ACTIN + BARE; // 2.2：これより長いと重なりが減る
+const L_ZERO = 2 * ACTIN + MYOSIN; // 3.6：重なりがなくなり張力0
+const L_MIN = 1.3; // これより短いと張力はほぼ0（模式）
+
+// 最大張力に対する割合［0〜1］
+function sarcomereTension(L) {
+  if (L >= L_ZERO) return 0;
+  if (L >= L_PLATEAU_HI) return (L_ZERO - L) / (L_ZERO - L_PLATEAU_HI);
+  if (L >= L_PLATEAU_LO) return 1;
+  // 2.0 μm より短い側：細いフィラメントどうしが重なり、1.6 μm より短いと太いフィラメントが Z膜にあたって急に下がる（模式）
+  if (L >= MYOSIN) return 1 - (0.15 * (L_PLATEAU_LO - L)) / (L_PLATEAU_LO - MYOSIN);
+  if (L > L_MIN) return 0.85 * (L - L_MIN) / (MYOSIN - L_MIN);
+  return 0;
+}
+
+// 明帯・暗帯・H帯の長さ［μm］
+//   暗帯（A帯）＝ 太いフィラメントの長さ（収縮しても変わらない）
+//   明帯（I帯）＝ サルコメアの長さ − 太いフィラメントの長さ（1つのサルコメアの中の明帯の合計）
+//   H帯 ＝ 太いフィラメントのうち、細いフィラメントと重なっていない部分 ＝ サルコメアの長さ − 2 × 細いフィラメントの長さ（0未満なら0）
+function bands(L) {
+  const A = Math.min(MYOSIN, L);
+  const I = Math.max(0, L - MYOSIN);
+  const H = Math.min(MYOSIN, Math.max(0, L - 2 * ACTIN));
+  return { A, I, H };
+}
+return { LATENT, TAU, T_MAX, C, twitchActivation, stimulusTimes, tension, SINGLE_PEAK, contractionType, TYPE_NAME, MYOSIN, ACTIN, BARE, L_PLATEAU_LO, L_PLATEAU_HI, L_ZERO, L_MIN, sarcomereTension, bands };
+})();
+
+// ---- dojo/a10.js ----
+__m["dojo/a10.js"] = (function () {
+// A10 筋収縮 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { tension, stimulusTimes, contractionType, TYPE_NAME, SINGLE_PEAK, sarcomereTension, bands, MYOSIN, ACTIN, BARE, L_PLATEAU_LO, L_PLATEAU_HI, L_ZERO } = __m["models/muscle.js"];
+const { sample } = __m["lib/series.js"];
+
+const DUR = 0.6;
+const FREQS = [1, 2, 5, 8, 10, 15, 20, 30, 40, 50, 60, 80, 100];
+
+// サルコメアの模式図
+function drawSarcomere(canvas, L) {
+  const W = Math.max(300, canvas.parentElement ? canvas.parentElement.clientWidth : 340);
+  const H = 150;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const bg = tokenColor('surface');
+  const c1 = tokenColor('c1');
+  const c2 = tokenColor('c2');
+  const muted = tokenColor('muted');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const font = getComputedStyle(document.body).fontFamily;
+  const fs = W < 380 ? 11 : 12.5;
+  const scale = (W - 24) / 4.0; // 4.0 μm を画面幅に
+  const cx = W / 2;
+  const X = (u) => cx + u * scale; // サルコメアの中央を 0 とした位置 u［μm］
+  const text = (t, x, y, color = fg, align = 'center') => {
+    g.font = `${fs}px ${font}`;
+    g.textAlign = align;
+    g.textBaseline = 'middle';
+    g.fillStyle = color;
+    g.fillText(t, x, y);
+  };
+  const yTop = 34;
+  const yBot = 104;
+  // Z膜
+  g.strokeStyle = fg;
+  g.lineWidth = 3;
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(X((s * L) / 2), yTop - 8);
+    g.lineTo(X((s * L) / 2), yBot + 8);
+    g.stroke();
+  }
+  text('Z膜', X(-L / 2), yTop - 18);
+  text('Z膜', X(L / 2), yTop - 18);
+  // 細いフィラメント（アクチン）：Z膜から内側へ ACTIN
+  g.strokeStyle = c1;
+  g.lineWidth = 2;
+  for (const y of [yTop + 6, yTop + 22, yTop + 38, yTop + 54, yTop + 70].slice(0, 5)) {
+    if (y > yBot) continue;
+    g.beginPath();
+    g.moveTo(X(-L / 2), y);
+    g.lineTo(X(-L / 2 + ACTIN), y);
+    g.moveTo(X(L / 2), y);
+    g.lineTo(X(L / 2 - ACTIN), y);
+    g.stroke();
+  }
+  // 太いフィラメント（ミオシン）：中央に MYOSIN（Z膜にあたるときは Z膜まで）
+  const half = Math.min(MYOSIN / 2, L / 2);
+  g.strokeStyle = c2;
+  g.lineWidth = 6;
+  for (const y of [yTop + 14, yTop + 30, yTop + 46, yTop + 62]) {
+    g.beginPath();
+    g.moveTo(X(-half), y);
+    g.lineTo(X(half), y);
+    g.stroke();
+    // 頭部のない中央部分を細く表示
+    g.strokeStyle = bg;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(X(-BARE / 2), y);
+    g.lineTo(X(BARE / 2), y);
+    g.stroke();
+    g.strokeStyle = c2;
+    g.lineWidth = 6;
+  }
+  // 帯の表示
+  const b = bands(L);
+  const yb = yBot + 26;
+  g.lineWidth = 1.5;
+  g.strokeStyle = muted;
+  const span = (u0, u1, y, label) => {
+    if (u1 - u0 < 1e-6) return;
+    g.beginPath();
+    g.moveTo(X(u0), y);
+    g.lineTo(X(u1), y);
+    g.moveTo(X(u0), y - 4);
+    g.lineTo(X(u0), y + 4);
+    g.moveTo(X(u1), y - 4);
+    g.lineTo(X(u1), y + 4);
+    g.stroke();
+    text(label, (X(u0) + X(u1)) / 2, y + 12, fg);
+  };
+  span(-b.A / 2, b.A / 2, yb, `暗帯 ${fmt(b.A, 2)}`);
+  if (b.I > 0) {
+    span(-L / 2, -b.A / 2, yb - 12, '明帯');
+    span(b.A / 2, L / 2, yb - 12, '明帯');
+  }
+  if (b.H > 0) text(`H帯 ${fmt(b.H, 2)}`, cx, yTop - 18, c2);
+}
+
+const dojo = {
+  tasks: [
+    { id: 'single', text: '①で刺激の頻度を5回/秒以下にして、1回ごとに収縮がもとにもどる（単収縮）ことを確かめよう。', short: '単収縮' },
+    { id: 'incomplete', text: '①で、収縮がもどりきらないうちに次の収縮が重なる（不完全強縮）頻度を見つけよう。', short: '不完全強縮' },
+    { id: 'complete', text: '①で、張力がなめらかに大きく保たれる（完全強縮）頻度にしよう。', short: '完全強縮' },
+    { id: 'plateau', text: '②で、張力が最大になるサルコメアの長さの範囲を見つけよう。', short: '張力が最大の長さ' },
+    { id: 'zero', text: '②で、サルコメアを長くして張力が0になる長さを確かめよう（太いフィラメントと細いフィラメントが重ならない）。', short: '重なりがないと張力0' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'freq', fi: 2, L: 2.6, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'freq', label: '①刺激の頻度と収縮' }, { value: 'sarc', label: '②サルコメアの長さと張力' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '張力のグラフ', aspect: 0.62 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+    const canvas = h('canvas', { role: 'img', 'aria-label': 'サルコメアの模式図' });
+    const wrap = h('div', { class: 'chart-wrap' }, canvas);
+    top.append(wrap);
+
+    const sF = slider({ label: '刺激の頻度', min: 0, max: FREQS.length - 1, step: 1, value: st.fi, format: (v) => `${FREQS[v]} 回/秒`, onInput: (v) => { st.fi = v; st.touched++; update(); } });
+    const sL = slider({ label: 'サルコメアの長さ', min: 1.2, max: 3.8, step: 0.05, value: st.L, format: (v) => `${fmt(v, 2)} μm`, onInput: (v) => { st.L = v; st.touched++; update(); } });
+    const ctlF = h('div', null, sF.el);
+    const ctlS = h('div', null, sL.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlF, ctlS), panel('いま何が起きているか', exp.el));
+
+    const redraw = () => { if (st.tab === 'sarc') drawSarcomere(canvas, st.L); };
+    keepRedrawn(canvas, redraw);
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => { if (wrap.clientWidth && wrap.clientWidth !== lastW) { lastW = wrap.clientWidth; redraw(); } }).observe(wrap);
+    }
+
+    function layout() {
+      ctlF.hidden = st.tab !== 'freq';
+      ctlS.hidden = st.tab !== 'sarc';
+      wrap.hidden = st.tab !== 'sarc';
+      update();
+    }
+
+    function drawFreq() {
+      const f = FREQS[st.fi];
+      const stim = stimulusTimes(f, DUR);
+      const ct = contractionType(f);
+      title.replaceChildren(`刺激の頻度 ${f} 回/秒での筋肉の張力 `, modelNote());
+      chart.draw({
+        alt: `${f} 回/秒：${TYPE_NAME[ct.type]}`,
+        x: { min: 0, max: DUR, label: '時間（秒）', step: 0.1, digits: 1 },
+        y: { min: 0, max: 1.05, label: '張力（相対値）', step: 0.2, digits: 1 },
+        series: [{ points: sample((t) => tension(t, stim), 0, DUR, 900), color: 'c1', width: 3 }],
+        hlines: [{ y: SINGLE_PEAK, color: 'c3', dash: 'dot', label: '単収縮の大きさ', align: 'right' }],
+        markers: stim.length <= 12 ? stim.map((t) => ({ x: t, y: 0.02, color: 'c2', shape: 'diamond' })) : [],
+      });
+      leg.replaceChildren(legend([{ label: '張力', color: 'c1' }, { label: '単収縮のときの最大の張力', color: 'c3', dash: 'dot' }]));
+      note.textContent = `◆は刺激を与えた時刻（${stim.length > 12 ? '頻度が高いので省略' : '刺激ごとに表示'}）。カエルの腓腹筋を想定した模式（単収縮は約0.1秒で、潜伏期は約0.01秒）。`;
+      const lines = [`いまの収縮のようす：${TYPE_NAME[ct.type]}（刺激の間隔 ${fmt(1000 / f, 0)} ミリ秒）。`];
+      if (ct.type === 'single') lines.push('刺激の間隔が単収縮の時間（約0.1秒）より長いので、1回の収縮がもとにもどってから次の刺激が来る。1回の刺激による収縮を単収縮という。');
+      else if (ct.type === 'incomplete') lines.push('収縮がもとにもどりきらないうちに次の刺激が来るので、収縮が重なり合って張力が大きくなる。張力のグラフにぎざぎざが残る状態を不完全強縮という。');
+      else lines.push('刺激の間隔がとても短いので、収縮が完全に重なり合い、張力がなめらかに大きく保たれる。これを完全強縮といい、単収縮よりずっと大きな張力が出る。ふだんの運動での筋収縮は強縮である。');
+      exp.set(lines);
+      return { type: ct.type };
+    }
+
+    function drawSarc() {
+      const L = st.L;
+      const T = sarcomereTension(L);
+      const b = bands(L);
+      title.replaceChildren('サルコメアの長さと張力 ', modelNote('カエルの骨格筋の測定にもとづく模式'));
+      chart.draw({
+        alt: `サルコメアの長さ ${fmt(L, 2)} μm で張力 ${fmt(T * 100, 0)}%`,
+        x: { min: 1.2, max: 3.8, label: 'サルコメアの長さ（μm）', step: 0.2, digits: 1 },
+        y: { min: 0, max: 115, label: '張力（最大＝100）', step: 20 },
+        regions: [{ x0: L_PLATEAU_LO, x1: L_PLATEAU_HI, fill: 'region-3' }],
+        series: [{ points: sample((x) => sarcomereTension(x) * 100, 1.2, 3.8, 520), color: 'c1', width: 3 }],
+        vlines: [{ x: L, color: 'c2', dash: 'dot' }],
+        markers: [{ x: L, y: T * 100, color: 'c2', label: `${fmt(T * 100, 0)}%` }],
+      });
+      leg.replaceChildren(legend([{ label: '最大の張力に対する割合', color: 'c1' }, { label: 'いまのサルコメアの長さ', color: 'c2', dash: 'dot' }]));
+      note.textContent = `太いフィラメント（ミオシン）${MYOSIN} μm、細いフィラメント（アクチン）は Z膜から ${ACTIN} μm、太いフィラメントの中央の頭部のない部分 ${BARE} μm とした模式。下の図：青が細いフィラメント、朱の太い線が太いフィラメント。`;
+      drawSarcomere(canvas, L);
+      canvas.setAttribute('aria-label', `サルコメア ${fmt(L, 2)} μm。暗帯 ${fmt(b.A, 2)}、明帯 ${fmt(b.I, 2)}、H帯 ${fmt(b.H, 2)} μm`);
+      const lines = [];
+      lines.push(`暗帯（太いフィラメントの部分）${fmt(b.A, 2)} μm、明帯（1つのサルコメアの中の合計）${fmt(b.I, 2)} μm、H帯 ${fmt(b.H, 2)} μm。収縮するとき、細いフィラメントが太いフィラメントの間に滑り込むので、明帯とH帯は短くなるが、暗帯の長さは変わらない（滑り説）。`);
+      if (L >= L_ZERO) lines.push(`サルコメアが ${L_ZERO} μm 以上では、太いフィラメントと細いフィラメントが重ならないので、ミオシン頭部がアクチンと結合できず、張力は0になる。`);
+      else if (L > L_PLATEAU_HI) lines.push('サルコメアが長いほど、太いフィラメントと細いフィラメントの重なりが少なくなり、アクチンと結合できるミオシン頭部の数が減るので、張力は小さくなる。');
+      else if (L >= L_PLATEAU_LO) lines.push(`${L_PLATEAU_LO}〜${L_PLATEAU_HI} μm では、すべてのミオシン頭部が細いフィラメントと重なっているので、張力は最大になる。`);
+      else lines.push('サルコメアが短すぎると、細いフィラメントどうしが重なり合ったり、太いフィラメントが Z膜にぶつかったりして、張力は小さくなる。');
+      exp.set(lines);
+      return { T };
+    }
+
+    function update() {
+      const r = st.tab === 'freq' ? drawFreq() : drawSarc();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'freq' && s.touched > 0 && s.type === 'single';
+dojo.tasks[1].check = (s) => s.tab === 'freq' && s.type === 'incomplete';
+dojo.tasks[2].check = (s) => s.tab === 'freq' && s.type === 'complete';
+dojo.tasks[3].check = (s) => s.tab === 'sarc' && s.T >= 0.999;
+dojo.tasks[4].check = (s) => s.tab === 'sarc' && s.L >= L_ZERO - 1e-9;
+return { dojo };
+})();
+
+// ---- models/phylo.js ----
+__m["models/phylo.js"] = (function () {
+// A11 分子系統と分子時計
+// 分子時計：ある遺伝子（タンパク質）では、アミノ酸（塩基）の置換が時間にほぼ比例して蓄積する。
+//   2種が分岐してから t 年たつと、2つの系統それぞれで置換が起こるので、
+//   2種の間の違いの数 D ≒ 2 × r × t（r：1つの系統で1年あたりに起こる置換の数）
+//   → 分岐年代は違いの数に比例する：t₂ ＝ t₁ × D₂ ÷ D₁
+// ここでは架空の生物 A〜D と、架空のタンパク質（アミノ酸 300 個）で考える。
+
+function diffs(t, rate) {
+  return 2 * rate * t;
+}
+function divergenceTime(D, rate) {
+  return D / (2 * rate);
+}
+function proportionalTime(t1, D1, D2) {
+  return (t1 * D2) / D1;
+}
+
+// 系統樹：最も近い2種 pair（例 ['A','B']）が t1 に分岐し、残りの1種とは t2、D とは t3 に分岐した（百万年前、t1 ＜ t2 ＜ t3）。
+// rate：1つの系統で百万年あたりに起こる置換の数。違いの数は整数に丸める。
+const SPECIES = ['A', 'B', 'C', 'D'];
+const pairKey = (x, y) => [x, y].sort().join('');
+function distanceMatrix({ pair = ['A', 'B'], t1, t2, t3, rate }) {
+  const third = ['A', 'B', 'C'].find((x) => !pair.includes(x));
+  const m = {};
+  m[pairKey(pair[0], pair[1])] = Math.round(diffs(t1, rate));
+  for (const p of pair) m[pairKey(p, third)] = Math.round(diffs(t2, rate));
+  for (const p of ['A', 'B', 'C']) m[pairKey(p, 'D')] = Math.round(diffs(t3, rate));
+  return m;
+}
+
+// 違いの数の表から、最も近い2つの組を順にまとめて系統樹を作る（UPGMA 法の考え方）
+// 返り値：[{ members: ['A','B'], height: 違いの数 ÷ 2 }, ...]（まとめた順）
+function upgma(matrix, names = SPECIES) {
+  let clusters = names.map((n) => ({ id: n, members: [n], height: 0 }));
+  const dist = (c1, c2) => {
+    let s = 0;
+    for (const a of c1.members) for (const b of c2.members) s += matrix[pairKey(a, b)];
+    return s / (c1.members.length * c2.members.length);
+  };
+  const steps = [];
+  while (clusters.length > 1) {
+    let best = null;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const d = dist(clusters[i], clusters[j]);
+        if (!best || d < best.d) best = { i, j, d };
+      }
+    }
+    const a = clusters[best.i];
+    const b = clusters[best.j];
+    const merged = { id: `(${a.id},${b.id})`, members: [...a.members, ...b.members], height: best.d / 2, left: a, right: b };
+    steps.push({ a: a.id, b: b.id, members: merged.members, d: best.d, height: best.d / 2 });
+    clusters = clusters.filter((_, k) => k !== best.i && k !== best.j).concat(merged);
+  }
+  return { root: clusters[0], steps };
+}
+
+// 分子進化の速さの違い（教科書の例）：機能上の制約が小さい部分ほど速く変化する
+const RATE_ORDER = ['フィブリノペプチド', 'ヘモグロビン', 'シトクロム c', 'ヒストン H4'];
+return { diffs, divergenceTime, proportionalTime, SPECIES, pairKey, distanceMatrix, upgma, RATE_ORDER };
+})();
+
+// ---- dojo/a11.js ----
+__m["dojo/a11.js"] = (function () {
+// A11 分子系統と分子時計 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { diffs, distanceMatrix, upgma, pairKey, SPECIES } = __m["models/phylo.js"];
+
+// 系統樹（クラスターの入れ子）を、グラフ部品の線分で描く
+function treeSeries(root, rate) {
+  const leaves = [];
+  const order = (c) => (c.left ? (order(c.left), order(c.right)) : leaves.push(c.id));
+  order(root);
+  const xOf = {};
+  leaves.forEach((id, i) => (xOf[id] = i + 1));
+  const series = [];
+  const markers = [];
+  const pos = (c) => {
+    if (!c.left) return { x: xOf[c.id], y: 0 };
+    const a = pos(c.left);
+    const b = pos(c.right);
+    const y = c.height / rate; // 違いの数の半分 ÷ 1系統あたりの速さ ＝ 分岐年代
+    series.push({ points: [[a.x, a.y], [a.x, y], [b.x, y], [b.x, b.y]], color: 'c1', width: 3 });
+    markers.push({ x: (a.x + b.x) / 2, y, color: 'c2', shape: 'square', label: `${fmt(y, 0)}` });
+    return { x: (a.x + b.x) / 2, y };
+  };
+  pos(root);
+  return { series, markers, leaves };
+}
+
+const PAIRS = { AB: ['A', 'B'], AC: ['A', 'C'], BC: ['B', 'C'] };
+
+const dojo = {
+  tasks: [
+    { id: 'linear', text: '①で分岐年代を変え、違いの数が分岐年代に比例することを確かめよう（分岐年代を2回以上変える）。', short: '違いの数は年代に比例' },
+    { id: 'rate', text: '①で置換の速さを変え、速く変化するタンパク質ほど直線の傾きが大きいことを確かめよう。', short: '分子によって速さが違う' },
+    { id: 'pair', text: '②で「最も近い2種」を切り替え、違いの数の表から作られる系統樹の形が変わることを確かめよう。', short: '系統樹の形が変わる' },
+    { id: 'close', text: '②で、最も近い2種の分岐年代と、3種目との分岐年代を近づけて、違いの数の差が小さくなることを確かめよう（差を10百万年以下に）。', short: '分岐が近いと差が小さい' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'clock', rate: 0.2, t: 200, pair: 'AB', t1: 40, t2: 120, t3: 300, tMoves: 0, rateMoves: 0, pairMoves: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'clock', label: '①分子時計' }, { value: 'tree', label: '②違いの数から系統樹' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '分子時計のグラフ', aspect: 0.68 });
+    const leg = h('div');
+    const table = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, table, note);
+
+    const sRate = slider({ label: '置換の速さ（1つの系統で100万年あたりのアミノ酸の置換数）', min: 0.05, max: 0.5, step: 0.05, value: st.rate, format: (v) => fmt(v, 2), onInput: (v) => { st.rate = v; st.rateMoves++; update(); } });
+    const sT = slider({ label: '2種が分岐した年代', min: 0, max: 500, step: 10, value: st.t, format: (v) => `${v} 百万年前`, onInput: (v) => { st.t = v; st.tMoves++; update(); } });
+    const ctlClock = h('div', null, sT.el);
+    const segP = segmented({ label: '最も近い2種', options: Object.keys(PAIRS).map((k) => ({ value: k, label: `${k[0]} と ${k[1]}` })), value: st.pair, onChange: (v) => { st.pair = v; st.pairMoves++; update(); } });
+    const s1 = slider({ label: '最も近い2種の分岐', min: 10, max: 280, step: 10, value: st.t1, format: (v) => `${v} 百万年前`, onInput: (v) => { st.t1 = v; fix('t1'); update(); } });
+    const s2 = slider({ label: '3種目との分岐', min: 20, max: 290, step: 10, value: st.t2, format: (v) => `${v} 百万年前`, onInput: (v) => { st.t2 = v; fix('t2'); update(); } });
+    const s3 = slider({ label: 'D との分岐', min: 30, max: 300, step: 10, value: st.t3, format: (v) => `${v} 百万年前`, onInput: (v) => { st.t3 = v; fix('t3'); update(); } });
+    const ctlTree = h('div', null, segP.el, s1.el, s2.el, s3.el);
+    const exp = explainBox();
+    root.append(panel('操作', sRate.el, ctlClock, ctlTree), panel('いま何が起きているか', exp.el));
+
+    // t1 ＜ t2 ＜ t3 を保つ
+    function fix(changed) {
+      if (changed === 't1') { st.t2 = Math.max(st.t2, st.t1 + 10); st.t3 = Math.max(st.t3, st.t2 + 10); }
+      if (changed === 't2') { st.t1 = Math.min(st.t1, st.t2 - 10); st.t3 = Math.max(st.t3, st.t2 + 10); }
+      if (changed === 't3') { st.t2 = Math.min(st.t2, st.t3 - 10); st.t1 = Math.min(st.t1, st.t2 - 10); }
+      s1.set(st.t1, true);
+      s2.set(st.t2, true);
+      s3.set(st.t3, true);
+    }
+
+    function layout() {
+      ctlClock.hidden = st.tab !== 'clock';
+      ctlTree.hidden = st.tab !== 'tree';
+      update();
+    }
+
+    function drawClock() {
+      const { rate, t } = st;
+      const D = diffs(t, rate);
+      const ref = 100;
+      const Dref = diffs(ref, rate);
+      title.replaceChildren('分岐年代とアミノ酸の違いの数 ', modelNote('架空のタンパク質（アミノ酸300個）'));
+      chart.draw({
+        alt: `分岐 ${t} 百万年前で違い ${fmt(D, 0)} 個`,
+        x: { min: 0, max: 500, label: '分岐した年代（百万年前）', step: 100 },
+        y: { min: 0, max: 520, label: 'アミノ酸の違いの数', step: 100 },
+        series: [
+          { points: [[0, 0], [500, diffs(500, 0.5)]], color: 'muted', dash: 'dot', width: 1.5, label: '速さ 0.5', labelAt: 480 },
+          { points: [[0, 0], [500, diffs(500, rate)]], color: 'c1', width: 3 },
+        ],
+        vlines: [{ x: t, color: 'c2', dash: 'dot' }],
+        markers: [
+          { x: ref, y: Dref, color: 'c3', shape: 'square', label: `基準：${ref} 百万年前・${fmt(Dref, 0)} 個` },
+          { x: t, y: D, color: 'c2', label: `${fmt(D, 0)} 個` },
+        ],
+      });
+      leg.replaceChildren(legend([{ label: `いまの置換の速さ（${fmt(rate, 2)}）の直線`, color: 'c1' }, { label: '速さ 0.5（比較）', color: 'muted', dash: 'dot' }]));
+      table.replaceChildren();
+      note.textContent = 'アミノ酸の数より違いの数が十分に小さい範囲を考えている。非常に古い分岐では、同じ場所で置換がくり返し起こるため、違いの数は直線より少なくなる。';
+      exp.set([
+        `2種が分岐してから、それぞれの系統で置換が積み重なるので、違いの数 ＝ 2 × ${fmt(rate, 2)} × ${t} ＝ ${fmt(D, 0)} 個。違いの数は分岐してからの時間に比例する（分子時計）。`,
+        `化石などで分岐年代がわかっている基準の組（${ref} 百万年前に分岐、違い ${fmt(Dref, 0)} 個）を使うと、違いが ${fmt(D, 0)} 個の組の分岐年代は ${ref} × ${fmt(D, 0)} ÷ ${fmt(Dref, 0)} ＝ ${fmt(t, 0)} 百万年前と推定できる。`,
+        '置換の速さは分子によって違う。生存に重要な部分（機能上の制約が大きい部分）では、ほとんどの変異が不利になって集団に残らないので、置換はゆっくり進む。生存に影響しない（中立な）変異は、遺伝的浮動によって一定の速さで蓄積する。',
+      ]);
+      return {};
+    }
+
+    function drawTree() {
+      const pair = PAIRS[st.pair];
+      const m = distanceMatrix({ pair, t1: st.t1, t2: st.t2, t3: st.t3, rate: st.rate });
+      const { root: tr, steps } = upgma(m);
+      const tree = treeSeries(tr, st.rate);
+      title.replaceChildren('アミノ酸の違いの数から作った系統樹 ', modelNote('架空の生物 A〜D'));
+      chart.draw({
+        alt: `系統樹：${steps.map((s) => s.members.join('')).join(' → ')}`,
+        x: { min: 0.5, max: 4.5, ticks: tree.leaves.map((id, i) => ({ v: i + 1, text: `生物${id}` })), grid: false },
+        y: { min: 0, max: 330, label: '分岐した年代（百万年前）', step: 50 },
+        series: tree.series,
+        markers: tree.markers,
+      });
+      leg.replaceChildren(legend([{ label: '系統樹（□は分岐した年代、百万年前）', color: 'c1' }]));
+      const th = (t) => h('th', null, t);
+      table.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, th('違いの数'), ...SPECIES.map((s) => th(s)))),
+          h('tbody', null, ...SPECIES.map((a) => h('tr', null, h('td', null, a), ...SPECIES.map((b) => h('td', null, a === b ? '—' : String(m[pairKey(a, b)])))))),
+        ),
+      );
+      note.textContent = '違いの数の表から、違いの最も小さい組を順にまとめて系統樹を作った（UPGMA法の考え方）。分岐の高さ ＝ 違いの数 ÷ 2 ÷ 置換の速さ。';
+      const first = steps[0];
+      const second = steps[1];
+      exp.set([
+        `違いの数がいちばん小さいのは ${first.a} と ${first.b}（${first.d} 個）なので、この2種が最も近縁で、最も新しく分岐したと考えられる。違いの数は、分岐してからの時間に比例するからである。`,
+        `次に、${first.a}${first.b} のまとまりと ${second.a === `(${first.a},${first.b})` ? second.b : second.a} との違いの平均（${fmt(second.d, 1)} 個）が小さいので、これらをまとめる。最後に残った D が最も古く分かれた生物（外群）になる。`,
+        'このように、DNAの塩基配列やタンパク質のアミノ酸配列の違いをもとに作った系統樹を分子系統樹という。',
+      ]);
+      return { diffT: st.t2 - st.t1 };
+    }
+
+    function update() {
+      const r = st.tab === 'clock' ? drawClock() : drawTree();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'clock' && s.tMoves >= 2;
+dojo.tasks[1].check = (s) => s.tab === 'clock' && s.rateMoves >= 1;
+dojo.tasks[2].check = (s) => s.tab === 'tree' && s.pairMoves >= 1;
+dojo.tasks[3].check = (s) => s.tab === 'tree' && s.diffT <= 10;
+return { dojo };
+})();
+
+// ---- models/auxin.js ----
+__m["models/auxin.js"] = (function () {
+// A12 植物ホルモン（オーキシン）
+// オーキシン濃度と成長への効果（教科書の図の目安による模式）
+//   根・芽・茎で最適濃度が違い、根が最も低い濃度で最適、茎が最も高い濃度で最適になる。
+//   最適濃度より高いと促進の効果が小さくなり、さらに高いと成長を抑制する（効果が負になる）。
+//   最適濃度の目安：根 10⁻¹⁰ mol/L、芽 10⁻⁸ mol/L、茎 10⁻⁵ mol/L（模式）
+// 効果 E(x)（x ＝ log₁₀ 濃度。最適濃度で ＋1、正なら促進、負なら抑制。相対値）
+//   最適濃度より低い側：exp(−((x − 最適)/A)²)（濃度が低いと効果はほぼ0）
+//   最適濃度より高い側：2·exp(−((x − 最適)/B)²) − 1（最適濃度＋W で 0 になり、それより高いと抑制）
+const ORGANS = {
+  root: { name: '根', opt: -10, color: 'c2', dash: 'solid' },
+  bud: { name: '芽', opt: -8, color: 'c4', dash: 'dash' },
+  stem: { name: '茎', opt: -5, color: 'c3', dash: 'dot' },
+};
+const W = 2.2; // 促進から抑制に変わる、最適濃度からの距離（log₁₀ の差）
+const A = 1.5;
+const B = W / Math.sqrt(Math.log(2));
+const X_MIN = -13;
+const X_MAX = -2;
+
+function effect(organ, x) {
+  const d = x - ORGANS[organ].opt;
+  if (d <= 0) return Math.exp(-Math.pow(d / A, 2));
+  return 2 * Math.exp(-Math.pow(d / B, 2)) - 1;
+}
+
+// 促進から抑制に変わる濃度（log₁₀）
+function zeroPoint(organ) {
+  return ORGANS[organ].opt + W;
+}
+
+// 植物を水平に置くと、オーキシンは重力の方向（下側）に多く移動する。
+// 上側の濃度 x（log）、下側は ratio 倍（log で + log₁₀(ratio)）
+function horizontal(organ, xUpper, ratio = 4) {
+  const xLower = xUpper + Math.log10(ratio);
+  const up = effect(organ, xUpper);
+  const low = effect(organ, xLower);
+  // 下側のほうがよく伸びると上へ曲がる（負の重力屈性）、上側のほうがよく伸びると下へ曲がる（正の重力屈性）
+  const diff = low - up;
+  const bend = Math.abs(diff) < 0.02 ? 'none' : diff > 0 ? 'up' : 'down';
+  return { xLower, up, low, bend };
+}
+
+// アベナ屈曲試験（ウェント）：寒天片中のオーキシン量がある範囲では、屈曲角度はオーキシン濃度に比例する
+function curvature(conc, k) {
+  return k * conc;
+}
+return { ORGANS, W, A, B, X_MIN, X_MAX, effect, zeroPoint, horizontal, curvature };
+})();
+
+// ---- dojo/a12.js ----
+__m["dojo/a12.js"] = (function () {
+// A12 植物ホルモン（オーキシン）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { ORGANS, effect, horizontal, X_MIN, X_MAX } = __m["models/auxin.js"];
+const { sample } = __m["lib/series.js"];
+
+const supText = (x) => `10${String(Math.round(x)).replace('-', '⁻').replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}`;
+const BEND = { up: '上へ曲がる', down: '下へ曲がる', none: 'ほとんど曲がらない' };
+
+// 水平に置いた芽ばえの模式図。茎は右、根は左にのびる
+function drawSeedling(canvas, stem, root) {
+  const W = Math.max(300, canvas.parentElement ? canvas.parentElement.clientWidth : 340);
+  const H = 170;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const bg = tokenColor('surface');
+  const c2 = tokenColor('c2');
+  const c3 = tokenColor('c3');
+  const muted = tokenColor('muted');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const font = getComputedStyle(document.body).fontFamily;
+  const fs = W < 380 ? 11 : 12.5;
+  const cx = W / 2;
+  const cy = H / 2;
+  const len = W * 0.36;
+  const angleOf = (r) => (r.bend === 'none' ? 0 : Math.min(1, Math.abs(r.low - r.up) * 1.6) * (Math.PI / 3) * (r.bend === 'up' ? 1 : -1));
+  const organ = (dir, r, color, label) => {
+    const a = angleOf(r);
+    g.strokeStyle = color;
+    g.lineWidth = 7;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(cx, cy);
+    // 根元側はまっすぐ、先端側で曲がる（2次ベジェ）
+    const mx = cx + dir * len * 0.55;
+    const ex = mx + dir * len * 0.45 * Math.cos(a);
+    const ey = cy - len * 0.45 * Math.sin(a);
+    g.quadraticCurveTo(mx + dir * len * 0.2, cy, ex, ey);
+    g.stroke();
+    g.font = `bold ${fs}px ${font}`;
+    g.fillStyle = color;
+    g.textAlign = dir > 0 ? 'right' : 'left';
+    g.textBaseline = 'middle';
+    g.fillText(label, dir > 0 ? W - 6 : 6, r.bend === 'up' ? H - 14 : 14);
+  };
+  organ(1, stem, c3, `茎：${BEND[stem.bend]}`);
+  organ(-1, root, c2, `根：${BEND[root.bend]}`);
+  g.fillStyle = fg;
+  g.beginPath();
+  g.ellipse(cx, cy, 10, 8, 0, 0, Math.PI * 2);
+  g.fill();
+  // 重力の向き
+  g.strokeStyle = muted;
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(cx, cy + 24);
+  g.lineTo(cx, cy + 52);
+  g.lineTo(cx - 5, cy + 45);
+  g.moveTo(cx, cy + 52);
+  g.lineTo(cx + 5, cy + 45);
+  g.stroke();
+  g.font = `${fs}px ${font}`;
+  g.fillStyle = muted;
+  g.textAlign = 'left';
+  g.fillText('重力', cx + 8, cy + 42);
+}
+
+const dojo = {
+  tasks: [
+    { id: 'same', text: '①で、同じ濃度でも、茎の成長は促進するのに根の成長は抑制する濃度を見つけよう。', short: '器官によって効果が違う' },
+    { id: 'gravi', text: '②で、茎が上へ、根が下へ曲がる（茎は負、根は正の重力屈性）ようすを確かめよう。', short: '重力屈性' },
+    { id: 'ratio', text: '②で、下側への濃度のかたよりを大きくすると、曲がり方が大きくなることを確かめよう（かたよりを2回以上変える）。', short: 'かたよりと曲がり方' },
+    { id: 'low', text: '②で、オーキシン濃度をとても低くすると、根も上へ曲がる（濃度によって曲がる向きが変わる）ことを確かめよう。', short: '濃度で向きが変わる' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'curve', x: -7, xu: -7.5, ratio: 4, ratioMoves: 0, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'curve', label: '①濃度と成長への効果' }, { value: 'gravi', label: '②水平に置いた芽ばえ' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'オーキシン濃度と成長への効果', aspect: 0.66 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+    const canvas = h('canvas', { role: 'img', 'aria-label': '水平に置いた芽ばえの模式図' });
+    const wrap = h('div', { class: 'chart-wrap' }, canvas);
+    top.append(wrap);
+
+    const sX = slider({ label: 'オーキシン濃度', min: X_MIN, max: X_MAX, step: 0.25, value: st.x, format: (v) => `約 ${supText(v)} mol/L`, onInput: (v) => { st.x = v; st.touched++; update(); } });
+    const ctlCurve = h('div', null, sX.el);
+    const sXu = slider({ label: '上側のオーキシン濃度', min: -12, max: -4, step: 0.25, value: st.xu, format: (v) => `約 ${supText(v)} mol/L`, onInput: (v) => { st.xu = v; st.touched++; update(); } });
+    const sR = slider({ label: '下側の濃度は上側の何倍か', min: 1, max: 10, step: 1, value: st.ratio, format: (v) => `${v} 倍`, onInput: (v) => { st.ratio = v; st.ratioMoves++; update(); } });
+    const ctlGravi = h('div', null, h('p', { class: 'small' }, '芽ばえを水平に置くと、オーキシンは重力の方向（下側）に多く移動する。茎と根で同じ濃度になるとした模式。'), sXu.el, sR.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlCurve, ctlGravi), panel('いま何が起きているか', exp.el));
+
+    let last = null;
+    const redraw = () => { if (st.tab === 'gravi' && last) drawSeedling(canvas, last.stem, last.root); };
+    keepRedrawn(canvas, redraw);
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => { if (wrap.clientWidth && wrap.clientWidth !== lastW) { lastW = wrap.clientWidth; redraw(); } }).observe(wrap);
+    }
+
+    const curves = () => Object.entries(ORGANS).map(([id, o]) => ({ points: sample((x) => effect(id, x), X_MIN, X_MAX, 300), color: o.color, dash: o.dash, width: 3, label: o.name, labelAt: o.opt }));
+    const baseSpec = () => ({
+      x: { min: X_MIN, max: X_MAX, label: 'オーキシン濃度（mol/L・対数目盛り）', ticks: [-12, -10, -8, -6, -4, -2].map((v) => ({ v, text: supText(v) })) },
+      y: { min: -1.15, max: 1.3, label: '成長への効果（相対値）', ticks: [{ v: -1, text: '抑制' }, { v: 0, text: '0' }, { v: 1, text: '促進' }] },
+      regions: [],
+    });
+    const legendItems = (ids = Object.keys(ORGANS)) => legend(ids.map((id) => ORGANS[id]).map((o) => ({ label: `${o.name}（最適濃度 約${supText(o.opt)} mol/L）`, color: o.color, dash: o.dash })));
+
+    function layout() {
+      ctlCurve.hidden = st.tab !== 'curve';
+      ctlGravi.hidden = st.tab !== 'gravi';
+      wrap.hidden = st.tab !== 'gravi';
+      update();
+    }
+
+    function drawCurve() {
+      const x = st.x;
+      title.replaceChildren('オーキシン濃度と成長への効果 ', modelNote('教科書の図の目安による模式'));
+      chart.draw({
+        ...baseSpec(),
+        alt: `濃度 ${supText(x)} mol/L`,
+        series: curves(),
+        vlines: [{ x, color: 'fg', dash: 'dot' }],
+        markers: Object.entries(ORGANS).map(([id, o]) => ({ x, y: effect(id, x), color: o.color, shape: id === 'root' ? 'circle' : id === 'bud' ? 'diamond' : 'square' })),
+      });
+      leg.replaceChildren(legendItems());
+      note.textContent = '縦軸の0より上は成長を促進、下は抑制することを表す。最適濃度の値は目安で、植物の種類によって異なる。';
+      const word = (v) => (v > 0.05 ? '促進' : v < -0.05 ? '抑制' : 'ほとんど影響しない');
+      const e = Object.fromEntries(Object.keys(ORGANS).map((id) => [id, effect(id, x)]));
+      exp.set([
+        `濃度 約${supText(x)} mol/L では、根：${word(e.root)}、芽：${word(e.bud)}、茎：${word(e.stem)}。`,
+        '最適濃度は根が最も低く、次に芽、茎が最も高い。根はオーキシンに対する感受性が高いので、茎の成長を促進するような濃度でも、根の成長は抑制される。',
+        '同じ器官でも、最適濃度より高い濃度では促進の効果が小さくなり、さらに高い濃度では成長を抑制する。',
+      ]);
+      return { rootNeg: e.root < -0.05, stemPos: e.stem > 0.05 };
+    }
+
+    function drawGravi() {
+      const s = horizontal('stem', st.xu, st.ratio);
+      const r = horizontal('root', st.xu, st.ratio);
+      last = { stem: s, root: r };
+      title.replaceChildren('水平に置いた芽ばえの重力屈性 ', modelNote());
+      chart.draw({
+        ...baseSpec(),
+        alt: `茎：${BEND[s.bend]}、根：${BEND[r.bend]}`,
+        series: curves().filter((c) => c.label !== '芽'),
+        regions: [{ x0: st.xu, x1: s.xLower, fill: 'region-4' }],
+        markers: [
+          { x: st.xu, y: s.up, color: 'c3', shape: 'square' },
+          { x: s.xLower, y: s.low, color: 'c3', shape: 'square' },
+          { x: st.xu, y: r.up, color: 'c2' },
+          { x: r.xLower, y: r.low, color: 'c2' },
+        ],
+      });
+      leg.replaceChildren(legendItems(['root', 'stem']));
+      note.textContent = '塗った範囲が、上側（左端）から下側（右端）までの濃度。□が茎、●が根の、上側と下側での効果。';
+      drawSeedling(canvas, s, r);
+      canvas.setAttribute('aria-label', `茎は${BEND[s.bend]}、根は${BEND[r.bend]}`);
+      const lines = [];
+      lines.push(`茎：下側の効果 ${fmt(s.low, 2)}、上側 ${fmt(s.up, 2)}。${s.bend === 'up' ? '下側のほうがよく伸びるので、茎は上へ曲がる（負の重力屈性）。' : s.bend === 'down' ? '濃度が茎にとっても高すぎるので、下側の成長が上側より小さく、下へ曲がる。' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
+      lines.push(`根：下側の効果 ${fmt(r.low, 2)}、上側 ${fmt(r.up, 2)}。${r.bend === 'down' ? '根にとっては下側の濃度が高すぎて成長が抑制されるので、上側のほうがよく伸び、根は下へ曲がる（正の重力屈性）。' : r.bend === 'up' ? '濃度がとても低いので、根でも下側のほうがよく伸び、上へ曲がる（実際の芽ばえでは、根のオーキシン濃度は下へ曲がる範囲にある）。' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
+      lines.push('根では、根冠の細胞が重力の方向を感じとり、オーキシンが下側に多く運ばれる。同じオーキシンのかたよりでも、器官によって最適濃度が違うので、茎と根で逆向きに曲がる。');
+      exp.set(lines);
+      return { stemBend: s.bend, rootBend: r.bend };
+    }
+
+    function update() {
+      const res = st.tab === 'curve' ? drawCurve() : drawGravi();
+      ctx.update({ ...st, ...res });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'curve' && s.touched > 0 && s.rootNeg && s.stemPos;
+dojo.tasks[1].check = (s) => s.tab === 'gravi' && s.stemBend === 'up' && s.rootBend === 'down';
+dojo.tasks[2].check = (s) => s.tab === 'gravi' && s.ratioMoves >= 2;
+dojo.tasks[3].check = (s) => s.tab === 'gravi' && s.rootBend === 'up';
+return { dojo };
+})();
+
+// ---- models/production.js ----
+__m["models/production.js"] = (function () {
+// A13 生態系の物質生産とエネルギーの流れ
+// 生産者：総生産量 ＝ 純生産量 ＋ 呼吸量
+//         純生産量 ＝ 成長量 ＋ 被食量 ＋ 枯死量
+// 消費者：同化量 ＝ 摂食量 − 不消化排出量
+//         生産量 ＝ 同化量 − 呼吸量
+//         成長量 ＝ 生産量 −（被食量 ＋ 死滅量）
+// 生産者の被食量 ＝ 一次消費者の摂食量、一次消費者の被食量 ＝ 二次消費者の摂食量。
+// エネルギー効率（%）：生産者 ＝ 総生産量 ÷ 生態系に入射した光エネルギー × 100
+//                      消費者 ＝ その栄養段階の同化量 ÷ 1つ前の栄養段階の同化量（生産者は総生産量）× 100
+
+// 割合（各段階の内訳の割合）から、各栄養段階の値を計算する。数値は相対値。
+const DEFAULT = {
+  gross: 1000, // 生産者の総生産量
+  pResp: 0.5, // 生産者：呼吸量 ÷ 総生産量
+  pGrazed: 0.2, // 生産者：被食量 ÷ 純生産量
+  pDead: 0.4, // 生産者：枯死量 ÷ 純生産量
+  cUndigested: 0.3, // 消費者：不消化排出量 ÷ 摂食量
+  cResp: 0.6, // 消費者：呼吸量 ÷ 同化量
+  cGrazed: 0.25, // 一次消費者：被食量 ÷ 生産量
+  cDead: 0.2, // 消費者：死滅量 ÷ 生産量
+};
+
+function budget(p = DEFAULT) {
+  const P = {};
+  P.gross = p.gross;
+  P.resp = p.gross * p.pResp;
+  P.net = P.gross - P.resp;
+  P.grazed = P.net * p.pGrazed;
+  P.dead = P.net * p.pDead;
+  P.growth = P.net - P.grazed - P.dead;
+
+  const consumer = (intake, grazedFrac) => {
+    const c = { intake };
+    c.undigested = intake * p.cUndigested;
+    c.assim = intake - c.undigested;
+    c.resp = c.assim * p.cResp;
+    c.prod = c.assim - c.resp;
+    c.grazed = c.prod * grazedFrac;
+    c.dead = c.prod * p.cDead;
+    c.growth = c.prod - c.grazed - c.dead;
+    return c;
+  };
+  const C1 = consumer(P.grazed, p.cGrazed);
+  const C2 = consumer(C1.grazed, 0);
+  return { P, C1, C2 };
+}
+
+function efficiency(b) {
+  return { c1: (b.C1.assim / b.P.gross) * 100, c2: (b.C2.assim / b.C1.assim) * 100 };
+}
+
+// 森林の林齢と物質生産（模式）
+//   総生産量は葉の量とともに増えて、やがて一定になる。
+//   呼吸量は、幹や枝など呼吸する部分（非同化器官）が増え続けるので増え続ける。
+//   そのため純生産量（＝総生産量 − 呼吸量）は、若い森林で最大になり、その後しだいに小さくなる。
+function forest(age) {
+  const gross = 100 * (1 - Math.exp(-age / 12));
+  const resp = 35 * (1 - Math.exp(-age / 12)) + 0.45 * age;
+  return { gross, resp, net: gross - resp };
+}
+return { DEFAULT, budget, efficiency, forest };
+})();
+
+// ---- dojo/a13.js ----
+__m["dojo/a13.js"] = (function () {
+// A13 生態系の物質生産 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { DEFAULT, budget, efficiency, forest } = __m["models/production.js"];
+const { sample } = __m["lib/series.js"];
+
+// 区分ごとの塗り（区分名を図の中にも書くので、色だけに頼らない）
+const FILL = { resp: 'region-2', undig: 'region-4', growth: 'region-3', grazed: 'region', dead: 'surface-2' };
+const SHORT = { resp: '呼吸', undig: '不消化', growth: '成長', grazed: '被食', dead: '枯死・死滅' };
+
+const dojo = {
+  tasks: [
+    { id: 'resp', text: '①で、生産者の呼吸量の割合を大きくすると、純生産量が減り、上の栄養段階に届く量も減ることを確かめよう。', short: '呼吸が増えると' },
+    { id: 'eff', text: '①で、一次消費者のエネルギー効率が10%をこえる条件を見つけよう。', short: 'エネルギー効率10%' },
+    { id: 'peak', text: '②で、森林の純生産量が最大になる林齢を見つけよう。', short: '純生産量が最大' },
+    { id: 'old', text: '②で、林齢を100年以上にして、総生産量はほぼ一定なのに純生産量が小さくなることを確かめよう。', short: '老齢の森林' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'flow', pResp: DEFAULT.pResp, pGrazed: DEFAULT.pGrazed, cUndigested: DEFAULT.cUndigested, cResp: DEFAULT.cResp, age: 20, respMoves: 0, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'flow', label: '①栄養段階ごとの収支' }, { value: 'forest', label: '②森林の林齢と物質生産' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '物質生産のグラフ', aspect: 0.62 });
+    const leg = h('div');
+    const table = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, table, note);
+
+    const pct = (v) => `${Math.round(v * 100)} %`;
+    const mk = (key, label, min, max) => slider({ label, min, max, step: 0.05, value: st[key], format: pct, onInput: (v) => { st[key] = v; st.touched++; if (key === 'pResp') st.respMoves++; update(); } });
+    const ctlFlow = h('div', null,
+      mk('pResp', '生産者：総生産量のうち呼吸量の割合', 0.3, 0.8).el,
+      mk('pGrazed', '生産者：純生産量のうち被食量の割合', 0.05, 0.5).el,
+      mk('cUndigested', '消費者：摂食量のうち不消化排出量の割合', 0.1, 0.6).el,
+      mk('cResp', '消費者：同化量のうち呼吸量の割合', 0.3, 0.9).el,
+    );
+    const sAge = slider({ label: '林齢（森林ができてからの年数）', min: 1, max: 150, step: 1, value: st.age, format: (v) => `${v} 年`, onInput: (v) => { st.age = v; st.touched++; update(); } });
+    const ctlForest = h('div', null, sAge.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlFlow, ctlForest), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlFlow.hidden = st.tab !== 'flow';
+      ctlForest.hidden = st.tab !== 'forest';
+      update();
+    }
+
+    function drawFlow() {
+      const p = { ...DEFAULT, pResp: st.pResp, pGrazed: st.pGrazed, cUndigested: st.cUndigested, cResp: st.cResp };
+      const b = budget(p);
+      const e = efficiency(b);
+      title.replaceChildren('栄養段階ごとの物質（エネルギー）の収支 ', modelNote('各段階のはじめの量を100%とした割合'));
+      const rows = [
+        { y: 2.5, total: b.P.gross, parts: [['resp', b.P.resp], ['growth', b.P.growth], ['grazed', b.P.grazed], ['dead', b.P.dead]] },
+        { y: 1.5, total: b.C1.intake, parts: [['undig', b.C1.undigested], ['resp', b.C1.resp], ['growth', b.C1.growth], ['grazed', b.C1.grazed], ['dead', b.C1.dead]] },
+        { y: 0.5, total: b.C2.intake, parts: [['undig', b.C2.undigested], ['resp', b.C2.resp], ['growth', b.C2.growth], ['dead', b.C2.dead]] },
+      ];
+      const polygons = [];
+      for (const r of rows) {
+        let x = 0;
+        for (const [k, v] of r.parts) {
+          const w = (v / r.total) * 100;
+          if (w <= 0) continue;
+          polygons.push({ points: [[x, r.y - 0.32], [x + w, r.y - 0.32], [x + w, r.y + 0.32], [x, r.y + 0.32]], fill: FILL[k], stroke: 'fg', label: w >= 11 ? SHORT[k] : '', at: [x + w / 2, r.y] });
+          x += w;
+        }
+      }
+      chart.draw({
+        alt: `一次消費者のエネルギー効率 ${fmt(e.c1, 1)}%`,
+        x: { min: 0, max: 100, label: '各段階のはじめの量に対する割合（%）', step: 20 },
+        y: { min: 0, max: 3, ticks: [{ v: 2.5, text: '生産者' }, { v: 1.5, text: '一次消費者' }, { v: 0.5, text: '二次消費者' }] },
+        polygons,
+      });
+      leg.replaceChildren(legend([{ label: '各段階のはじめの量：生産者は総生産量、消費者は摂食量', color: 'fg' }]));
+      const r1 = (v) => fmt(v, 1);
+      table.replaceChildren(
+        h('div', { class: 'table-scroll' },
+          h('table', { class: 'data' },
+            h('thead', null, h('tr', null, h('th', null, ''), h('th', null, '生産者'), h('th', null, '一次消費者'), h('th', null, '二次消費者'))),
+            h('tbody', null,
+              h('tr', null, h('td', null, '総生産量／摂食量'), h('td', null, r1(b.P.gross)), h('td', null, r1(b.C1.intake)), h('td', null, r1(b.C2.intake))),
+              h('tr', null, h('td', null, '不消化排出量'), h('td', null, '—'), h('td', null, r1(b.C1.undigested)), h('td', null, r1(b.C2.undigested))),
+              h('tr', null, h('td', null, '同化量'), h('td', null, r1(b.P.gross)), h('td', null, r1(b.C1.assim)), h('td', null, r1(b.C2.assim))),
+              h('tr', null, h('td', null, '呼吸量'), h('td', null, r1(b.P.resp)), h('td', null, r1(b.C1.resp)), h('td', null, r1(b.C2.resp))),
+              h('tr', null, h('td', null, '純生産量／生産量'), h('td', null, r1(b.P.net)), h('td', null, r1(b.C1.prod)), h('td', null, r1(b.C2.prod))),
+              h('tr', null, h('td', null, '被食量'), h('td', null, r1(b.P.grazed)), h('td', null, r1(b.C1.grazed)), h('td', null, '0')),
+              h('tr', null, h('td', null, '枯死量／死滅量'), h('td', null, r1(b.P.dead)), h('td', null, r1(b.C1.dead)), h('td', null, r1(b.C2.dead))),
+              h('tr', null, h('td', null, '成長量'), h('td', null, r1(b.P.growth)), h('td', null, r1(b.C1.growth)), h('td', null, r1(b.C2.growth))),
+              h('tr', null, h('td', null, 'エネルギー効率'), h('td', null, '—'), h('td', null, `${fmt(e.c1, 1)}%`), h('td', null, `${fmt(e.c2, 1)}%`)),
+            ),
+          ),
+        ),
+      );
+      note.textContent = `生産者の総生産量を ${DEFAULT.gross}、枯死量を純生産量の${Math.round(DEFAULT.pDead * 100)}%、消費者の死滅量を生産量の${Math.round(DEFAULT.cDead * 100)}%、一次消費者の被食量を生産量の${Math.round(DEFAULT.cGrazed * 100)}%とした模式（数値は相対値）。生産者のエネルギー効率は入射した光エネルギーが必要なので、ここでは求めない。`;
+      exp.set([
+        `生産者：純生産量 ＝ 総生産量 − 呼吸量 ＝ ${r1(b.P.gross)} − ${r1(b.P.resp)} ＝ ${r1(b.P.net)}。成長量 ＝ 純生産量 −（被食量 ＋ 枯死量）＝ ${r1(b.P.growth)}。生産者の被食量 ${r1(b.P.grazed)} が、一次消費者の摂食量になる。`,
+        `一次消費者：同化量 ＝ 摂食量 − 不消化排出量 ＝ ${r1(b.C1.assim)}、生産量 ＝ 同化量 − 呼吸量 ＝ ${r1(b.C1.prod)}。エネルギー効率 ＝ ${r1(b.C1.assim)} ÷ ${r1(b.P.gross)} × 100 ＝ ${fmt(e.c1, 1)}%。`,
+        '各栄養段階で呼吸によって熱として失われる分などがあるので、上の栄養段階ほど利用できるエネルギーは少なくなる。エネルギーは生態系の中を循環せず、最終的には熱として生態系の外へ出ていく。',
+      ]);
+      return { eff: e.c1 };
+    }
+
+    function drawForest() {
+      const a = st.age;
+      const f = forest(a);
+      let best = 1;
+      for (let t = 1; t <= 150; t++) if (forest(t).net > forest(best).net) best = t;
+      title.replaceChildren('森林の林齢と物質生産 ', modelNote());
+      chart.draw({
+        alt: `林齢 ${a} 年：総生産量 ${fmt(f.gross, 0)}、呼吸量 ${fmt(f.resp, 0)}、純生産量 ${fmt(f.net, 0)}`,
+        x: { min: 0, max: 150, label: '林齢（年）', step: 25 },
+        y: { min: 0, max: 120, label: '量（相対値）', step: 20 },
+        series: [
+          { points: sample((t) => forest(t).gross, 0, 150, 300), color: 'c1', width: 3, label: '総生産量' },
+          { points: sample((t) => forest(t).resp, 0, 150, 300), color: 'c2', dash: 'dash', width: 3, label: '呼吸量' },
+          { points: sample((t) => forest(t).net, 0, 150, 300), color: 'c3', dash: 'dot', width: 3, label: '純生産量', labelAt: best },
+        ],
+        vlines: [{ x: a, color: 'muted', dash: 'dot' }],
+        markers: [{ x: a, y: f.net, color: 'c3', shape: 'square', label: `純生産量 ${fmt(f.net, 0)}` }],
+      });
+      leg.replaceChildren(legend([{ label: '総生産量', color: 'c1' }, { label: '呼吸量', color: 'c2', dash: 'dash' }, { label: '純生産量（＝総生産量 − 呼吸量）', color: 'c3', dash: 'dot' }]));
+      table.replaceChildren();
+      note.textContent = `この模式では、純生産量は林齢 約${best}年で最大になる。`;
+      exp.set([
+        '森林が若いうちは、葉の量が増えるにつれて総生産量が大きくなり、純生産量も大きくなる。',
+        '森林が成熟すると、葉の量はほぼ一定になるので総生産量はほぼ一定になる。一方、幹や枝・根などの光合成をしない部分（非同化器官）が増え続け、その呼吸量が増えるので、純生産量はしだいに小さくなる。',
+        `林齢 ${a} 年：総生産量 ${fmt(f.gross, 0)}、呼吸量 ${fmt(f.resp, 0)}、純生産量 ${fmt(f.net, 0)}。`,
+      ]);
+      return { age: a, best };
+    }
+
+    function update() {
+      const r = st.tab === 'flow' ? drawFlow() : drawForest();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'flow' && s.respMoves >= 1 && s.pResp >= 0.7;
+dojo.tasks[1].check = (s) => s.tab === 'flow' && s.eff > 10;
+dojo.tasks[2].check = (s) => s.tab === 'forest' && s.touched > 0 && Math.abs(s.age - s.best) <= 2;
+dojo.tasks[3].check = (s) => s.tab === 'forest' && s.age >= 100;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -5547,8 +6740,13 @@ const { dojo: a5 } = __m["dojo/a5.js"];
 const { dojo: a6 } = __m["dojo/a6.js"];
 const { dojo: a7 } = __m["dojo/a7.js"];
 const { dojo: a8 } = __m["dojo/a8.js"];
+const { dojo: a9 } = __m["dojo/a9.js"];
+const { dojo: a10 } = __m["dojo/a10.js"];
+const { dojo: a11 } = __m["dojo/a11.js"];
+const { dojo: a12 } = __m["dojo/a12.js"];
+const { dojo: a13 } = __m["dojo/a13.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3, a4, a5, a6, a7, a8 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13 };
 return { DOJOS };
 })();
 
@@ -9995,6 +11193,967 @@ const A8 = [
 return { A8 };
 })();
 
+// ---- questions/a9.js ----
+__m["questions/a9.js"] = (function () {
+// A9 呼吸と発酵（呼吸商）の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { SUBSTRATES, yeast, splitGlucose } = __m["models/respiration.js"];
+
+const FATS = [
+  { name: 'トリステアリン', eq: '2C₅₇H₁₁₀O₆ ＋ 163O₂ → 114CO₂ ＋ 110H₂O', o2: 163, co2: 114 },
+  { name: 'トリパルミチン', eq: '2C₅₁H₉₈O₆ ＋ 145O₂ → 102CO₂ ＋ 98H₂O', o2: 145, co2: 102 },
+  { name: 'トリオレイン', eq: '2C₅₇H₁₀₄O₆ ＋ 160O₂ → 114CO₂ ＋ 104H₂O', o2: 160, co2: 114 },
+];
+
+const A9 = [
+  {
+    id: 'a9-rq-substrate',
+    stage: 'a9',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const k = rng.pick(['carb', 'fat', 'protein']);
+      const v = { carb: '1.0', fat: '約0.7', protein: '約0.8' }[k];
+      return {
+        text: `ある発芽種子の呼吸商を測定したところ ${v} であった。この種子が主に呼吸基質として使っている物質はどれか。`,
+        correct: SUBSTRATES[k].name,
+        wrong: ['炭水化物', '脂肪', 'タンパク質', '核酸'],
+        explanation: `呼吸商は炭水化物で1.0、タンパク質で約0.8、脂肪で約0.7なので、${v} なら${SUBSTRATES[k].name}である。呼吸基質によって、分解に必要なO₂と生じるCO₂の量の比が違うからである。`,
+      };
+    },
+  },
+  {
+    id: 'a9-respirometer',
+    stage: 'a9',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const koh = rng.pick([5, 8, 10, 12, 20]);
+      const rq = rng.pick([1, 0.7, 0.8, 0.9, 0.75]);
+      const water = Number((koh * (1 - rq)).toFixed(2));
+      const ans = (koh - water) / koh;
+      const d = distinctNumbers(ans, [water / koh, koh / (koh - water), (koh + water) / koh, (koh - water) / (koh + water), 1 - ans / 2, 0.7, 0.8, 1.2, 1.3], '', 2);
+      return {
+        text: `発芽種子を入れたフラスコを2つ用意し、一方には水酸化カリウム（KOH）水溶液を、もう一方には水を入れて、一定時間の気体の減少量を測定した。KOH側の減少量は ${koh} mL、水側の減少量は ${water} mL であった。この種子の呼吸商はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `KOH はCO₂を吸収するので、KOH側の減少量 ${koh} mL が吸収したO₂、水側の減少量 ${water} mL は O₂ − CO₂ にあたる。放出したCO₂ ＝ ${koh} − ${water} ＝ ${fmt(koh - water, 2)} mL だから、呼吸商 ＝ ${fmt(koh - water, 2)} ÷ ${koh} ＝ ${fmt(ans, 2)} となる。`,
+      };
+    },
+  },
+  {
+    id: 'a9-fat-eq',
+    stage: 'a9',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const f = rng.pick(FATS);
+      const ans = f.co2 / f.o2;
+      const two = (v) => v.toFixed(2);
+      const wrong = [f.o2 / f.co2, (f.co2 / 2) / f.o2, f.co2 / (f.o2 * 2), 1, 0.8, 0.9].map(two).filter((v) => v !== two(ans));
+      return {
+        text: `脂肪の一種である${f.name}は、呼吸で次のように分解される。　${f.eq}　この反応の呼吸商はいくらか（小数第3位を四捨五入して答えよ）。`,
+        correct: two(ans),
+        wrong,
+        explanation: `呼吸商 ＝ 放出したCO₂ ÷ 吸収したO₂ ＝ ${f.co2} ÷ ${f.o2} ≒ ${two(ans)} である。同じ温度・圧力では気体の体積の比は反応式の係数の比に等しいから、係数から求めてよい。`,
+      };
+    },
+  },
+  {
+    id: 'a9-yeast-split',
+    stage: 'a9',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const aer = rng.pick([0.5, 1, 1.5, 2, 3]);
+      const fer = rng.pick([1, 2, 3, 4, 6]);
+      const o2 = 6 * aer;
+      const co2 = 6 * aer + 2 * fer;
+      const ask = rng.pick(['ratio', 'ethanol']);
+      const ans = ask === 'ratio' ? fer / aer : 2 * fer;
+      const d = ask === 'ratio'
+        ? distinctNumbers(ans, [aer / fer, (co2 - o2) / o2, co2 / o2, (co2 - o2) / 2 / o2, ans * 3], ' 倍', 2)
+        : distinctNumbers(ans, [fer, co2 - o2 + 0.5 * fer, co2, (co2 - o2) / 2 / 2, ans * 2, o2], ' mol', 2);
+      return {
+        text: `酵母をグルコース溶液に入れて培養したところ、一定時間に O₂ を ${fmt(o2, 1)} mol 吸収し、CO₂ を ${fmt(co2, 1)} mol 放出した。酵母は呼吸とアルコール発酵だけを行ったとする。${ask === 'ratio' ? 'アルコール発酵で消費したグルコースの量は、呼吸で消費したグルコースの量の何倍か' : 'アルコール発酵でできたエタノールは何 mol か'}。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `呼吸ではO₂とCO₂が同じ量なので、呼吸のグルコース ＝ ${fmt(o2, 1)} ÷ 6 ＝ ${fmt(aer, 2)} mol で、O₂より多いCO₂ ${fmt(co2 - o2, 1)} mol は発酵によるから、発酵のグルコース ＝ ${fmt(co2 - o2, 1)} ÷ 2 ＝ ${fmt(fer, 2)} mol である。${ask === 'ratio' ? `したがって ${fmt(fer, 2)} ÷ ${fmt(aer, 2)} ＝ ${fmt(ans, 2)} 倍となる。` : `発酵ではグルコース1分子からエタノールが2分子できるので、${fmt(fer, 2)} × 2 ＝ ${fmt(ans, 2)} mol となる。`}`,
+      };
+    },
+  },
+  {
+    id: 'a9-yeast-rq',
+    stage: 'a9',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const total = 6;
+      const ferm = rng.pick([1 / 3, 0.5, 2 / 3, 0.25, 0.75]);
+      const y = yeast(total, ferm);
+      const ans = y.co2 / y.o2;
+      const d = distinctNumbers(ans, [y.o2 / y.co2, 1, 2 * y.fer / y.o2, (y.co2 + y.o2) / y.o2, ans * 2], '', 2);
+      return {
+        text: `酵母がグルコース ${total} mol を消費し、そのうち ${fmt(y.aer, 2)} mol を呼吸に、${fmt(y.fer, 2)} mol をアルコール発酵に使った。このとき放出したCO₂の量は、吸収したO₂の量のおよそ何倍か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `呼吸で O₂ を ${fmt(y.aer, 2)} × 6 ＝ ${fmt(y.o2, 2)} mol 吸収してCO₂ を ${fmt(y.o2, 2)} mol 放出し、発酵でCO₂ を ${fmt(y.fer, 2)} × 2 ＝ ${fmt(2 * y.fer, 2)} mol 放出するので、${fmt(y.co2, 2)} ÷ ${fmt(y.o2, 2)} ＝ ${fmt(ans, 2)} 倍である。発酵はO₂を使わずにCO₂を出すから、発酵の割合が大きいほどこの値は大きくなる。`,
+      };
+    },
+  },
+  {
+    id: 'a9-bars',
+    stage: 'a9',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const conds = rng.shuffle([
+        { key: 'aer', ferm: 0, desc: '呼吸だけ' },
+        { key: 'mix', ferm: 0.5, desc: '呼吸と発酵の両方' },
+        { key: 'fer', ferm: 1, desc: 'アルコール発酵だけ' },
+      ]);
+      const ask = rng.pick(conds);
+      const idx = conds.indexOf(ask);
+      const ys = conds.map((c) => yeast(3, c.ferm));
+      return {
+        text: `図は、酵母を条件ア〜ウで培養したときの、一定時間のO₂吸収量とCO₂放出量（mol）を表している。グルコースの消費量はどの条件も同じであった。${ask.desc}を行っていた条件はどれか。`,
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 20, label: '量（mol）', step: 4 },
+          bars: {
+            categories: conds.map((_, i) => KATA[i]),
+            groups: [
+              { values: ys.map((y) => y.o2), color: 'c1', label: 'O₂ 吸収量' },
+              { values: ys.map((y) => y.co2), color: 'c2', label: 'CO₂ 放出量' },
+            ],
+          },
+          alt: '条件ア〜ウのO₂吸収量とCO₂放出量',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 3).concat(['ア〜ウのどれでもない']),
+        explanation: {
+          aer: `${KATA[idx]}はO₂吸収量とCO₂放出量が等しいので、呼吸だけを行っている。グルコースの呼吸ではO₂ 6分子を使ってCO₂ 6分子を出すからである。`,
+          mix: `${KATA[idx]}はO₂を吸収しているが、CO₂放出量のほうが多いので、呼吸と発酵の両方を行っている。O₂より多い分のCO₂は、O₂を使わない発酵で出たものだからである。`,
+          fer: `${KATA[idx]}はO₂を吸収せずにCO₂だけを放出しているので、アルコール発酵だけを行っている。アルコール発酵はO₂を使わずにグルコースをエタノールとCO₂に分解するからである。`,
+        }[ask.key],
+      };
+    },
+  },
+  {
+    id: 'a9-split-from-gas',
+    stage: 'a9',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const o2 = rng.pick([6, 12, 18, 24]);
+      const extra = rng.pick([4, 8, 12, 24]);
+      const co2 = o2 + extra;
+      const s = splitGlucose(o2, co2);
+      const ans = s.aer + s.fer;
+      const d = distinctNumbers(ans, [s.aer, s.fer, co2 / 6, (o2 + co2) / 6, co2 / 2, s.aer + extra], ' mol', 2);
+      return {
+        text: `酵母が一定時間に O₂ を ${o2} mol 吸収し、CO₂ を ${co2} mol 放出した。呼吸とアルコール発酵で消費したグルコースは合わせて何 mol か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `呼吸で消費したグルコースは ${o2} ÷ 6 ＝ ${fmt(s.aer, 2)} mol、発酵で消費したグルコースは (${co2} − ${o2}) ÷ 2 ＝ ${fmt(s.fer, 2)} mol で、合計 ${fmt(ans, 2)} mol となる。呼吸はO₂とCO₂が 6 : 6、発酵はグルコース1分子あたりCO₂ 2分子なので、CO₂ ÷ 6 のようにまとめて計算してはいけないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a9-lactic',
+    stage: 'a9',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'アルコール発酵と乳酸発酵の違いとして正しいものはどれか。',
+          correct: 'アルコール発酵ではCO₂が放出されるが、乳酸発酵ではCO₂は放出されない',
+          wrong: ['乳酸発酵ではCO₂が放出されるが、アルコール発酵ではCO₂は放出されない', 'アルコール発酵はO₂を必要とするが、乳酸発酵は必要としない', 'どちらもグルコース1分子あたり、呼吸と同じ数のATPをつくる'],
+          explanation: 'アルコール発酵は C₆H₁₂O₆ → 2C₂H₅OH ＋ 2CO₂、乳酸発酵は C₆H₁₂O₆ → 2C₃H₆O₃ である。どちらもO₂を使わない反応で、グルコース1分子あたりATPは2分子しかできないから、呼吸よりずっと効率が低い。',
+        };
+      }
+      return {
+        text: '激しい運動をしてO₂の供給が追いつかないとき、ヒトの筋肉で行われる、O₂を使わずにグルコースを分解してATPを得るはたらきを何というか。',
+        correct: '解糖（乳酸発酵と同じ反応）',
+        wrong: ['アルコール発酵', '光合成', 'クエン酸回路', '電子伝達系'],
+        explanation: 'これは解糖で、乳酸発酵と同じ反応でグルコースが乳酸に分解される。クエン酸回路と電子伝達系はO₂がないとはたらかないので、O₂が不足するとこの反応でATPを得るのである。',
+      };
+    },
+  },
+  {
+    id: 'a9-rq-meaning',
+    stage: 'a9',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '脂肪を呼吸基質としたときの呼吸商が、炭水化物よりも小さくなる理由として最も適当なものはどれか。',
+        correct: '脂肪は分子中の酸素の割合が小さく、CO₂と水に分解するのにより多くのO₂を必要とするから',
+        wrong: ['脂肪は分子中の酸素の割合が大きく、O₂をほとんど必要としないから', '脂肪からはCO₂が生じないから', '脂肪は発酵によって分解されるから'],
+        explanation: '脂肪は炭素と水素が多く酸素が少ない分子なので、CO₂と水にまで分解するには多くのO₂が必要になる。そのため、放出するCO₂に対して吸収するO₂が多くなり、呼吸商は約0.7と小さくなる。',
+      };
+    },
+  },
+];
+return { A9 };
+})();
+
+// ---- questions/a10.js ----
+__m["questions/a10.js"] = (function () {
+// A10 筋収縮 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { tension, stimulusTimes, contractionType, TYPE_NAME, sarcomereTension, bands } = __m["models/muscle.js"];
+const { sample } = __m["lib/series.js"];
+
+const A10 = [
+  {
+    id: 'a10-type-graph',
+    stage: 'a10',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const f = rng.pick([3, 4, 15, 20, 25, 60, 80, 100]);
+      const type = contractionType(f).type;
+      const st = stimulusTimes(f, 0.6);
+      const names = { single: '単収縮', incomplete: '不完全強縮', complete: '完全強縮' };
+      return {
+        text: '図は、カエルの腓腹筋に一定の間隔で刺激を与え続けたときの、筋肉の張力の変化を表している。このような収縮を何というか。',
+        chart: {
+          x: { min: 0, max: 0.6, label: '時間（秒）', step: 0.1, digits: 1 },
+          y: { min: 0, max: 1.05, label: '張力（相対値）', step: 0.2, digits: 1 },
+          series: [{ points: sample((t) => tension(t, st), 0, 0.6, 700), color: 'c1', width: 3 }],
+          alt: '張力の時間変化',
+        },
+        correct: type === 'single' ? '単収縮（のくり返し）' : names[type],
+        wrong: ['単収縮（のくり返し）', '不完全強縮', '完全強縮', '筋疲労'],
+        explanation: {
+          single: '1回の刺激ごとに収縮がもとにもどっているので、単収縮のくり返しである。刺激の間隔が単収縮にかかる時間（約0.1秒）より長いからである。',
+          incomplete: '収縮が重なって張力が大きくなっているが、ぎざぎざが残っているので不完全強縮である。収縮がもとにもどりきらないうちに次の刺激が来るからである。',
+          complete: '張力がなめらかに大きく保たれているので完全強縮である。刺激の間隔がとても短く、収縮が完全に重なり合うからである。',
+        }[type],
+      };
+    },
+  },
+  {
+    id: 'a10-interval',
+    stage: 'a10',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const f = rng.pick([5, 8, 20, 25, 40, 50]);
+      const ms = 1000 / f;
+      const d = distinctNumbers(ms, [f, ms / 10, ms * 10, 1000 * f / 100, 100 / f], ' ミリ秒', 1);
+      return {
+        text: `筋肉に1秒間に ${f} 回の割合で刺激を与えた。刺激と刺激の間隔は何ミリ秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1秒 ＝ 1000 ミリ秒を ${f} 回に分けるので、間隔は 1000 ÷ ${f} ＝ ${fmt(ms, 1)} ミリ秒である。${ms < 100 ? '単収縮にかかる時間（約100ミリ秒）より短いので、収縮が重なり合って強縮が起こる' : '単収縮にかかる時間（約100ミリ秒）より長いので、収縮は重ならず単収縮がくり返される'}からである。`,
+      };
+    },
+  },
+  {
+    id: 'a10-bands',
+    stage: 'a10',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const L = rng.pick([2.2, 2.4, 2.5, 2.6, 2.8, 3.0]);
+      const ask = rng.pick(['I', 'H']);
+      const b = bands(L);
+      const ans = b[ask];
+      const d = distinctNumbers(ans, [b.A, L - 1.0, L - 2 * 1.6, L / 2 - 1.0, L - 1.6 / 2, ans / 2, ans * 2, L], ' μm', 2);
+      return {
+        text: `ある骨格筋の太いフィラメント（ミオシンフィラメント）の長さは 1.6 μm、細いフィラメント（アクチンフィラメント）は Z膜から 1.0 μm ずつのびている。サルコメアの長さが ${L} μm のとき、${ask === 'I' ? '1つのサルコメアに含まれる明帯の長さの合計' : 'H帯の長さ'}は何 μm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'I'
+          ? `暗帯は太いフィラメントの長さ 1.6 μm なので、明帯の合計 ＝ サルコメアの長さ − 暗帯 ＝ ${L} − 1.6 ＝ ${fmt(ans, 2)} μm となる。明帯は細いフィラメントだけがある部分で、サルコメアのうち太いフィラメントがない部分だからである。`
+          : `H帯は太いフィラメントのうち細いフィラメントと重なっていない部分なので、${L} − 1.0 × 2 ＝ ${fmt(ans, 2)} μm となる。両側の Z膜から細いフィラメントが 1.0 μm ずつのびていて、その間のすき間がH帯にあたるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a10-sliding',
+    stage: 'a10',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '骨格筋が収縮してサルコメアが短くなるとき、長さが変わらないものはどれか。',
+        correct: '暗帯',
+        wrong: ['明帯', 'H帯', 'サルコメア（Z膜とZ膜の間）'],
+        explanation: '収縮するとき、細いフィラメントが太いフィラメントの間に滑り込むので、明帯とH帯は短くなる。フィラメントそのものの長さは変わらないから、太いフィラメントの長さにあたる暗帯の長さは変わらない（滑り説）。',
+      };
+    },
+  },
+  {
+    id: 'a10-length-tension',
+    stage: 'a10',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const L = rng.pick([2.8, 3.0, 3.2]);
+      return {
+        text: `図は、カエルの骨格筋で、サルコメアの長さと、強縮させたときの張力の関係を表したものである。サルコメアの長さが 2.2 μm から ${L} μm へと長くなると張力が小さくなる理由として最も適当なものはどれか。`,
+        chart: {
+          x: { min: 1.2, max: 3.8, label: 'サルコメアの長さ（μm）', step: 0.4, digits: 1 },
+          y: { min: 0, max: 115, label: '張力（最大＝100）', step: 20 },
+          series: [{ points: sample((x) => sarcomereTension(x) * 100, 1.2, 3.8, 400), color: 'c1', width: 3 }],
+          markers: [{ x: L, y: sarcomereTension(L) * 100, color: 'c2', label: `${L} μm` }],
+          alt: 'サルコメアの長さと張力',
+        },
+        correct: '太いフィラメントと細いフィラメントの重なりが減り、アクチンと結合できるミオシン頭部の数が減るから',
+        wrong: ['細いフィラメントどうしが重なり合い、互いにじゃまをするから', '太いフィラメントが Z膜にぶつかるから', 'サルコメアが長くなるとATPが分解されなくなるから'],
+        explanation: 'サルコメアが長くなると、細いフィラメントが太いフィラメントの間から引き出され、両者の重なりが小さくなる。張力はアクチンと結合して引っぱるミオシン頭部の数で決まるので、重なりが減るほど張力は小さくなり、重なりがなくなると0になる。',
+      };
+    },
+  },
+  {
+    id: 'a10-filament-length',
+    stage: 'a10',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const actin = rng.pick([0.9, 1.0, 1.1]);
+      const myosin = rng.pick([1.5, 1.6, 1.7]);
+      const bare = 0.2;
+      const lo = 2 * actin;
+      const hi = 2 * actin + bare;
+      const zero = 2 * actin + myosin;
+      const ask = rng.pick(['myosin', 'actin']);
+      const ans = ask === 'myosin' ? zero - lo : lo / 2;
+      const d = distinctNumbers(ans, ask === 'myosin' ? [zero - hi, zero / 2, zero - actin, lo, hi - lo] : [lo, hi / 2, zero / 2, (zero - myosin), zero - lo], ' μm', 2);
+      return {
+        text: `ある骨格筋で、サルコメアの長さと張力の関係を調べたところ、張力は ${fmt(lo, 2)}〜${fmt(hi, 2)} μm で最大となり、それより長いと直線的に小さくなって ${fmt(zero, 2)} μm で0になった。${ask === 'myosin' ? '太いフィラメント（ミオシンフィラメント）' : '1本の細いフィラメント（アクチンフィラメント、Z膜から片側にのびる部分）'}の長さは何 μm と考えられるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'myosin'
+          ? `${fmt(lo, 2)} μm は両側の細いフィラメントの先端どうしがちょうど接する長さなので、細いフィラメント2本分 ＝ ${fmt(lo, 2)} μm である。張力が0になる ${fmt(zero, 2)} μm では細いフィラメントと太いフィラメントがちょうど重ならなくなるから、太いフィラメントの長さは ${fmt(zero, 2)} − ${fmt(lo, 2)} ＝ ${fmt(ans, 2)} μm となる。`
+          : `張力が最大になる範囲の下限 ${fmt(lo, 2)} μm は、両側から来た細いフィラメントの先端どうしがちょうど接する長さである。これより短いと細いフィラメントどうしが重なって張力が下がるから、細いフィラメント1本は ${fmt(lo, 2)} ÷ 2 ＝ ${fmt(ans, 2)} μm となる。`,
+      };
+    },
+  },
+  {
+    id: 'a10-calcium',
+    stage: 'a10',
+    level: 2,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['ア', 'イ', 'ウ'], ['筋小胞体', 'トロポニン', 'ミオシン頭部']);
+      return {
+        text: '筋収縮のしくみについて、次のア〜ウにあてはまる語の組合せとして正しいものはどれか。　運動神経からの興奮が筋繊維に伝わると、（ア）から Ca²⁺ が放出される。Ca²⁺ が細いフィラメント上の（イ）に結合するとトロポミオシンの位置が変わり、（ウ）がアクチンと結合できるようになる。',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: 'アは筋小胞体、イはトロポニン、ウはミオシン頭部である。Ca²⁺ がトロポニンに結合すると、アクチンの結合部位をふさいでいたトロポミオシンがずれるので、ミオシン頭部がアクチンと結合し、ATPのエネルギーを使ってアクチンをたぐり寄せる。',
+      };
+    },
+  },
+  {
+    id: 'a10-atp',
+    stage: 'a10',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '筋収縮でのATPのはたらきとして正しいものはどれか。',
+        correct: 'ミオシン頭部がATPを分解し、そのエネルギーで細いフィラメントをたぐり寄せる',
+        wrong: ['アクチンがATPを分解し、太いフィラメントを押し出す', 'ATPが Z膜を縮めて、サルコメアを短くする', 'ATPが筋小胞体に結合して、Ca²⁺ を放出させる'],
+        explanation: 'ミオシン頭部はATPを分解する酵素（ATPアーゼ）としてはたらく。ATPの分解で得たエネルギーで、アクチンと結合したミオシン頭部が首を振るように動くので、細いフィラメントが太いフィラメントの間に滑り込む。',
+      };
+    },
+  },
+  {
+    id: 'a10-tetanus-why',
+    stage: 'a10',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '刺激の頻度を高くすると、単収縮よりも大きな張力が生じる。この理由として最も適当なものはどれか。',
+        correct: '収縮がもとにもどる前に次の刺激による収縮が起こり、収縮が重なり合うから',
+        wrong: ['刺激の頻度が高いと、1回ごとの活動電位が大きくなるから', '刺激の頻度が高いと、筋繊維が太くなるから', '刺激の頻度が高いと、全か無かの法則が成り立たなくなるから'],
+        explanation: '1回の単収縮は約0.1秒かかるので、それより短い間隔で刺激すると、収縮がもとにもどる前に次の収縮が重なる。収縮が重なり合って張力が加算されるので、単収縮より大きな張力が生じる（強縮）。',
+      };
+    },
+  },
+];
+return { A10 };
+})();
+
+// ---- questions/a11.js ----
+__m["questions/a11.js"] = (function () {
+// A11 分子系統と分子時計 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers } = __m["questions/common.js"];
+const { diffs, distanceMatrix, pairKey, proportionalTime } = __m["models/phylo.js"];
+
+const matrixText = (m) => ['AB', 'AC', 'AD', 'BC', 'BD', 'CD'].map((k) => `${k[0]}–${k[1]} ${m[k]}`).join('、');
+
+const A11 = [
+  {
+    id: 'a11-proportion',
+    stage: 'a11',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const t1 = rng.pick([40, 60, 80, 100]);
+      const D1 = rng.pick([10, 12, 15, 16, 20]);
+      const k = rng.pick([1.5, 2, 2.5, 3, 4, 5]);
+      const D2 = D1 * k;
+      if (!Number.isInteger(D2)) return this.make(rng);
+      const ans = proportionalTime(t1, D1, D2);
+      const d = distinctNumbers(ans, [ans / 2, ans * 2, t1 + D2, (t1 * D1) / D2, t1 * (D2 - D1) / D1], ' 百万年前', 0);
+      return {
+        text: `あるタンパク質のアミノ酸配列を比べると、生物Xと生物Yでは ${D1} か所、生物Xと生物Zでは ${D2} か所が異なっていた。化石の記録から、XとYは ${t1} 百万年前に分岐したことがわかっている。置換の速さが一定だとすると、XとZが分岐したのは何百万年前と推定できるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `違いの数は分岐してからの時間に比例するので、${t1} × ${D2} ÷ ${D1} ＝ ${fmt(ans, 0)} 百万年前となる。分岐後はそれぞれの系統で一定の速さで置換が積み重なるからである（分子時計）。`,
+      };
+    },
+  },
+  {
+    id: 'a11-rate',
+    stage: 'a11',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const t = rng.pick([50, 80, 100, 200, 400]);
+      const r = rng.pick([0.05, 0.1, 0.2, 0.25]);
+      const D = diffs(t, r);
+      if (!Number.isInteger(D)) return this.make(rng);
+      const ans = r * 100;
+      const d = distinctNumbers(ans, [ans * 2, ans / 2, ans * 4, t / D, D, D / 2], ' 個', 1);
+      return {
+        text: `2種の生物は ${t} 百万年前に共通の祖先から分岐し、あるタンパク質のアミノ酸配列には ${D} か所の違いがある。1つの系統で、1億年あたり平均何個のアミノ酸が置換したと考えられるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `分岐後は2つの系統それぞれで置換が起こるので、1つの系統あたりの置換数は ${D} ÷ 2 ＝ ${fmt(D / 2, 1)} 個である。これが ${t} 百万年（${fmt(t / 100, 1)} 億年）の間に起こったから、1億年あたり ${fmt(D / 2, 1)} ÷ ${fmt(t / 100, 1)} ＝ ${fmt(ans, 1)} 個となる。`,
+      };
+    },
+  },
+  {
+    id: 'a11-closest',
+    stage: 'a11',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const pair = rng.pick([['A', 'B'], ['A', 'C'], ['B', 'C']]);
+      const m = distanceMatrix({ pair, t1: rng.pick([20, 30, 40]), t2: rng.pick([80, 100, 120]), t3: rng.pick([200, 250, 300]), rate: 0.2 });
+      const third = ['A', 'B', 'C'].find((x) => !pair.includes(x));
+      const tree = `((${pair[0]}, ${pair[1]}), ${third}), D`;
+      const others = [['A', 'B'], ['A', 'C'], ['B', 'C']].filter((p) => p.join() !== pair.join()).map((p) => `((${p[0]}, ${p[1]}), ${['A', 'B', 'C'].find((x) => !p.includes(x))}), D`);
+      return {
+        text: `生物A〜Dのあるタンパク質のアミノ酸配列を比べ、違いの数を調べた（${matrixText(m)}）。違いの数が少ないほど近縁であるとして系統樹を作ると、どのような形になるか（( ) でまとめたものが1つのなかまを表す）。`,
+        correct: tree,
+        wrong: [...others, `((${pair[0]}, D), ${pair[1]}), ${third}`, `((${third}, D), ${pair[0]}), ${pair[1]}`],
+        explanation: `違いの数が最も少ない ${pair[0]} と ${pair[1]}（${m[pairKey(pair[0], pair[1])]}）が最も近縁で、次に ${third} がこのなかまに近く、D は A〜C のどれとも違いが大きい。違いの数は分岐してからの時間に比例するので、違いが小さい組ほど最近まで共通の祖先をもっていたと考えられるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a11-tree-time',
+    stage: 'a11',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const t2 = rng.pick([60, 80, 100]);
+      const t3 = rng.pick([200, 240, 300]);
+      const rate = 0.25;
+      const m = distanceMatrix({ pair: ['A', 'B'], t1: 20, t2, t3, rate });
+      const ans = (t2 * m.CD) / m.AC;
+      const d = distinctNumbers(ans, [t2 * 2, (t2 * m.AC) / m.CD, t2 + m.CD, m.CD, ans / 2, ans * 2, ans - t2], ' 百万年前', 0);
+      return {
+        text: `生物A〜Dのあるタンパク質のアミノ酸の違いの数は、${matrixText(m)} であった。AとCが分岐したのが ${t2} 百万年前だとすると、CとDが分岐したのは何百万年前と推定できるか（置換の速さは一定とする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `違いの数は分岐年代に比例するので、${t2} × ${m.CD} ÷ ${m.AC} ＝ ${fmt(ans, 0)} 百万年前となる。CとDの違い ${m.CD} はAとCの違い ${m.AC} の ${fmt(m.CD / m.AC, 2)} 倍だから、分岐年代も同じ倍率で古いと考えられるのである。`,
+      };
+    },
+  },
+  {
+    id: 'a11-two-proteins',
+    stage: 'a11',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const fastIsA = rng.chance(0.5);
+      const rF = 0.4;
+      const rS = 0.05;
+      const lab = fastIsA ? { fast: 'ア', slow: 'イ' } : { fast: 'イ', slow: 'ア' };
+      return {
+        text: '図のア・イは、2種類のタンパク質について、いろいろな生物の組の分岐年代とアミノ酸の違いの数の関係を表したものである。生存に重要なはたらきをもち、機能上の制約が大きいタンパク質はどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: 0, max: 500, label: '分岐した年代（百万年前）', step: 100 },
+          y: { min: 0, max: 420, label: 'アミノ酸の違いの数', step: 100 },
+          series: [
+            { points: [[0, 0], [500, diffs(500, fastIsA ? rF : rS)]], color: 'c1', width: 3, label: 'ア', labelAt: 450 },
+            { points: [[0, 0], [500, diffs(500, fastIsA ? rS : rF)]], color: 'c2', dash: 'dash', width: 3, label: 'イ', labelAt: 450 },
+          ],
+          alt: '2本の直線ア・イ',
+        },
+        correct: `${lab.slow}：違いの数がふえる速さ（置換の速さ）が小さいから`,
+        wrong: [`${lab.fast}：違いの数がふえる速さ（置換の速さ）が大きいから`, `${lab.fast}：違いの数がふえる速さ（置換の速さ）が小さいから`, `${lab.slow}：違いの数がふえる速さ（置換の速さ）が大きいから`, `${lab.fast}：直線が原点を通るから`],
+        explanation: `${lab.slow}の直線の傾きが小さく、置換がゆっくり蓄積している。機能上重要な部分のアミノ酸が変わると生存に不利になり、その変異は自然選択によって集団から取り除かれるので、置換の速さが小さくなるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a11-neutral',
+    stage: 'a11',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'DNAの塩基配列に生じる突然変異の多くは、生存に有利でも不利でもなく、遺伝的浮動によって偶然に集団に広まったり失われたりする、という考え方を何というか。',
+        correct: '中立説',
+        wrong: ['用不用説', '自然選択説', '隔離説', '定向進化説'],
+        explanation: 'これは中立説で、木村資生が提唱した。中立な変異は自然選択を受けず、ほぼ一定の速さで蓄積するので、分子時計の考え方の根拠になっている。',
+      };
+    },
+  },
+  {
+    id: 'a11-rate-order',
+    stage: 'a11',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const slow = rng.chance(0.5);
+      return {
+        text: slow
+          ? '次のタンパク質のうち、アミノ酸の置換が最もゆっくり進む（分子進化の速度が最も小さい）ものはどれか。'
+          : '次のタンパク質のうち、アミノ酸の置換が最も速く進む（分子進化の速度が最も大きい）ものはどれか。',
+        correct: slow ? 'ヒストン（DNAが巻きつくタンパク質）' : 'フィブリノペプチド（血液凝固で切り離される部分）',
+        wrong: ['ヒストン（DNAが巻きつくタンパク質）', 'フィブリノペプチド（血液凝固で切り離される部分）', 'ヘモグロビン', 'シトクロム c'],
+        ordered: true,
+        explanation: slow
+          ? 'ヒストンはDNAと結合して染色体の構造をつくる重要なタンパク質で、アミノ酸が変わるとはたらきを失いやすい。そのため変異の多くが自然選択で取り除かれ、置換が最もゆっくり進むのである。'
+          : 'フィブリノペプチドは血液凝固のときに切り離されて捨てられる部分で、アミノ酸が変わってもはたらきにほとんど影響しない。そのため変異が自然選択で取り除かれにくく、置換が最も速く進むのである。',
+      };
+    },
+  },
+  {
+    id: 'a11-terms',
+    stage: 'a11',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'DNAの塩基配列やタンパク質のアミノ酸配列の違いをもとに作成した系統樹を何というか。',
+          correct: '分子系統樹',
+          wrong: ['系統分類', '生命表', '遺伝子地図', '分子時計'],
+          explanation: 'これを分子系統樹という。形態の比較だけではわかりにくい類縁関係も、配列の違いの数を比べることで推定できるので、現在の分類の重要な根拠になっている。',
+        };
+      }
+      return {
+        text: 'アミノ酸や塩基の置換が、時間にほぼ比例して一定の速さで蓄積することを利用して、生物が分岐した年代を推定する考え方を何というか。',
+        correct: '分子時計',
+        wrong: ['分子系統樹', '中立説', '放射年代測定', '生物時計'],
+        explanation: 'これを分子時計という。化石などで分岐年代がわかっている組を基準にすると、違いの数の比から他の組の分岐年代を推定できるので、化石の少ない生物の進化の研究に役立つ。',
+      };
+    },
+  },
+  {
+    id: 'a11-saturation',
+    stage: 'a11',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '分岐年代が非常に古い生物どうしでは、アミノ酸の違いの数が、分岐年代に比例する直線から予想される値より少なくなることがある。その理由として最も適当なものはどれか。',
+        correct: '同じ場所で置換がくり返し起こったり、もとのアミノ酸にもどったりしても、違いとしては1か所にしか数えられないから',
+        wrong: ['古い時代には突然変異がまったく起こらなかったから', '分岐年代が古いほど、置換の速さが大きくなるから', '違いの数はつねに分岐年代に正確に比例するから'],
+        explanation: '長い時間がたつと、すでに置換が起こった場所で再び置換が起こることがある。その場合も配列を比べると1か所の違いとしか数えられないので、違いの数は実際に起こった置換の数より少なくなるからである。',
+      };
+    },
+  },
+];
+return { A11 };
+})();
+
+// ---- questions/a12.js ----
+__m["questions/a12.js"] = (function () {
+// A12 植物ホルモン（オーキシン）の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { ORGANS, effect, X_MIN, X_MAX } = __m["models/auxin.js"];
+const { sample } = __m["lib/series.js"];
+
+const sup = (x) => `10${String(Math.round(x)).replace('-', '⁻').replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}`;
+
+const A12 = [
+  {
+    id: 'a12-curve-read',
+    stage: 'a12',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(['root', 'bud', 'stem']);
+      const ask = rng.pick(['root', 'stem']);
+      const idx = order.indexOf(ask);
+      const styles = [['c1', 'solid'], ['c2', 'dash'], ['c3', 'dot']];
+      return {
+        text: `図のア〜ウは、オーキシン濃度と、根・芽・茎の成長への効果の関係を表している（0より上は促進、下は抑制）。${ORGANS[ask].name}を表すのはどれか。`,
+        chart: {
+          x: { min: X_MIN, max: X_MAX, label: 'オーキシン濃度（mol/L・対数目盛り）', ticks: [-12, -10, -8, -6, -4, -2].map((v) => ({ v, text: sup(v) })) },
+          y: { min: -1.15, max: 1.3, label: '成長への効果', ticks: [{ v: -1, text: '抑制' }, { v: 0, text: '0' }, { v: 1, text: '促進' }] },
+          series: order.map((o, i) => ({ points: sample((x) => effect(o, x), X_MIN, X_MAX, 300), color: styles[i][0], dash: styles[i][1], width: 3, label: KATA[i], labelAt: ORGANS[o].opt })),
+          alt: '3本の濃度―効果曲線ア〜ウ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 3).concat(['ア〜ウのどれでもない']),
+        explanation: ask === 'root'
+          ? `根は${KATA[idx]}で、最も低い濃度で成長が最も促進される。根はオーキシンに対する感受性が最も高いので、最適濃度が最も低いからである。`
+          : `茎は${KATA[idx]}で、最も高い濃度で成長が最も促進される。茎はオーキシンに対する感受性が低いので、根の成長を抑制するような濃度でも成長が促進されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a12-gravitropism',
+    stage: 'a12',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const organ = rng.pick(['root', 'stem']);
+      return organ === 'root'
+        ? {
+          text: '芽ばえを水平に置くと、根は下へ曲がる。この理由として最も適当なものはどれか。',
+          correct: 'オーキシンが下側に多く集まり、根にとっては濃度が高すぎるため下側の成長が抑制されるから',
+          wrong: ['オーキシンが上側に多く集まり、上側の成長が促進されるから', 'オーキシンが下側に多く集まり、下側の成長が促進されるから', '根ではオーキシンがはたらかず、重さで下に垂れるから'],
+          explanation: '水平に置くと、オーキシンは重力の方向に移動して下側に多く集まる。根はオーキシンに対する感受性が高いので、下側では濃度が高すぎて成長が抑制され、上側のほうがよく伸びるから、根は下へ曲がる（正の重力屈性）。',
+        }
+        : {
+          text: '芽ばえを水平に置くと、茎は上へ曲がる。この理由として最も適当なものはどれか。',
+          correct: 'オーキシンが下側に多く集まり、茎では下側の成長が促進されるから',
+          wrong: ['オーキシンが上側に多く集まり、上側の成長が促進されるから', 'オーキシンが下側に多く集まり、茎では下側の成長が抑制されるから', '光の方向に曲がるから'],
+          explanation: '水平に置くと、オーキシンは重力の方向に移動して下側に多く集まる。茎にとってはその濃度が成長を促進する範囲なので、下側のほうがよく伸び、茎は上へ曲がる（負の重力屈性）。',
+        };
+    },
+  },
+  {
+    id: 'a12-phototropism',
+    stage: 'a12',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'マカラスムギの幼葉鞘に一方向から光を当てると、光の方向に曲がる。このしくみとして正しいものはどれか。',
+        correct: '先端でつくられたオーキシンが光の当たらない側へ移動し、その側の成長が促進される',
+        wrong: ['先端でつくられたオーキシンが光の当たる側へ移動し、その側の成長が促進される', '光の当たる側でオーキシンが多くつくられ、その側の成長が抑制される', '光が当たると細胞が分裂しなくなり、光の当たる側が縮む'],
+        explanation: '光を受容すると、先端でつくられたオーキシンが光の当たらない側（陰側）へ移動し、下へ運ばれる。陰側の細胞の成長が促進されて陰側が多く伸びるので、幼葉鞘は光の方向に曲がる（正の光屈性）。',
+      };
+    },
+  },
+  {
+    id: 'a12-avena',
+    stage: 'a12',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const c1 = rng.pick([0.1, 0.2, 0.5, 1]);
+      const a1 = rng.pick([4, 5, 6, 8, 10]);
+      const k = rng.pick([1.5, 2, 2.5, 3]);
+      const a2 = a1 * k;
+      const ans = c1 * k;
+      const d = distinctNumbers(ans, [c1 + (a2 - a1), c1 * a1, c1 / k, c1 * k * k, (c1 * a1) / a2], ' mg/L', 2);
+      return {
+        text: `先端を切り取ったマカラスムギの幼葉鞘の片側に、オーキシンを含む寒天片をのせて屈曲角度を調べた。濃度 ${c1} mg/L のとき屈曲角度は ${a1}° であった。この範囲では屈曲角度はオーキシン濃度に比例するとすると、屈曲角度が ${fmt(a2, 1)}° になる濃度は何 mg/L か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `屈曲角度が ${fmt(a2, 1)} ÷ ${a1} ＝ ${fmt(k, 1)} 倍なので、濃度も ${c1} × ${fmt(k, 1)} ＝ ${fmt(ans, 2)} mg/L となる。寒天片をのせた側でだけ成長が促進され、その促進の大きさがオーキシンの量に比例するからである（ウェントの実験の考え方）。`,
+      };
+    },
+  },
+  {
+    id: 'a12-conc-ratio',
+    stage: 'a12',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const a = rng.pick([-11, -10, -9, -8]);
+      const b = a + rng.pick([1, 2, 3, 4]);
+      const ans = Math.pow(10, b - a);
+      const d = distinctNumbers(ans, [b - a, (b - a) * 10, ans / 10, ans * 10, 2 * (b - a)], ' 倍', 0);
+      return {
+        text: `オーキシン濃度を ${sup(a)} mol/L から ${sup(b)} mol/L に変えた。濃度は何倍になったか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${sup(b)} ÷ ${sup(a)} ＝ 10 の ${b - a} 乗 ＝ ${ans.toLocaleString('ja-JP')} 倍である。オーキシン濃度のグラフは横軸が対数目盛りなので、1目盛り（10倍）ごとに濃度が大きく変わることに注意しなければならないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a12-experiments',
+    stage: 'a12',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['boysen', 'went', 'darwin']);
+      const Q = {
+        darwin: { text: '幼葉鞘の先端を光を通さないキャップでおおうと、光を当てても屈曲しなかった。この実験から考えられることとして最も適当なものはどれか。', correct: '光を受容するのは幼葉鞘の先端部である', explanation: '先端をおおうと屈曲しないので、光を受容しているのは先端部だと考えられる。屈曲が起こるのは先端より下の部分だから、先端で受けた刺激が下へ伝わることもわかる（ダーウィンの実験）。' },
+        boysen: { text: '幼葉鞘の先端を切り取り、間にゼラチン片をはさんでもとにもどすと、光の方向に屈曲した。雲母片（物質を通さない）をはさむと屈曲しなかった。この実験から考えられることとして最も適当なものはどれか。', correct: '屈曲を起こす刺激は、先端から下へ移動する物質によって伝えられる', explanation: '物質を通すゼラチン片では屈曲し、物質を通さない雲母片では屈曲しないので、先端からの刺激は物質によって伝えられると考えられる（ボイセン・イェンセンの実験）。この物質がのちにオーキシンとわかったからである。' },
+        went: { text: '切り取った幼葉鞘の先端を寒天片の上にしばらく置き、その寒天片を、先端を切り取った幼葉鞘の片側にのせると、暗所でも反対側に屈曲した。この実験から考えられることとして最も適当なものはどれか。', correct: '先端でつくられ寒天片に移った物質が、のせた側の成長を促進する', explanation: '寒天片をのせた側がよく伸びて反対側に曲がったので、先端から寒天片に移った物質が成長を促進したと考えられる（ウェントの実験）。光がなくても屈曲が起こるから、成長を促進するのは光ではなくこの物質である。' },
+      }[which];
+      // 誤答は、その実験の結果からは結論できない（または結果と矛盾する）ものにする
+      const WRONG = {
+        darwin: ['屈曲が起こるのは幼葉鞘の先端部である', '光の当たった側の細胞が分裂しなくなる', '光を受容するのは幼葉鞘の先端より下の部分である'],
+        boysen: ['屈曲を起こす刺激は、物質ではなく電気的な信号として伝えられる', '光を受容するのは幼葉鞘の先端より下の部分である', '雲母片は光をさえぎるので、屈曲が起こらない'],
+        went: ['屈曲を起こしているのは光そのものである', '寒天そのものに成長をおさえるはたらきがある', '寒天片に移った物質は、のせた側の成長を抑制する'],
+      }[which];
+      return { text: Q.text, correct: Q.correct, wrong: WRONG, explanation: Q.explanation };
+    },
+  },
+  {
+    id: 'a12-polar',
+    stage: 'a12',
+    level: 3,
+    kind: 'term',
+    make(rng) {
+      const inverted = rng.chance(0.5);
+      return {
+        text: `茎の切片を${inverted ? '上下を逆さまにして' : 'もとの向きのまま'}、上の切り口にオーキシンを含む寒天片、下の切り口にオーキシンを含まない寒天片をあてて置いた。しばらくして下の寒天片にオーキシンが移動しているかを調べた結果として正しいものはどれか。`,
+        correct: inverted ? '移動していない' : '移動している',
+        wrong: [inverted ? '移動している' : '移動していない', '上下の向きに関係なく、つねに重力の方向へ移動している', '上下の向きに関係なく、まったく移動しない'],
+        explanation: `オーキシンは茎の先端側から基部側へ向かってだけ移動する（極性移動）。${inverted ? '逆さまに置くと上の切り口が基部側になるので、オーキシンは下の寒天片へは移動しない' : 'もとの向きでは上の切り口が先端側なので、オーキシンは下の寒天片へ移動する'}。この移動は重力とは関係なく、細胞膜にあるオーキシンを運ぶタンパク質のかたよりによるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a12-apical',
+    stage: 'a12',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '茎の先端の芽（頂芽）がさかんに成長している間は、側芽の成長がおさえられる。頂芽を切り取ると側芽が成長しはじめる。この現象を何というか。',
+        correct: '頂芽優勢',
+        wrong: ['光屈性', '重力屈性', '休眠', '春化'],
+        explanation: 'これは頂芽優勢である。頂芽でつくられたオーキシンが茎を下へ移動し、側芽の成長をおさえるので、頂芽を切り取ると側芽が成長できるようになる。',
+      };
+    },
+  },
+  {
+    id: 'a12-hormones',
+    stage: 'a12',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['gib', 'aba', 'eth']);
+      const Q = {
+        gib: { text: '種子の発芽を促進したり、茎の伸長成長を促進したりする植物ホルモンはどれか。', correct: 'ジベレリン', explanation: 'これはジベレリンである。なお、種子の休眠を維持するアブシシン酸とは反対のはたらきをもち、オオムギの種子では糊粉層でのアミラーゼの合成を促すので、胚乳のデンプンが分解されて発芽に使われる。' },
+        aba: { text: '種子の休眠を維持したり、乾燥したときに気孔を閉じさせたりする植物ホルモンはどれか。', correct: 'アブシシン酸', explanation: 'これはアブシシン酸である。なお、乾燥すると葉でアブシシン酸が増え、孔辺細胞から水が出て気孔が閉じるので、蒸散による水の損失がおさえられる。' },
+        eth: { text: '気体の植物ホルモンで、果実の成熟や落葉・落果を促進するものはどれか。', correct: 'エチレン', explanation: 'これはエチレンである。なお、気体なので周囲の果実にも広がり、熟した果実と一緒に置いた未熟な果実の成熟も早まる。' },
+      }[which];
+      return { text: Q.text, correct: Q.correct, wrong: ['ジベレリン', 'アブシシン酸', 'エチレン', 'オーキシン', 'フロリゲン'], explanation: Q.explanation };
+    },
+  },
+];
+return { A12 };
+})();
+
+// ---- questions/a13.js ----
+__m["questions/a13.js"] = (function () {
+// A13 生態系の物質生産 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { forest } = __m["models/production.js"];
+const { sample } = __m["lib/series.js"];
+
+const A13 = [
+  {
+    id: 'a13-net',
+    stage: 'a13',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const gross = rng.pick([800, 1000, 1200, 1500, 2000]);
+      const resp = gross * rng.pick([0.4, 0.5, 0.55, 0.6]);
+      const ans = gross - resp;
+      const d = distinctNumbers(ans, [gross + resp, resp, gross, ans / 2, gross - resp / 2], '', 0);
+      return {
+        text: `ある森林の生産者の総生産量は ${gross}、呼吸量は ${fmt(resp, 0)} であった（単位はいずれも g/(m²・年)）。純生産量はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `純生産量 ＝ 総生産量 − 呼吸量 ＝ ${gross} − ${fmt(resp, 0)} ＝ ${fmt(ans, 0)} である。光合成でつくった有機物（総生産量）の一部は、生産者自身の呼吸で使われてしまうからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-growth',
+    stage: 'a13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const net = rng.pick([400, 500, 600, 800]);
+      const grazed = net * rng.pick([0.05, 0.1, 0.15, 0.2]);
+      const dead = net * rng.pick([0.3, 0.4, 0.5]);
+      const ans = net - grazed - dead;
+      const d = distinctNumbers(ans, [net - grazed, net - dead, net + grazed + dead, grazed + dead, net - grazed + dead], '', 0);
+      return {
+        text: `ある生産者の純生産量は ${net}、被食量は ${fmt(grazed, 0)}、枯死量は ${fmt(dead, 0)} であった（相対値）。成長量はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `成長量 ＝ 純生産量 −（被食量 ＋ 枯死量）＝ ${net} − (${fmt(grazed, 0)} ＋ ${fmt(dead, 0)}) ＝ ${fmt(ans, 0)} である。純生産量のうち、動物に食べられた分と枯れ落ちた分を除いた残りが、生産者の体として増えた分になるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-consumer',
+    stage: 'a13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const intake = rng.pick([100, 150, 200, 250]);
+      const undig = intake * rng.pick([0.2, 0.3, 0.4]);
+      const resp = Math.round((intake - undig) * rng.pick([0.5, 0.6, 0.7]));
+      const ask = rng.pick(['assim', 'prod']);
+      const assim = intake - undig;
+      const ans = ask === 'assim' ? assim : assim - resp;
+      const d = distinctNumbers(ans, [intake - resp, intake - undig - resp, intake - undig, intake + undig, assim + resp, undig + resp], '', 0);
+      return {
+        text: `ある一次消費者の摂食量は ${intake}、不消化排出量は ${fmt(undig, 0)}、呼吸量は ${fmt(resp, 0)} であった（相対値）。この一次消費者の${ask === 'assim' ? '同化量' : '生産量'}はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'assim'
+          ? `同化量 ＝ 摂食量 − 不消化排出量 ＝ ${intake} − ${fmt(undig, 0)} ＝ ${fmt(ans, 0)} である。食べた物のうち、消化・吸収されずにふんとして出た分は、体に取り込まれていないからである。`
+          : `同化量 ＝ ${intake} − ${fmt(undig, 0)} ＝ ${fmt(assim, 0)}、生産量 ＝ 同化量 − 呼吸量 ＝ ${fmt(assim, 0)} − ${fmt(resp, 0)} ＝ ${fmt(ans, 0)} である。生産者の純生産量と同じように、取り込んだ分から自分の呼吸で使った分を差し引くからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-efficiency',
+    stage: 'a13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([1000, 2000, 5000]);
+      const a1 = g * rng.pick([0.05, 0.08, 0.1, 0.12, 0.15]);
+      const a2 = a1 * rng.pick([0.1, 0.15, 0.2]);
+      const ask = rng.pick(['c1', 'c2']);
+      const ans = ask === 'c1' ? (a1 / g) * 100 : (a2 / a1) * 100;
+      const d = distinctNumbers(ans, [(a2 / g) * 100, ask === 'c1' ? (a2 / a1) * 100 : (a1 / g) * 100, ans * 2, ans / 2, ans * 10], ' %', 1);
+      return {
+        text: `ある生態系で、生産者の総生産量は ${g}、一次消費者の同化量は ${fmt(a1, 0)}、二次消費者の同化量は ${fmt(a2, 1)} であった（相対値）。${ask === 'c1' ? '一次消費者' : '二次消費者'}のエネルギー効率は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'c1'
+          ? `一次消費者のエネルギー効率 ＝ 一次消費者の同化量 ÷ 生産者の総生産量 × 100 ＝ ${fmt(a1, 0)} ÷ ${g} × 100 ＝ ${fmt(ans, 1)}% である。エネルギー効率は、1つ前の栄養段階の同化量（生産者では総生産量）のうち、どれだけが次の段階に同化されたかを表すからである。`
+          : `二次消費者のエネルギー効率 ＝ 二次消費者の同化量 ÷ 一次消費者の同化量 × 100 ＝ ${fmt(a2, 1)} ÷ ${fmt(a1, 0)} × 100 ＝ ${fmt(ans, 1)}% である。エネルギー効率は1つ前の栄養段階の同化量を基準にするので、生産者の総生産量で割ってはいけないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-producer-eff',
+    stage: 'a13',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const light = rng.pick([500000, 600000, 800000, 1000000]);
+      const gross = light * rng.pick([0.005, 0.008, 0.01, 0.012, 0.02]);
+      const ans = (gross / light) * 100;
+      const d = distinctNumbers(ans, [ans * 10, ans / 10, ans * 100, (light / gross) / 100, ans * 2], ' %', 2);
+      return {
+        text: `ある草原に1年間に入射した光エネルギーは ${light.toLocaleString('ja-JP')} kJ/m²、生産者の総生産量はエネルギーにして ${gross.toLocaleString('ja-JP')} kJ/m² であった。生産者のエネルギー効率は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `生産者のエネルギー効率 ＝ 総生産量 ÷ 入射した光エネルギー × 100 ＝ ${gross.toLocaleString('ja-JP')} ÷ ${light.toLocaleString('ja-JP')} × 100 ＝ ${fmt(ans, 2)}% である。入射した光の多くは反射されたり、光合成に使われずに熱になったりするので、生産者のエネルギー効率はふつう数%以下と小さいからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-forest-graph',
+    stage: 'a13',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(['gross', 'resp', 'net']);
+      const ask = rng.pick(['net', 'resp']);
+      const idx = order.indexOf(ask);
+      const styles = [['c1', 'solid'], ['c2', 'dash'], ['c3', 'dot']];
+      const name = { gross: '総生産量', resp: '呼吸量', net: '純生産量' };
+      return {
+        text: `図のア〜ウは、森林の林齢と、生産者の総生産量・呼吸量・純生産量の関係を表した模式図である。${name[ask]}を表すのはどれか。`,
+        chart: {
+          x: { min: 0, max: 150, label: '林齢（年）', step: 25 },
+          y: { min: 0, max: 120, label: '量（相対値）', step: 20 },
+          series: order.map((k, i) => ({ points: sample((t) => forest(t)[k], 0, 150, 300), color: styles[i][0], dash: styles[i][1], width: 3, label: KATA[i], labelAt: k === 'net' ? 130 : 145 })),
+          alt: '林齢と物質生産の3本の曲線ア〜ウ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 3).concat(['ア〜ウのどれでもない']),
+        explanation: ask === 'net'
+          ? `純生産量は${KATA[idx]}で、若い森林で大きく、林齢が進むと小さくなる。総生産量はやがてほぼ一定になるのに、幹や枝など光合成をしない部分の呼吸量が増え続けるからである。`
+          : `呼吸量は${KATA[idx]}で、林齢とともに増え続ける。幹や枝・根などの光合成をしない部分（非同化器官）が増え続け、その呼吸が増えるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-bars',
+    stage: 'a13',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const g = 1000;
+      const a1 = rng.pick([60, 80, 100, 120, 150]);
+      const a2 = rng.pick([6, 8, 10, 12, 15, 20]);
+      const ans = (a2 / a1) * 100;
+      const d = distinctNumbers(ans, [(a2 / g) * 100, (a1 / g) * 100, ans * 2, ans / 2, (a1 / a2)], ' %', 1);
+      return {
+        text: '図は、ある生態系の各栄養段階の同化量（生産者は総生産量）を表している。二次消費者のエネルギー効率は何%か。',
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0, max: 1100, label: '同化量（相対値）', step: 200 },
+          bars: { categories: ['生産者', '一次消費者', '二次消費者'], groups: [{ values: [g, a1, a2], color: 'c1', label: '同化量' }] },
+          texts: [{ x: 0.5, y: a1 + 120, text: String(a1) }, { x: 0.833, y: a2 + 120, text: String(a2) }, { x: 0.167, y: g + 50, text: String(g) }],
+          alt: `生産者 ${g}、一次消費者 ${a1}、二次消費者 ${a2}`,
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `二次消費者のエネルギー効率 ＝ ${a2} ÷ ${a1} × 100 ＝ ${fmt(ans, 1)}% である。1つ前の栄養段階（一次消費者）の同化量を基準にするので、生産者の総生産量で割らないようにしなければならないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a13-flow-term',
+    stage: 'a13',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '生態系での物質とエネルギーの移動について正しいものはどれか。',
+        correct: '炭素などの物質は生態系の中を循環するが、エネルギーは循環せず、最終的に熱として生態系の外へ出ていく',
+        wrong: ['物質もエネルギーも生態系の中を循環する', 'エネルギーは生態系の中を循環するが、物質は循環しない', '上の栄養段階ほど、利用できるエネルギーは多くなる'],
+        explanation: '光エネルギーは光合成で化学エネルギーとして有機物にたくわえられ、食物連鎖を通じて移動するが、各段階の呼吸などで熱として失われる。熱エネルギーは生産者が再び利用できないので、エネルギーは循環せず、太陽から供給され続ける必要がある。',
+      };
+    },
+  },
+  {
+    id: 'a13-terms',
+    stage: 'a13',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['undig', 'net', 'dead']);
+      const Q = {
+        undig: { text: '消費者が食べた有機物のうち、消化・吸収されずにふんとして体外に出たものを何というか。', correct: '不消化排出量' },
+        net: { text: '生産者が光合成でつくった有機物の総量から、生産者自身の呼吸で消費した量を差し引いたものを何というか。', correct: '純生産量' },
+        dead: { text: '生産者の純生産量のうち、落葉・落枝などとして失われた量を何というか。', correct: '枯死量' },
+      }[which];
+      return {
+        text: Q.text,
+        correct: Q.correct,
+        wrong: ['不消化排出量', '純生産量', '枯死量', '総生産量', '同化量', '成長量'],
+        explanation: `これを${Q.correct}という。なお、生産者では 純生産量 ＝ 成長量 ＋ 被食量 ＋ 枯死量、消費者では 同化量 ＝ 摂食量 − 不消化排出量 の関係があるので、どの量がどこに含まれるかを区別して計算する。`,
+      };
+    },
+  },
+];
+return { A13 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
@@ -10016,9 +12175,14 @@ const { A5 } = __m["questions/a5.js"];
 const { A6 } = __m["questions/a6.js"];
 const { A7 } = __m["questions/a7.js"];
 const { A8 } = __m["questions/a8.js"];
+const { A9 } = __m["questions/a9.js"];
+const { A10 } = __m["questions/a10.js"];
+const { A11 } = __m["questions/a11.js"];
+const { A12 } = __m["questions/a12.js"];
+const { A13 } = __m["questions/a13.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -10866,6 +13030,55 @@ const GLOSSARY = {
     { term: '晩死型', desc: '若いうちの死亡率が低く、老齢で多くが死ぬ型。産む子の数は少ないが親が子を保護する。ヒトや大形の哺乳類など。' },
     { term: '平均型', desc: 'どの年齢でも死亡率がほぼ一定の型。対数目盛りの生存曲線はほぼ直線になる。鳥類など。' },
     { term: '早死型', desc: '生まれてすぐの時期の死亡率がきわめて高い型。多数の卵を産むが親が保護しない。魚類や貝類など。' },
+  ],
+  a9: [
+    { term: '呼吸基質', desc: '呼吸で分解される有機物。炭水化物・脂肪・タンパク質など。' },
+    { term: '呼吸商（RQ）', desc: '呼吸で放出したCO₂の体積 ÷ 吸収したO₂の体積。炭水化物 1.0、タンパク質 約0.8、脂肪 約0.7。' },
+    { term: '呼吸計の実験', desc: 'KOH水溶液はCO₂を吸収するので、KOHを入れたフラスコの気体の減少量が吸収したO₂、水を入れたフラスコの減少量が（O₂ − CO₂）を表す。呼吸商 ＝ (KOH側 − 水側) ÷ KOH側。' },
+    { term: 'アルコール発酵', desc: '酵母などが、O₂を使わずにグルコースをエタノールとCO₂に分解してATPを得るはたらき。C₆H₁₂O₆ → 2C₂H₅OH ＋ 2CO₂。' },
+    { term: '乳酸発酵', desc: '乳酸菌などが、O₂を使わずにグルコースを乳酸に分解してATPを得るはたらき。CO₂は生じない。' },
+    { term: '解糖', desc: '筋肉などで、O₂を使わずにグルコースを乳酸に分解してATPを得るはたらき。乳酸発酵と同じ反応。' },
+    { term: '呼吸と発酵の割合の求め方', desc: '呼吸ではO₂とCO₂が同じ量なので、呼吸のグルコース ＝ O₂ ÷ 6、O₂より多いCO₂は発酵によるので、発酵のグルコース ＝ (CO₂ − O₂) ÷ 2。' },
+  ],
+  a10: [
+    { term: '単収縮', desc: '1回の刺激による筋肉の収縮。カエルの腓腹筋では約0.1秒で、潜伏期・収縮期・弛緩期がある。' },
+    { term: '強縮', desc: '短い間隔で刺激が続くと収縮が重なり合い、単収縮より大きな張力が生じる収縮。ぎざぎざが残る不完全強縮と、なめらかな完全強縮がある。' },
+    { term: 'サルコメア（筋節）', desc: 'Z膜からZ膜までの、筋原繊維のくり返しの単位。' },
+    { term: '暗帯・明帯', desc: '暗帯は太いフィラメント（ミオシン）がある部分で、収縮しても長さは変わらない。明帯は細いフィラメント（アクチン）だけの部分で、収縮すると短くなる。' },
+    { term: 'H帯', desc: '暗帯の中央で、細いフィラメントと重なっていない部分。収縮すると短くなる。' },
+    { term: '滑り説', desc: '筋収縮では、フィラメントの長さは変わらず、細いフィラメントが太いフィラメントの間に滑り込むことでサルコメアが短くなるという説。' },
+    { term: '筋小胞体', desc: '筋繊維の中にある膜構造。興奮が伝わると Ca²⁺ を放出し、弛緩するときに取り込む。' },
+    { term: 'トロポニン・トロポミオシン', desc: '細いフィラメント上のタンパク質。Ca²⁺ がトロポニンに結合するとトロポミオシンの位置が変わり、ミオシン頭部がアクチンと結合できるようになる。' },
+    { term: 'サルコメアの長さと張力', desc: '張力は太いフィラメントと細いフィラメントの重なり（アクチンと結合できるミオシン頭部の数）で決まる。重なりがなくなると張力は0。' },
+  ],
+  a11: [
+    { term: '分子系統樹', desc: 'DNAの塩基配列やタンパク質のアミノ酸配列の違いをもとに作成した系統樹。' },
+    { term: '分子時計', desc: 'アミノ酸や塩基の置換がほぼ一定の速さで蓄積することを利用して、分岐年代を推定する考え方。違いの数は分岐年代に比例する。' },
+    { term: '分岐年代の求め方', desc: '基準の組（分岐年代 t₁、違いの数 D₁）と比べて、違いの数 D₂ の組の分岐年代 ＝ t₁ × D₂ ÷ D₁。' },
+    { term: '中立説', desc: '分子レベルの突然変異の多くは生存に有利でも不利でもなく（中立）、遺伝的浮動によって集団に広まるという説。木村資生が提唱した。' },
+    { term: '分子進化の速度', desc: '機能上の制約が大きい分子（ヒストンなど）ほど置換がゆっくり進み、制約の小さい分子（フィブリノペプチドなど）ほど速く進む。' },
+    { term: '外群', desc: '系統樹を作るとき、調べたい生物のなかま（内群）より前に分かれたことがわかっている生物。系統樹の根の位置を決めるのに使う。' },
+  ],
+  a12: [
+    { term: 'オーキシン', desc: '茎の先端などでつくられ、細胞の伸長成長を促進する植物ホルモン。天然のオーキシンはインドール酢酸（IAA）。' },
+    { term: '最適濃度', desc: '成長が最も促進される濃度。根が最も低く、芽、茎の順に高い。最適濃度より高いと促進の効果が小さくなり、さらに高いと抑制する。' },
+    { term: '光屈性', desc: '光の方向に対して曲がる性質。茎は光の方向に曲がる（正の光屈性）。オーキシンが光の当たらない側へ移動するために起こる。' },
+    { term: '重力屈性', desc: '重力の方向に対して曲がる性質。茎は上へ（負の重力屈性）、根は下へ（正の重力屈性）曲がる。' },
+    { term: '極性移動', desc: 'オーキシンが茎の先端側から基部側へだけ移動すること。重力とは関係しない。' },
+    { term: '頂芽優勢', desc: '頂芽が成長している間は側芽の成長がおさえられる現象。頂芽でつくられたオーキシンが関係する。' },
+    { term: 'ジベレリン', desc: '種子の発芽や茎の伸長成長を促進する植物ホルモン。' },
+    { term: 'アブシシン酸', desc: '種子の休眠の維持や、乾燥時に気孔を閉じさせるはたらきをもつ植物ホルモン。' },
+    { term: 'エチレン', desc: '果実の成熟や落葉・落果を促進する気体の植物ホルモン。' },
+  ],
+  a13: [
+    { term: '総生産量', desc: '生産者が一定期間に光合成でつくった有機物の総量。' },
+    { term: '純生産量', desc: '総生産量 − 呼吸量。純生産量 ＝ 成長量 ＋ 被食量 ＋ 枯死量。' },
+    { term: '成長量', desc: '生産者では 純生産量 −（被食量 ＋ 枯死量）、消費者では 生産量 −（被食量 ＋ 死滅量）。' },
+    { term: '同化量', desc: '消費者が体内に取り込んだ量。同化量 ＝ 摂食量 − 不消化排出量。' },
+    { term: '生産量（消費者）', desc: '同化量 − 呼吸量。' },
+    { term: 'エネルギー効率', desc: '各栄養段階で利用されたエネルギーの割合（%）。生産者 ＝ 総生産量 ÷ 入射した光エネルギー × 100、消費者 ＝ その段階の同化量 ÷ 1つ前の段階の同化量 × 100。' },
+    { term: '生態系でのエネルギーの流れ', desc: '物質は生態系の中を循環するが、エネルギーは各段階で熱として失われ、循環しない。' },
+    { term: '森林の林齢と純生産量', desc: '総生産量は成熟するとほぼ一定になるが、幹や枝などの呼吸量が増え続けるので、純生産量は若い森林で大きく、林齢が進むと小さくなる。' },
   ],
 };
 return { GLOSSARY };
