@@ -1076,6 +1076,7 @@ const STAGES = [
   { id: 'b8', code: 'B8', course: 'basic', title: 'バイオーム', unit: '生物の多様性と生態系', lead: '年平均気温と年降水量でバイオームが決まる。日本の水平分布・垂直分布。' },
   { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '遺伝子とそのはたらき', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
+  { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -1089,6 +1090,10 @@ const STAGES = [
   { id: 'a11', code: 'A11', course: 'advanced', title: '分子系統と分子時計', unit: '生物の進化', lead: 'アミノ酸の違いの数から分岐年代を求め、違いの数の表から系統樹をつくる。' },
   { id: 'a12', code: 'A12', course: 'advanced', title: '植物ホルモン（オーキシン）', unit: '生物の環境応答', lead: 'オーキシン濃度と根・芽・茎の成長。水平に置いた芽ばえの重力屈性。' },
   { id: 'a13', code: 'A13', course: 'advanced', title: '生態系の物質生産', unit: '生態と環境', lead: '総生産量・純生産量・成長量と、栄養段階ごとのエネルギー効率の計算。' },
+  { id: 'a14', code: 'A14', course: 'advanced', title: 'シナプスと興奮の統合', unit: '生物の環境応答', lead: 'EPSP と IPSP。時間的加重・空間的加重で閾値に達するかどうか。' },
+  { id: 'a15', code: 'A15', course: 'advanced', title: 'PCRと電気泳動', unit: '遺伝情報の発現と発生', lead: 'PCR法で DNA を増やす計算と、電気泳動による DNA 断片の長さの推定。' },
+  { id: 'a16', code: 'A16', course: 'advanced', title: '動物の行動', unit: '生物の環境応答', lead: 'ミツバチの8の字ダンスの角度と太陽コンパス。生得的行動と学習。' },
+  { id: 'a17', code: 'A17', course: 'advanced', title: '光周性と花芽形成', unit: '生物の環境応答', lead: '連続した暗期と限界暗期。短日植物・長日植物と光中断。' },
 ];
 
 function stageById(id) {
@@ -3576,6 +3581,148 @@ dojo.tasks[0].check = (s) => s.mode === 'double' && s.seenA.size >= 3;
 dojo.tasks[1].check = (s) => s.mode === 'double' && Math.abs(s.gcSum - 60) < 0.01;
 dojo.tasks[2].check = (s) => s.mode === 'strand' && s.s1.A !== s.s1.T;
 dojo.tasks[3].check = (s) => s.preset === 'human2';
+return { dojo };
+})();
+
+// ---- models/succession.js ----
+__m["models/succession.js"] = (function () {
+// B11 植生の遷移（日本の暖温帯での一次遷移の模式）
+// 裸地 → 荒原（地衣類・コケ植物）→ 草原（ススキなど）→ 低木林（ヤシャブシ・ヤマツツジなど）
+// → 陽樹林（アカマツ・コナラなど）→ 混交林 → 陰樹林（スダジイ・タブノキなど：極相林）
+// 一次遷移は土壌がない状態から始まるので長い年月（数百年以上）がかかる。
+// 二次遷移は土壌や種子・根などが残っているところから始まるので速く進む。
+const STAGES = [
+  { id: 'bare', name: '裸地・荒原', plants: '地衣類・コケ植物（先駆種）', from: 0 },
+  { id: 'grass', name: '草原', plants: 'ススキ・イタドリなどの草本', from: 50 },
+  { id: 'shrub', name: '低木林', plants: 'ヤシャブシ・ヤマツツジなど', from: 120 },
+  { id: 'sun', name: '陽樹林', plants: 'アカマツ・コナラなど', from: 180 },
+  { id: 'mixed', name: '混交林', plants: '陽樹と陰樹が混じる', from: 300 },
+  { id: 'climax', name: '陰樹林（極相林）', plants: 'スダジイ・タブノキ・アラカシなど', from: 420 },
+];
+const PRIMARY_END = 600;
+const SECONDARY_SPEED = 4; // 二次遷移では、このモデルでは4倍の速さで進む（模式）
+
+const sig = (x, mid, w) => 1 / (1 + Math.exp(-(x - mid) / w));
+
+// 年数 t（一次遷移の年数に換算した値）での各指標（模式・相対値）
+function state(t) {
+  const soil = 100 * sig(t, 120, 40); // 土壌の発達
+  const height = 2 + 23 * sig(t, 230, 45); // 植生の高さ［m］
+  const sunTrees = 100 * sig(t, 190, 25) * (1 - sig(t, 380, 45)); // 陽樹の割合（森林に占める）
+  const shadeTrees = 100 * sig(t, 360, 45);
+  // 林床の相対照度［%］：植生が高く茂るほど小さくなる。陰樹林では数%以下
+  const floorLight = 100 - 97 * sig(t, 170, 25);
+  return { soil, height, sunTrees, shadeTrees, floorLight };
+}
+
+function stageAt(t) {
+  let s = STAGES[0];
+  for (const x of STAGES) if (t >= x.from) s = x;
+  return s;
+}
+
+// 相対照度（%）＝ 林床の照度 ÷ 林外（裸地）の照度 × 100
+function relativeLight(floor, open) {
+  return (floor / open) * 100;
+}
+
+// 芽ばえが育つかどうか（B4 の光―光合成曲線の考え方：補償点より明るくないと育たない。模式）
+// 陽樹の芽ばえの補償点は相対照度 約10%、陰樹の芽ばえは約2%（目安）
+const COMP = { sun: 10, shade: 2 };
+function seedlingGrows(kind, relLight) {
+  return relLight > COMP[kind];
+}
+return { STAGES, PRIMARY_END, SECONDARY_SPEED, state, stageAt, relativeLight, COMP, seedlingGrows };
+})();
+
+// ---- dojo/b11.js ----
+__m["dojo/b11.js"] = (function () {
+// B11 植生の遷移 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { STAGES, state, stageAt, seedlingGrows, COMP, PRIMARY_END, SECONDARY_SPEED } = __m["models/succession.js"];
+const { sample } = __m["lib/series.js"];
+
+const SEC_END = 150;
+const SEC_START = 50; // 二次遷移は草原の段階から始まるとみなす（土壌や種子・根が残っている）
+const effOf = (mode, t) => (mode === 'primary' ? t : SEC_START + t * SECONDARY_SPEED * 0.9);
+
+const dojo = {
+  tasks: [
+    { id: 'pioneer', text: '一次遷移のはじめ（裸地）で、先駆種が何かを確かめよう（年数を少し進める）。', short: '先駆種' },
+    { id: 'sunfloor', text: '陽樹林の段階で、林床が暗くなり陽樹の芽ばえが育たなくなる年数を見つけよう。', short: '陽樹の芽ばえが育たない' },
+    { id: 'climax', text: '極相林（陰樹林）まで進めよう。', short: '極相林' },
+    { id: 'secondary', text: '二次遷移に切り替え、一次遷移よりずっと早く森林になることを確かめよう。', short: '二次遷移は速い' },
+  ],
+  mount(root, ctx) {
+    const st = { mode: 'primary', t: 0, touched: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '遷移にともなう変化のグラフ', aspect: 0.7 });
+    const leg = h('div');
+    const status = h('p', { class: 'small', 'aria-live': 'polite' });
+    top.append(leg, status, h('p', { class: 'small muted' }, '日本の暖温帯（関東〜九州の低地）での遷移の模式。年数は目安で、場所によって大きく異なる。'));
+
+    const segM = segmented({ label: '遷移の種類', options: [{ value: 'primary', label: '一次遷移（溶岩台地など）' }, { value: 'secondary', label: '二次遷移（山火事・伐採のあと）' }], value: st.mode, onChange: (v) => { st.mode = v; st.t = 0; sT.setRange(0, v === 'primary' ? PRIMARY_END : SEC_END); sT.set(0, true); st.touched++; update(); } });
+    const sT = slider({ label: '遷移が始まってからの年数', min: 0, max: PRIMARY_END, step: 5, value: st.t, format: (v) => `約 ${v} 年`, onInput: (v) => { st.t = v; st.touched++; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segM.el, sT.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const end = st.mode === 'primary' ? PRIMARY_END : SEC_END;
+      const eff = (t) => effOf(st.mode, t);
+      const s = state(eff(st.t));
+      const stg = st.mode === 'secondary' && eff(st.t) < 50 ? STAGES[1] : stageAt(eff(st.t));
+      title.replaceChildren(`${st.mode === 'primary' ? '一次遷移' : '二次遷移'}：いまは「${stg.name}」 `, modelNote());
+      chart.draw({
+        alt: `${st.t} 年：${stg.name}、林床の相対照度 ${fmt(s.floorLight, 0)}%`,
+        x: { min: 0, max: end, label: '年数', step: st.mode === 'primary' ? 100 : 25 },
+        y: { min: 0, max: 110, label: '相対値（%）', step: 20 },
+        series: [
+          { points: sample((t) => state(eff(t)).floorLight, 0, end, 300), color: 'c5', width: 3, label: '林床の相対照度' },
+          { points: sample((t) => state(eff(t)).sunTrees, 0, end, 300), color: 'c2', dash: 'dash', width: 3, label: '陽樹' },
+          { points: sample((t) => state(eff(t)).shadeTrees, 0, end, 300), color: 'c3', dash: 'dot', width: 3, label: '陰樹' },
+          { points: sample((t) => (state(eff(t)).height / 25) * 100, 0, end, 300), color: 'c1', dash: 'dashdot', width: 2, label: '高さ', labelAt: end * 0.15 },
+        ],
+        hlines: [{ y: COMP.sun, color: 'c2', dash: 'dot', width: 1, label: '陽樹の芽ばえが育つ明るさの目安', align: 'right' }],
+        vlines: [{ x: st.t, color: 'fg', dash: 'dot' }],
+      });
+      leg.replaceChildren(legend([
+        { label: '林床の相対照度（林外＝100）', color: 'c5' },
+        { label: '陽樹の割合（森林の高木に占める）', color: 'c2', dash: 'dash' },
+        { label: '陰樹の割合', color: 'c3', dash: 'dot' },
+        { label: '植生の高さ（最大＝100）', color: 'c1', dash: 'dashdot' },
+      ]));
+      const sunOk = seedlingGrows('sun', s.floorLight);
+      const shadeOk = seedlingGrows('shade', s.floorLight);
+      status.textContent = `${st.t} 年：${stg.name}（${stg.plants}）。林床の相対照度 約${fmt(s.floorLight, 0)}%、陽樹の芽ばえ ${sunOk ? '育つ' : '育たない'}、陰樹の芽ばえ ${shadeOk ? '育つ' : '育たない'}。`;
+      const lines = [];
+      const id = stg.id;
+      if (id === 'bare') lines.push('溶岩台地などの裸地には土壌がなく、栄養分や水分が少ない。乾燥や栄養の少なさに強い地衣類やコケ植物が最初に侵入する（先駆種）。これらの遺体などから少しずつ土壌がつくられる。');
+      else if (id === 'grass') lines.push('土壌ができると、ススキなどの草本が生育して草原になる。遷移の初期に侵入する植物は、種子が小さく風で遠くまで運ばれるものが多い。');
+      else if (id === 'shrub') lines.push('土壌がさらに発達すると、ヤシャブシ・ヤマツツジなどの低木が生育し、低木林になる。');
+      else if (id === 'sun') lines.push('アカマツ・コナラなどの陽樹が育って陽樹林になる。陽樹は強い光のもとで成長が速いが、林が茂ると林床が暗くなり、陽樹の芽ばえは育ちにくくなる。');
+      else if (id === 'mixed') lines.push('暗い林床でも育つ陰樹の芽ばえが成長し、陽樹と陰樹が混じった混交林になる。陽樹は寿命などで枯れると、陰樹に置きかわっていく。');
+      else lines.push('スダジイ・タブノキなどの陰樹が優占する陰樹林になる。林床が暗くても陰樹の芽ばえは育つので、陰樹林は大きく変化しなくなる。この安定した状態を極相といい、その森林を極相林という。');
+      lines.push(`陽樹の芽ばえは補償点が高く、相対照度 約${COMP.sun}% 以下では育たない（模式）。陰樹の芽ばえは補償点が低いので、約${COMP.shade}% の暗い林床でも育つ。光の強さと光合成の関係（B4）が、遷移の進み方を決めている。`);
+      if (st.mode === 'secondary') lines.push('二次遷移は、山火事や伐採のあとなど、土壌や種子・根が残っている場所から始まるので、一次遷移よりずっと速く進む。');
+      exp.set(lines);
+      ctx.update({ ...st, stage: id, t: st.t, sunOk });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.mode === 'primary' && s.touched > 0 && s.stage === 'bare' && s.t > 0;
+dojo.tasks[1].check = (s) => s.mode === 'primary' && s.stage === 'sun' && !s.sunOk;
+dojo.tasks[2].check = (s) => s.stage === 'climax';
+dojo.tasks[3].check = (s) => s.mode === 'secondary' && (s.stage === 'sun' || s.stage === 'mixed' || s.stage === 'climax');
 return { dojo };
 })();
 
@@ -6719,6 +6866,729 @@ dojo.tasks[3].check = (s) => s.tab === 'forest' && s.age >= 100;
 return { dojo };
 })();
 
+// ---- models/synapse.js ----
+__m["models/synapse.js"] = (function () {
+// A14 シナプスと興奮の統合
+// シナプス後細胞の膜電位（模式）：静止電位 −70 mV、閾値 −55 mV。
+//   興奮性シナプス後電位（EPSP）：1回で約 ＋8 mV の脱分極（Na⁺ などが流入）。
+//   抑制性シナプス後電位（IPSP）：1回で約 −5 mV の過分極（Cl⁻ が流入するなど）。
+// 1回の電位変化は数ミリ秒〜十数ミリ秒で消えていく。間隔が短いと重なり合う（時間的加重）。
+// 複数のシナプスから同時に入力があると足し合わされる（空間的加重）。
+// 和が閾値に達すると、シナプス後細胞に活動電位が生じる。
+const REST = -70;
+const THRESHOLD = -55;
+const EPSP = 8;
+const IPSP = -5;
+const RISE = 4; // ms（ピークまでの時間。そのあと十数ミリ秒で消えていく）
+const T_END = 50; // 表示する時間 ms
+
+// 1回のシナプス後電位の形（ピークで1）
+function psp(t) {
+  if (t <= 0) return 0;
+  const x = t / RISE;
+  return x * Math.exp(1 - x);
+}
+
+// inputs：[{ t: 時刻 ms, amp: mV }]
+function potential(t, inputs) {
+  return REST + inputs.reduce((a, i) => a + i.amp * psp(t - i.t), 0);
+}
+
+// 閾値に初めて達する時刻（達しなければ null）
+function firstCrossing(inputs, dt = 0.05) {
+  for (let t = 0; t <= T_END; t += dt) if (potential(t, inputs) >= THRESHOLD) return t;
+  return null;
+}
+
+// 入力の組み立て：興奮性ニューロンA（n回、間隔 interval ms）、興奮性ニューロンB（Aの1回目と同時に1回）、抑制性ニューロンC（Aの1回目と同時に1回）
+function buildInputs({ nA = 1, interval = 5, useB = false, useC = false, t0 = 5 }) {
+  const inputs = [];
+  for (let i = 0; i < nA; i++) inputs.push({ t: t0 + i * interval, amp: EPSP, from: 'A' });
+  if (useB) inputs.push({ t: t0, amp: EPSP, from: 'B' });
+  if (useC) inputs.push({ t: t0, amp: IPSP, from: 'C' });
+  return inputs;
+}
+
+// 同時に入力したときの膜電位のピーク（単純な足し算）
+function summedPeak(nE, nI) {
+  return REST + nE * EPSP + nI * IPSP;
+}
+return { REST, THRESHOLD, EPSP, IPSP, RISE, T_END, psp, potential, firstCrossing, buildInputs, summedPeak };
+})();
+
+// ---- dojo/a14.js ----
+__m["dojo/a14.js"] = (function () {
+// A14 シナプスと興奮の統合 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { potential, firstCrossing, buildInputs, REST, THRESHOLD, EPSP, IPSP, T_END } = __m["models/synapse.js"];
+const { monotoneCubic } = __m["lib/interp.js"];
+const { sample } = __m["lib/series.js"];
+
+const mv = (v) => String(v).replace('-', '−');
+
+// 閾値に達したら活動電位を重ねて描く（模式）
+function trace(inputs) {
+  const tc = firstCrossing(inputs);
+  if (tc == null) return { tc, f: (t) => potential(t, inputs) };
+  const back = potential(tc + 4, inputs);
+  const spike = monotoneCubic([[0, THRESHOLD], [0.5, 40], [1.4, REST], [2, REST - 8], [4, Math.min(back, REST)]]);
+  return { tc, f: (t) => (t < tc ? potential(t, inputs) : t < tc + 4 ? spike(t - tc) : Math.min(potential(t, inputs), REST)) };
+}
+
+const dojo = {
+  tasks: [
+    { id: 'single', text: 'ニューロンAから1回だけ入力して、EPSPだけでは閾値に達しないことを確かめよう。', short: 'EPSP 1回' },
+    { id: 'temporal', text: 'Aからの入力を短い間隔でくり返し、時間的加重で活動電位を起こそう。', short: '時間的加重' },
+    { id: 'spatial', text: 'AとBから同時に入力して、空間的加重で活動電位を起こそう（Aは1回）。', short: '空間的加重' },
+    { id: 'inhib', text: '活動電位が起こる入力に、抑制性ニューロンCの入力を加えて、活動電位が起こらなくなることを確かめよう。', short: '抑制性シナプス' },
+    { id: 'long', text: 'Aから2回入力し、間隔を長く（15ミリ秒以上）すると加重が起こりにくいことを確かめよう。', short: '間隔が長いと' },
+  ],
+  mount(root, ctx) {
+    const st = { nA: 1, interval: 5, useB: false, useC: false, touched: 0, firedWithoutC: false };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'シナプス後細胞の膜電位 ', modelNote()));
+    const chart = createChart(top, { label: 'シナプス後細胞の膜電位のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    top.append(leg, h('p', { class: 'small muted' }, `興奮性ニューロンA・Bと抑制性ニューロンCが、1つのシナプス後細胞にシナプスをつくっているとした模式。EPSP は1回 約${EPSP > 0 ? '＋' : ''}${EPSP} mV、IPSP は1回 約${mv(IPSP)} mV、閾値は ${mv(THRESHOLD)} mV。`));
+
+    const sN = slider({ label: 'ニューロンAからの入力の回数', min: 1, max: 4, step: 1, value: st.nA, format: (v) => `${v} 回`, onInput: (v) => { st.nA = v; st.touched++; update(); } });
+    const sI = slider({ label: 'Aからの入力の間隔', min: 1, max: 20, step: 1, value: st.interval, format: (v) => `${v} ミリ秒`, onInput: (v) => { st.interval = v; st.touched++; update(); } });
+    const segB = segmented({ label: '興奮性ニューロンB（Aの1回目と同時）', options: [{ value: false, label: 'Bなし' }, { value: true, label: 'Bあり' }], value: st.useB, onChange: (v) => { st.useB = v; st.touched++; update(); } });
+    const segC = segmented({ label: '抑制性ニューロンC（Aの1回目と同時）', options: [{ value: false, label: 'Cなし' }, { value: true, label: 'Cあり' }], value: st.useC, onChange: (v) => { st.useC = v; st.touched++; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', sN.el, sI.el, segB.el, segC.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const inputs = buildInputs(st);
+      const tr = trace(inputs);
+      const noC = firstCrossing(buildInputs({ ...st, useC: false })) != null;
+      chart.draw({
+        alt: tr.tc != null ? `${fmt(tr.tc, 1)} ミリ秒で閾値に達し、活動電位が生じる` : '閾値に達しない',
+        x: { min: 0, max: T_END, label: '時間（ミリ秒）', step: 10 },
+        y: { min: -90, max: 50, label: '膜電位（mV）', step: 20 },
+        series: [{ points: sample(tr.f, 0, T_END, 800), color: 'c1', width: 3 }],
+        hlines: [
+          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値 ${mv(THRESHOLD)} mV`, align: 'right' },
+          { y: REST, color: 'c3', dash: 'dot', label: `静止電位 ${mv(REST)} mV` },
+        ],
+        markers: inputs.map((i) => ({ x: i.t, y: -86, color: i.amp > 0 ? (i.from === 'A' ? 'c1' : 'c4') : 'c2', shape: i.amp > 0 ? 'diamond' : 'square' })),
+      });
+      leg.replaceChildren(legend([{ label: 'シナプス後細胞の膜電位', color: 'c1' }, { label: '閾値', color: 'c2', dash: 'dash' }]), h('p', { class: 'small muted' }, '下の◆は興奮性ニューロン（A：青、B：紫）、■は抑制性ニューロンC からの入力の時刻。'));
+      const lines = [];
+      lines.push('シナプス前細胞の末端に興奮が伝わると、神経伝達物質がシナプス間隙に放出され、シナプス後細胞の受容体に結合する。興奮性シナプスでは Na⁺ などが流入して脱分極（EPSP）、抑制性シナプスでは Cl⁻ が流入するなどして過分極（IPSP）が起こる。');
+      if (tr.tc != null) lines.push(`膜電位の和が閾値に達したので（${fmt(tr.tc, 1)} ミリ秒）、シナプス後細胞に活動電位が生じた。`);
+      else lines.push('膜電位の和が閾値に達しないので、シナプス後細胞に活動電位は生じない。');
+      if (st.nA >= 2) lines.push(st.interval <= 5 ? `Aからの入力の間隔が短い（${st.interval} ミリ秒）ので、前のEPSPが消えないうちに次のEPSPが重なる（時間的加重）。` : `間隔が ${st.interval} ミリ秒と長いので、前のEPSPがほとんど消えてから次のEPSPが起こり、重なりが小さい。`);
+      if (st.useB) lines.push('AとBから同時に入力があるので、2つのEPSPが足し合わされる（空間的加重）。');
+      if (st.useC) lines.push('抑制性ニューロンCからの IPSP が加わり、膜電位が下げられる。このように、多くのシナプスからの入力が足し合わされ、その結果で興奮するかどうかが決まる（興奮の統合）。');
+      exp.set(lines);
+      ctx.update({ ...st, fired: tr.tc != null, firedNoC: noC });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.touched > 0 && s.nA === 1 && !s.useB && !s.useC && !s.fired;
+dojo.tasks[1].check = (s) => s.nA >= 2 && !s.useB && !s.useC && s.fired;
+dojo.tasks[2].check = (s) => s.nA === 1 && s.useB && !s.useC && s.fired;
+dojo.tasks[3].check = (s) => s.useC && !s.fired && s.firedNoC;
+dojo.tasks[4].check = (s) => s.nA === 2 && s.interval >= 15 && !s.useB && !s.useC && !s.fired;
+return { dojo };
+})();
+
+// ---- models/biotech.js ----
+__m["models/biotech.js"] = (function () {
+// A15 PCR と電気泳動
+// PCR法：①熱変性（約95℃：2本鎖DNAが1本ずつに分かれる）→ ②アニーリング（約55〜60℃：プライマーが結合）
+//        → ③伸長（約72℃：耐熱性のDNAポリメラーゼがDNAを合成）をくり返す。
+// 理想的には1サイクルごとに目的のDNA領域が2倍になる：n サイクル後 ＝ はじめの数 × 2ⁿ
+const STEPS = [
+  { name: '熱変性', temp: 95, sec: 30, desc: '2本鎖DNAの水素結合が切れて、1本鎖になる' },
+  { name: 'アニーリング', temp: 55, sec: 30, desc: 'プライマーが、増やしたい領域の両端に相補的に結合する' },
+  { name: '伸長', temp: 72, sec: 60, desc: '耐熱性のDNAポリメラーゼが、プライマーにつなげてDNAを合成する' },
+];
+function copies(initial, cycles) {
+  return initial * Math.pow(2, cycles);
+}
+function cyclesToReach(initial, target) {
+  return Math.ceil(Math.log2(target / initial));
+}
+
+// 電気泳動：DNAは負の電荷をもつので陽極（＋）へ移動する。短い断片ほど寒天（アガロース）の網目を通りやすく、遠くまで移動する。
+// ある範囲では、移動距離は断片の長さ（塩基対）の対数に対してほぼ直線的に小さくなる（模式）：
+//   距離 d［mm］＝ D0 − K × log₁₀(長さ)
+const D0 = 140;
+const K = 30;
+function distanceOf(bp) {
+  return D0 - K * Math.log10(bp);
+}
+function lengthOf(d) {
+  return Math.pow(10, (D0 - d) / K);
+}
+const LADDER = [10000, 5000, 3000, 2000, 1000, 500, 250];
+
+// 環状のプラスミド（全長 LEN 塩基対）を制限酵素で切断したときの断片
+const PLASMID = { len: 6000, sites: { EcoRI: [500], BamHI: [2500], HindIII: [1500, 4500] } };
+function fragments(len, cuts) {
+  const c = [...new Set(cuts)].sort((a, b) => a - b);
+  if (c.length === 0) return [len]; // 切断されない（環状のまま。ここでは全長として扱う）
+  if (c.length === 1) return [len]; // 環状DNAを1か所で切ると、全長の直鎖DNAが1本できる
+  const out = [];
+  for (let i = 0; i < c.length - 1; i++) out.push(c[i + 1] - c[i]);
+  out.push(len - c[c.length - 1] + c[0]);
+  return out.sort((a, b) => b - a);
+}
+return { STEPS, copies, cyclesToReach, D0, K, distanceOf, lengthOf, LADDER, PLASMID, fragments };
+})();
+
+// ---- dojo/a15.js ----
+__m["dojo/a15.js"] = (function () {
+// A15 PCR と電気泳動 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { STEPS, copies, distanceOf, LADDER, PLASMID, fragments } = __m["models/biotech.js"];
+
+const ENZ = {
+  E: { label: 'EcoRI', cuts: ['EcoRI'] },
+  B: { label: 'BamHI', cuts: ['BamHI'] },
+  EB: { label: 'EcoRI＋BamHI', cuts: ['EcoRI', 'BamHI'] },
+  H: { label: 'HindIII', cuts: ['HindIII'] },
+  all: { label: '3種すべて', cuts: ['EcoRI', 'BamHI', 'HindIII'] },
+};
+const sci = (n) => {
+  if (n < 1e4) return Math.round(n).toLocaleString('ja-JP');
+  const e = Math.floor(Math.log10(n));
+  const m = n / Math.pow(10, e);
+  return `約 ${fmt(m, 1)} × 10${String(e).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}`;
+};
+
+const dojo = {
+  tasks: [
+    { id: 'pcr10', text: '①で、10サイクルで約1000倍（2¹⁰ ＝ 1024倍）に増えることを確かめよう。', short: '10サイクルで約1000倍' },
+    { id: 'pcr30', text: '①で、サイクル数を30にして、1分子が約10億分子になることを確かめよう。', short: '30サイクル' },
+    { id: 'gel2', text: '②で、2か所で切れる組合せを選び、2本のバンドが現れることを確かめよう。', short: '断片は2本' },
+    { id: 'same', text: '②で HindIII を選び、同じ長さの断片が2本できると、バンドは1本に見えることを確かめよう。', short: '同じ長さは1本' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'pcr', cycles: 5, initial: 1, enz: 'E', touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'pcr', label: '①PCR法' }, { value: 'gel', label: '②電気泳動' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'グラフ', aspect: 0.66 });
+    const leg = h('div');
+    const sub = h('div');
+    top.append(leg, sub);
+    const chart2 = createChart(sub, { label: '補助のグラフ', aspect: 0.5 });
+    const leg2 = h('div');
+    const note = h('p', { class: 'small muted' });
+    sub.append(leg2);
+    top.append(note);
+
+    const sC = slider({ label: 'サイクル数', min: 0, max: 35, step: 1, value: st.cycles, format: (v) => `${v} サイクル`, onInput: (v) => { st.cycles = v; st.touched++; update(); } });
+    const segI = segmented({ label: 'はじめの DNA の分子数', options: [1, 10, 100].map((v) => ({ value: v, label: `${v} 分子` })), value: st.initial, onChange: (v) => { st.initial = v; st.touched++; update(); } });
+    const ctlPcr = h('div', null, sC.el, segI.el);
+    const segE = segmented({ label: 'プラスミドを切断する制限酵素', options: Object.entries(ENZ).map(([value, e]) => ({ value, label: e.label })), value: st.enz, onChange: (v) => { st.enz = v; st.touched++; update(); } });
+    const ctlGel = h('div', null, h('p', { class: 'small' }, `全長 ${PLASMID.len.toLocaleString('ja-JP')} 塩基対の環状のプラスミドを、制限酵素で切断して電気泳動する。切断部位：EcoRI 1か所、BamHI 1か所、HindIII 2か所。`), segE.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlPcr, ctlGel), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlPcr.hidden = st.tab !== 'pcr';
+      ctlGel.hidden = st.tab !== 'gel';
+      update();
+    }
+
+    function drawPcr() {
+      const n = st.cycles;
+      const N = copies(st.initial, n);
+      title.replaceChildren('PCR法：サイクル数と DNA の量 ', modelNote('理想的に毎回2倍になるとした場合'));
+      const pts = [];
+      for (let i = 0; i <= 35; i++) pts.push([i, copies(st.initial, i)]);
+      chart.draw({
+        alt: `${n} サイクルで ${sci(N)} 分子`,
+        x: { min: 0, max: 35, label: 'サイクル数', step: 5 },
+        y: { min: 1, max: 1e13, log: true, label: 'DNAの分子数（対数目盛り）', ticks: [1, 1e3, 1e6, 1e9, 1e12].map((v) => ({ v, text: v === 1 ? '1' : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
+        series: [{ points: pts, color: 'c1', width: 3 }],
+        vlines: [{ x: n, color: 'c2', dash: 'dot' }],
+        markers: [{ x: n, y: N, color: 'c2', label: sci(N) }],
+      });
+      leg.replaceChildren(legend([{ label: '目的の DNA 領域の分子数（はじめの数 × 2ⁿ）', color: 'c1' }]));
+      const pts2 = [];
+      let t = 0;
+      for (let c = 0; c < 2; c++) for (const s of STEPS) { pts2.push([t, s.temp], [t + s.sec, s.temp]); t += s.sec; }
+      chart2.draw({
+        alt: '1サイクルの温度変化（2サイクル分）',
+        x: { min: 0, max: t, label: '時間（秒）', step: 60 },
+        y: { min: 40, max: 100, label: '温度（℃）', step: 20 },
+        series: [{ points: pts2, color: 'c2', width: 2.5 }],
+        texts: STEPS.map((s, i) => ({ x: STEPS.slice(0, i).reduce((a, x) => a + x.sec, 0) + s.sec / 2, y: s.temp + 6, text: s.name, color: 'fg' })),
+      });
+      leg2.replaceChildren(legend([{ label: '温度の変化（2サイクル分。時間は目安）', color: 'c2' }]));
+      note.textContent = '実際には、サイクル数が多くなるとプライマーや材料が減って増え方が鈍る。また、はじめの数サイクルでは目的の長さより長い DNA も含まれる。';
+      exp.set([
+        `${n} サイクル後の DNA ＝ ${st.initial} × 2^${n} ＝ ${sci(N)} 分子。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型に新しい鎖が合成されるので、理想的には毎回2倍になる。`,
+        STEPS.map((s) => `${s.name}（約${s.temp}℃）：${s.desc}`).join('。') + '。',
+        '熱変性で約95℃の高温になるので、高温でも失活しない耐熱性の DNAポリメラーゼ（好熱菌などから得たもの）を使う。プライマーは増やしたい領域の両端に結合する短い1本鎖 DNA である。',
+      ]);
+      return { cycles: n };
+    }
+
+    function drawGel() {
+      const cuts = ENZ[st.enz].cuts.flatMap((e) => PLASMID.sites[e]);
+      const frs = fragments(PLASMID.len, cuts);
+      const uniq = [...new Set(frs)];
+      title.replaceChildren('アガロースゲル電気泳動 ', modelNote());
+      const band = (x, bp, fill, w = 0.32) => {
+        const d = distanceOf(bp);
+        return { points: [[x - w, -d - 0.9], [x + w, -d - 0.9], [x + w, -d + 0.9], [x - w, -d + 0.9]], fill, stroke: fill };
+      };
+      chart.draw({
+        alt: `断片 ${frs.join('、')} 塩基対`,
+        x: { min: 0.3, max: 2.7, ticks: [{ v: 1, text: 'マーカー' }, { v: 2, text: ENZ[st.enz].label }], grid: false },
+        y: { min: -80, max: 6, label: '移動距離（mm）', ticks: [0, -20, -40, -60, -80].map((v) => ({ v, text: String(-v) })) },
+        polygons: [
+          { points: [[0.65, 0], [1.35, 0], [1.35, 3], [0.65, 3]], fill: 'surface-2', stroke: 'fg' },
+          { points: [[1.65, 0], [2.35, 0], [2.35, 3], [1.65, 3]], fill: 'surface-2', stroke: 'fg' },
+          ...LADDER.map((bp) => band(1, bp, 'c4')),
+          ...uniq.map((bp) => band(2, bp, 'c1', frs.filter((x) => x === bp).length > 1 ? 0.34 : 0.32)),
+        ],
+        texts: [
+          ...LADDER.map((bp) => ({ x: 0.62, y: -distanceOf(bp), text: bp.toLocaleString('ja-JP'), align: 'right', color: 'muted' })),
+          ...uniq.map((bp) => ({ x: 2.4, y: -distanceOf(bp), text: `${bp.toLocaleString('ja-JP')}${frs.filter((x) => x === bp).length > 1 ? '（2本分）' : ''}`, align: 'left', color: 'c1' })),
+          { x: 2.55, y: 4, text: '－（ウェル）', align: 'right', color: 'fg' },
+        ],
+      });
+      leg.replaceChildren(h('p', { class: 'small muted' }, '上のウェルに DNA を入れ、上が陰極（－）、下が陽極（＋）。マーカーの数字は塩基対。'));
+      const lpts = [];
+      for (let l = 200; l <= 12000; l *= 1.05) lpts.push([Math.log10(l), distanceOf(l)]);
+      chart2.draw({
+        alt: '断片の長さと移動距離の関係',
+        x: { min: Math.log10(200), max: Math.log10(12000), label: '断片の長さ（塩基対・対数目盛り）', ticks: [250, 500, 1000, 2000, 5000, 10000].map((v) => ({ v: Math.log10(v), text: v.toLocaleString('ja-JP') })) },
+        y: { min: 0, max: 80, label: '移動距離（mm）', step: 20 },
+        series: [{ points: lpts, color: 'c4', width: 2 }],
+        markers: [...LADDER.map((bp) => ({ x: Math.log10(bp), y: distanceOf(bp), color: 'c4', shape: 'diamond' })), ...uniq.map((bp) => ({ x: Math.log10(bp), y: distanceOf(bp), color: 'c1' }))],
+      });
+      leg2.replaceChildren(legend([{ label: 'マーカーから作った検量線（◆マーカー、●試料）', color: 'c4' }]));
+      note.textContent = '移動距離と断片の長さの関係は、マーカー（長さのわかっている断片）から求めた模式。';
+      const sum = frs.reduce((a, x) => a + x, 0);
+      exp.set([
+        'DNA はリン酸を含み負の電荷をもつので、電圧をかけると陽極（＋）へ向かって移動する。寒天（アガロース）の網目の中では、短い断片ほど通りやすいので遠くまで移動する。',
+        `${ENZ[st.enz].label} で切断すると、断片は ${frs.map((x) => x.toLocaleString('ja-JP')).join('・')} 塩基対（合計 ${sum.toLocaleString('ja-JP')}）。${cuts.length === 1 ? '環状の DNA を1か所で切ると、全長の直鎖状の DNA が1本できる。' : `環状の DNA を${cuts.length}か所で切ると、断片は${cuts.length}本できる。`}`,
+        '長さのわからない断片の長さは、マーカーの移動距離から作った検量線に、その断片の移動距離をあてはめて求める。同じ長さの断片は同じ位置に重なって1本のバンドに見える。',
+      ]);
+      return { nFrag: frs.length, nBand: uniq.length };
+    }
+
+    function update() {
+      const r = st.tab === 'pcr' ? drawPcr() : drawGel();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'pcr' && s.cycles === 10;
+dojo.tasks[1].check = (s) => s.tab === 'pcr' && s.cycles === 30 && s.initial === 1;
+dojo.tasks[2].check = (s) => s.tab === 'gel' && s.nFrag === 2 && s.nBand === 2;
+dojo.tasks[3].check = (s) => s.tab === 'gel' && s.enz === 'H';
+return { dojo };
+})();
+
+// ---- models/behavior.js ----
+__m["models/behavior.js"] = (function () {
+// A16 動物の行動（ミツバチのダンス）
+// えさ場が近いとき（約50〜100 m 以内）は円形ダンス、遠いときは8の字ダンスを踊る。
+// 8の字ダンスでは、巣箱の中の垂直な巣板の上で、尻を振りながら直進する向きが、
+//   重力と反対の方向（真上）から測った角度 ＝ 太陽の方向から測ったえさ場の方向の角度
+// を表す（時計回りを正とする）。えさ場が遠いほど、一定時間あたりのダンスの回数は少なくなる。
+// 方位は北を0°として時計回りに測る（東 90°、南 180°、西 270°）。
+const NEAR = 100; // これより近いと円形ダンス（目安）
+
+function norm180(a) {
+  let x = ((a % 360) + 360) % 360;
+  if (x > 180) x -= 360;
+  return x;
+}
+
+// 真上から時計回りに測った、8の字ダンスの直進方向の角度（−180〜180°）
+function danceAngle(sunAz, foodAz) {
+  return norm180(foodAz - sunAz);
+}
+
+// 逆に、ダンスの角度と太陽の方位から、えさ場の方位を求める
+function foodAzimuth(sunAz, dance) {
+  return ((sunAz + dance) % 360 + 360) % 360;
+}
+
+function danceType(distance) {
+  return distance < NEAR ? 'round' : 'waggle';
+}
+
+// 一定時間（15秒）あたりの8の字ダンスの回数（距離が大きいほど少ない。模式）
+function dancesPer15s(distance) {
+  return 10 / (1 + distance / 500);
+}
+
+// 太陽の方位は1時間に約15°ずつ（東→南→西へ）移る（模式）
+const SUN_SPEED = 15;
+
+const AZ_NAMES = [
+  [0, '北'], [45, '北東'], [90, '東'], [135, '南東'], [180, '南'], [225, '南西'], [270, '西'], [315, '北西'],
+];
+function azName(a) {
+  const x = ((a % 360) + 360) % 360;
+  const hit = AZ_NAMES.find(([v]) => Math.abs(v - x) < 1e-9);
+  return hit ? hit[1] : `${Math.round(x)}°`;
+}
+return { NEAR, norm180, danceAngle, foodAzimuth, danceType, dancesPer15s, SUN_SPEED, AZ_NAMES, azName };
+})();
+
+// ---- dojo/a16.js ----
+__m["dojo/a16.js"] = (function () {
+// A16 動物の行動（ミツバチのダンス）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { danceAngle, danceType, dancesPer15s, azName, SUN_SPEED } = __m["models/behavior.js"];
+
+const rad = (d) => (d * Math.PI) / 180;
+const angleText = (a) => (Math.abs(a) < 1e-9 ? '真上（0°）' : Math.abs(Math.abs(a) - 180) < 1e-9 ? '真下（180°）' : `真上から${a > 0 ? '右（時計回り）' : '左（反時計回り）'}に ${Math.abs(a)}°`);
+
+function draw(canvas, st) {
+  const W = Math.max(300, canvas.parentElement ? canvas.parentElement.clientWidth : 340);
+  const H = Math.round(Math.min(260, W * 0.62));
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const bg = tokenColor('surface');
+  const muted = tokenColor('muted');
+  const c1 = tokenColor('c1');
+  const c2 = tokenColor('c2');
+  const c5 = tokenColor('c5');
+  const c3 = tokenColor('c3');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const font = getComputedStyle(document.body).fontFamily;
+  const fs = W < 380 ? 11 : 12.5;
+  const text = (t, x, y, color = fg, align = 'center', bold = false) => {
+    g.font = `${bold ? 'bold ' : ''}${fs}px ${font}`;
+    g.textAlign = align;
+    g.textBaseline = 'middle';
+    g.fillStyle = color;
+    g.fillText(t, x, y);
+  };
+  const arrow = (x0, y0, x1, y1, color, width = 2.5) => {
+    g.strokeStyle = color;
+    g.fillStyle = color;
+    g.lineWidth = width;
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
+    const a = Math.atan2(y1 - y0, x1 - x0);
+    g.beginPath();
+    g.moveTo(x1, y1);
+    g.lineTo(x1 - 9 * Math.cos(a - 0.4), y1 - 9 * Math.sin(a - 0.4));
+    g.lineTo(x1 - 9 * Math.cos(a + 0.4), y1 - 9 * Math.sin(a + 0.4));
+    g.closePath();
+    g.fill();
+  };
+  // 左：上から見た地図（上が北）
+  const mx = W * 0.25;
+  const my = H * 0.55;
+  const R = Math.min(W * 0.2, H * 0.36);
+  text('上から見た地図', mx, 14, fg, 'center', true);
+  g.strokeStyle = muted;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.arc(mx, my, R, 0, Math.PI * 2);
+  g.stroke();
+  text('北', mx, my - R - 9, muted);
+  text('南', mx, my + R + 9, muted);
+  text('東', mx + R + 10, my, muted);
+  text('西', mx - R - 10, my, muted);
+  const dir = (az, r) => [mx + r * Math.sin(rad(az)), my - r * Math.cos(rad(az))];
+  const [sx, sy] = dir(st.sun, R);
+  g.fillStyle = c5;
+  g.beginPath();
+  g.arc(sx, sy, 8, 0, Math.PI * 2);
+  g.fill();
+  arrow(mx, my, ...dir(st.sun, R - 12), c5, 1.5);
+  const [fx, fy] = dir(st.food, R * 0.8);
+  arrow(mx, my, fx, fy, c3, 3);
+  g.fillStyle = c3;
+  g.fillRect(fx - 5, fy - 5, 10, 10);
+  g.fillStyle = fg;
+  g.fillRect(mx - 6, my - 6, 12, 12);
+  text('巣', mx, my + 16, fg);
+  // 右：巣板（垂直）上のダンス（上が重力と反対の方向）
+  const cx = W * 0.75;
+  const cy = H * 0.55;
+  const r = Math.min(W * 0.18, H * 0.34);
+  text('垂直な巣板の上のダンス', cx, 14, fg, 'center', true);
+  g.strokeStyle = muted;
+  g.strokeRect(cx - r - 10, cy - r - 10, 2 * r + 20, 2 * r + 20);
+  arrow(cx - r - 2, cy + r * 0.6, cx - r - 2, cy - r * 0.6, muted, 1.2);
+  text('上', cx - r - 2, cy - r * 0.6 - 8, muted);
+  if (st.type === 'round') {
+    g.strokeStyle = c2;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(cx - r * 0.25, cy, r * 0.25, 0, Math.PI * 2);
+    g.arc(cx + r * 0.25, cy, r * 0.25, Math.PI, Math.PI * 3);
+    g.stroke();
+    text('円形ダンス', cx, cy + r + 2, c2, 'center', true);
+    return;
+  }
+  const a = rad(st.dance);
+  const ux = Math.sin(a);
+  const uy = -Math.cos(a);
+  // 8の字：直進部分（尻振り）＋左右のループ
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(a);
+  g.strokeStyle = c2;
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.ellipse(-r * 0.32, 0, r * 0.32, r * 0.6, 0, Math.PI / 2, (Math.PI * 3) / 2);
+  g.moveTo(0, -r * 0.6);
+  g.ellipse(r * 0.32, 0, r * 0.32, r * 0.6, 0, -Math.PI / 2, Math.PI / 2);
+  g.stroke();
+  g.lineWidth = 3;
+  g.beginPath();
+  for (let i = 0; i <= 20; i++) {
+    const y = r * 0.6 - (i / 20) * r * 1.2;
+    const x = (i % 2 ? 1 : -1) * 4;
+    if (i === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
+  }
+  g.stroke();
+  g.restore();
+  arrow(cx, cy, cx + ux * r * 0.95, cy + uy * r * 0.95, c1, 2.5);
+  g.strokeStyle = muted;
+  g.setLineDash([4, 3]);
+  g.beginPath();
+  g.moveTo(cx, cy);
+  g.lineTo(cx, cy - r * 0.95);
+  g.stroke();
+  g.setLineDash([]);
+  text(`${st.dance > 0 ? '右' : st.dance < 0 ? '左' : ''}${Math.abs(st.dance)}°`, cx + (st.dance >= 0 ? 10 : -10), cy - r * 0.35, c1, st.dance >= 0 ? 'left' : 'right', true);
+}
+
+const dojo = {
+  tasks: [
+    { id: 'up', text: 'えさ場を太陽と同じ方位に置き、8の字ダンスの直進方向が真上になることを確かめよう。', short: '太陽の方向＝真上' },
+    { id: 'down', text: 'えさ場を太陽と反対の方位に置き、直進方向が真下になることを確かめよう。', short: '太陽の反対＝真下' },
+    { id: 'round', text: 'えさ場を近く（100 m 未満）にして、円形ダンスに変わることを確かめよう。', short: '円形ダンス' },
+    { id: 'time', text: 'えさ場の位置はそのままで太陽の方位を変え（時刻を進め）、ダンスの角度が変わることを確かめよう。', short: '太陽が動くと' },
+  ],
+  mount(root, ctx) {
+    const st = { sun: 180, food: 225, logD: Math.log10(800), sunMoves: 0, touched: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'ミツバチの8の字ダンス ', modelNote()));
+    const canvas = h('canvas', { role: 'img', 'aria-label': '地図とダンスの模式図' });
+    const wrap = h('div', { class: 'chart-wrap' }, canvas);
+    const status = h('p', { class: 'small', 'aria-live': 'polite' });
+    top.append(wrap, status, h('p', { class: 'small muted' }, '左：上から見た地図（●太陽、■えさ場、□巣）。右：巣の中の垂直な巣板。青い矢印が尻を振りながら直進する向き、点線が真上（重力と反対の方向）。'));
+
+    const sSun = slider({ label: '太陽の方位', min: 90, max: 270, step: 15, value: st.sun, format: (v) => `${azName(v)}（${v}°・およそ${fmt(6 + (v - 90) / SUN_SPEED, 0)}時）`, onInput: (v) => { st.sun = v; st.sunMoves++; st.touched++; update(); } });
+    const sFood = slider({ label: 'えさ場の方位', min: 0, max: 345, step: 15, value: st.food, format: (v) => `${azName(v)}（${v}°）`, onInput: (v) => { st.food = v; st.touched++; update(); } });
+    const sD = slider({ label: '巣からえさ場までの距離', min: 1, max: Math.log10(5000), step: 0.01, value: st.logD, format: (v) => `${Math.round(Math.pow(10, v)).toLocaleString('ja-JP')} m`, onInput: (v) => { st.logD = v; st.touched++; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', sSun.el, sFood.el, sD.el), panel('いま何が起きているか', exp.el));
+
+    let last = null;
+    const redraw = () => last && draw(canvas, last);
+    keepRedrawn(canvas, redraw);
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => { if (wrap.clientWidth && wrap.clientWidth !== lastW) { lastW = wrap.clientWidth; redraw(); } }).observe(wrap);
+    }
+
+    function update() {
+      const d = Math.round(Math.pow(10, st.logD));
+      const dance = danceAngle(st.sun, st.food);
+      const type = danceType(d);
+      last = { ...st, dance, type };
+      redraw();
+      const desc = type === 'round' ? '円形ダンス' : `8の字ダンス（直進方向：${angleText(dance)}）`;
+      canvas.setAttribute('aria-label', `太陽 ${azName(st.sun)}、えさ場 ${azName(st.food)}、${d} m：${desc}`);
+      status.textContent = `太陽 ${azName(st.sun)}・えさ場 ${azName(st.food)}・${d.toLocaleString('ja-JP')} m → ${desc}`;
+      const lines = [];
+      if (type === 'round') {
+        lines.push(`えさ場が近い（${d} m）ので、円形ダンスを踊る。円形ダンスは、えさ場が巣の近くにあることを伝えるが、方向は表さない。`);
+      } else {
+        lines.push(`えさ場の方向は、太陽の方向から時計回りに ${((st.food - st.sun) % 360 + 360) % 360}°。巣板の上では、真上を太陽の方向とみなして、真上から同じ角度だけ回した向き（${angleText(dance)}）に尻を振りながら直進する。`);
+        lines.push(`えさ場が遠いほどダンスはゆっくりになり、15秒あたりの8の字ダンスの回数は少なくなる（いまは約${fmt(dancesPer15s(d), 1)}回、模式）。仲間のミツバチは、ダンスについて回ることで、えさ場の方向と距離を知る。`);
+      }
+      lines.push(`太陽の方位は時刻とともに1時間に約${SUN_SPEED}°ずつ移動する。同じえさ場でも、時刻が変わるとダンスの角度は変わる。このようなしくみで、太陽の方向を基準にして方向を知ることを太陽コンパスという。`);
+      exp.set(lines);
+      ctx.update({ ...st, dance, type, d });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.touched > 0 && s.type === 'waggle' && s.dance === 0;
+dojo.tasks[1].check = (s) => s.type === 'waggle' && Math.abs(Math.abs(s.dance) - 180) < 1e-9;
+dojo.tasks[2].check = (s) => s.type === 'round';
+dojo.tasks[3].check = (s) => s.type === 'waggle' && s.sunMoves >= 2;
+return { dojo };
+})();
+
+// ---- models/photoperiod.js ----
+__m["models/photoperiod.js"] = (function () {
+// A17 光周性と花芽形成
+// 花芽形成は、明期の長さではなく「連続した暗期の長さ」で決まる。
+//   短日植物：連続した暗期が限界暗期より長くなると花芽を形成する（例：キク、アサガオ、オナモミ）
+//   長日植物：連続した暗期が限界暗期より短くなると花芽を形成する（例：アブラナ、ホウレンソウ、コムギ）
+//   （図解道場・問題では、暗期と限界暗期がちょうど等しくならない数値だけを使う）
+//   中性植物：日長に関係なく花芽を形成する（例：トマト、トウモロコシ）
+// 暗期の途中で短時間光を当てる（光中断）と、暗期は2つに分けられ、連続した暗期が短くなる。
+const TYPES = {
+  short: { name: '短日植物', examples: 'キク・アサガオ・オナモミ' },
+  long: { name: '長日植物', examples: 'アブラナ・ホウレンソウ・コムギ' },
+  neutral: { name: '中性植物', examples: 'トマト・トウモロコシ' },
+};
+
+// 1日（24時間）の明暗。lightStart：明期の開始時刻、light：明期の長さ、breakAt：光中断の時刻（暗期の開始からの時間、なければ null）、breakLen：光中断の長さ
+// 返り値：暗期の区間の長さの配列と、最も長い連続した暗期
+function darkPeriods(light, breakAt = null, breakLen = 1) {
+  const dark = 24 - light;
+  if (dark <= 0) return { periods: [], longest: 0 };
+  if (breakAt == null || breakAt <= 0 || breakAt >= dark) return { periods: [dark], longest: dark };
+  const a = breakAt;
+  const b = Math.max(0, dark - breakAt - breakLen);
+  return { periods: [a, b].filter((x) => x > 0), longest: Math.max(a, b) };
+}
+
+function flowers(type, longestDark, critical) {
+  if (type === 'neutral') return true;
+  if (type === 'short') return longestDark > critical;
+  return longestDark < critical;
+}
+return { TYPES, darkPeriods, flowers };
+})();
+
+// ---- dojo/a17.js ----
+__m["dojo/a17.js"] = (function () {
+// A17 光周性と花芽形成 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { TYPES, darkPeriods, flowers } = __m["models/photoperiod.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'short', text: '明期を短くして（暗期を長くして）、短日植物が花芽を形成する条件にしよう。', short: '短日植物の花芽形成' },
+    { id: 'long', text: '明期を長くして、長日植物だけが花芽を形成する条件にしよう。', short: '長日植物の花芽形成' },
+    { id: 'break', text: '短日植物が花芽を形成する条件で光中断を入れ、花芽を形成しなくなることを確かめよう。', short: '光中断' },
+    { id: 'samelight', text: '光中断を入れると、明期の合計がほぼ同じでも長日植物が花芽を形成することを確かめよう。', short: '暗期の長さが決め手' },
+  ],
+  mount(root, ctx) {
+    const st = { light: 12, critical: 10.5, useBreak: false, breakAt: 5, touched: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '1日の明期・暗期と花芽形成 ', modelNote()));
+    const chart = createChart(top, { label: '1日の明暗の図', aspect: 0.42 });
+    const leg = h('div');
+    const table = h('div');
+    top.append(leg, table);
+
+    const sL = slider({ label: '明期の長さ（1日24時間のうち）', min: 4, max: 20, step: 1, value: st.light, format: (v) => `${fmt(v, 1)} 時間（暗期 ${fmt(24 - v, 1)} 時間）`, onInput: (v) => { st.light = v; st.touched++; update(); } });
+    const sC = slider({ label: '限界暗期', min: 8.5, max: 13.5, step: 1, value: st.critical, format: (v) => `${fmt(v, 1)} 時間`, onInput: (v) => { st.critical = v; st.touched++; update(); } });
+    const segB = segmented({ label: '光中断（暗期の途中で約1時間、光を当てる）', options: [{ value: false, label: 'なし' }, { value: true, label: 'あり' }], value: st.useBreak, onChange: (v) => { st.useBreak = v; st.touched++; update(); } });
+    const sB = slider({ label: '光中断の時刻（暗期が始まってから）', min: 1, max: 12, step: 1, value: st.breakAt, format: (v) => `${fmt(v, 1)} 時間後`, onInput: (v) => { st.breakAt = v; st.touched++; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', sL.el, sC.el, segB.el, sB.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const dark = 24 - st.light;
+      const br = st.useBreak && st.breakAt < dark ? st.breakAt : null;
+      const dp = darkPeriods(st.light, br, 1);
+      const res = Object.fromEntries(Object.keys(TYPES).map((k) => [k, flowers(k, dp.longest, st.critical)]));
+      // 明期は 6時 から始まるとして描く
+      const L0 = 6;
+      const polys = [];
+      const rect = (x0, x1, fill, label) => polys.push({ points: [[x0, 0.25], [x1, 0.25], [x1, 0.75], [x0, 0.75]], fill, stroke: 'fg', label, at: [(x0 + x1) / 2, 0.5] });
+      const seg = (from, len, fill, label) => {
+        let a = from % 24;
+        let left = len;
+        let first = true;
+        while (left > 1e-9) {
+          const end = Math.min(24, a + left);
+          rect(a, end, fill, first && end - a >= 2 ? label : '');
+          first = false;
+          left -= end - a;
+          a = 0;
+        }
+      };
+      seg(L0, st.light, 'region-4', '明期');
+      const ds = L0 + st.light;
+      if (br != null) {
+        seg(ds, br, 'surface-2', fmt(br, 1) + 'h');
+        seg(ds + br, 1, 'c5', '');
+        seg(ds + br + 1, Math.max(0, dark - br - 1), 'surface-2', fmt(Math.max(0, dark - br - 1), 1) + 'h');
+      } else seg(ds, dark, 'surface-2', `暗期 ${fmt(dark, 1)}h`);
+      chart.draw({
+        alt: `明期 ${st.light} 時間、最も長い連続した暗期 ${dp.longest} 時間`,
+        x: { min: 0, max: 24, label: '時刻（時）', step: 3 },
+        y: { min: 0, max: 1, ticks: [] },
+        polygons: polys,
+        texts: br != null ? [{ x: ((ds + br + 0.5) % 24), y: 0.88, text: '光中断', color: 'c5' }] : [],
+      });
+      leg.replaceChildren(legend([{ label: '明期（6時から）', color: 'region-4', bar: true }, { label: '暗期', color: 'surface-2', bar: true }, { label: '光中断', color: 'c5', bar: true }]));
+      table.replaceChildren(
+        h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '植物'), h('th', null, '例'), h('th', null, '花芽形成'))),
+          h('tbody', null, ...Object.entries(TYPES).map(([k, t]) => h('tr', null, h('td', null, t.name), h('td', null, t.examples), h('td', null, res[k] ? '◎ する' : '× しない')))),
+        ),
+      );
+      const lines = [];
+      lines.push(`最も長い連続した暗期は ${fmt(dp.longest, 1)} 時間${br != null ? `（光中断で ${dp.periods.map((x) => fmt(x, 1)).join(' 時間と ')} 時間に分けられた）` : ''}、限界暗期は ${fmt(st.critical, 1)} 時間。`);
+      lines.push(`短日植物は、連続した暗期が限界暗期より長いとき花芽を形成する（いまは${res.short ? 'する' : 'しない'}）。長日植物は、連続した暗期が限界暗期より短いとき花芽を形成する（いまは${res.long ? 'する' : 'しない'}）。`);
+      if (br != null) lines.push('暗期の途中で短時間光を当てると（光中断）、明期の長さはほとんど変わらないのに、連続した暗期が短くなる。花芽形成を決めているのは明期の長さではなく、連続した暗期の長さであることがわかる。');
+      lines.push('日長は葉で感じとられ、葉でつくられたフロリゲン（花成ホルモン）が師管を通って茎頂に運ばれ、花芽が形成される。');
+      exp.set(lines);
+      const noBreakShort = flowers('short', darkPeriods(st.light).longest, st.critical);
+      const noBreakLong = flowers('long', darkPeriods(st.light).longest, st.critical);
+      ctx.update({ ...st, res, br, noBreakShort, noBreakLong });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.touched > 0 && s.br == null && s.res.short;
+dojo.tasks[1].check = (s) => s.touched > 0 && s.br == null && s.res.long && !s.res.short;
+dojo.tasks[2].check = (s) => s.br != null && s.noBreakShort && !s.res.short;
+dojo.tasks[3].check = (s) => s.br != null && !s.noBreakLong && s.res.long;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -6732,6 +7602,7 @@ const { dojo: b7 } = __m["dojo/b7.js"];
 const { dojo: b8 } = __m["dojo/b8.js"];
 const { dojo: b9 } = __m["dojo/b9.js"];
 const { dojo: b10 } = __m["dojo/b10.js"];
+const { dojo: b11 } = __m["dojo/b11.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
@@ -6745,8 +7616,12 @@ const { dojo: a10 } = __m["dojo/a10.js"];
 const { dojo: a11 } = __m["dojo/a11.js"];
 const { dojo: a12 } = __m["dojo/a12.js"];
 const { dojo: a13 } = __m["dojo/a13.js"];
+const { dojo: a14 } = __m["dojo/a14.js"];
+const { dojo: a15 } = __m["dojo/a15.js"];
+const { dojo: a16 } = __m["dojo/a16.js"];
+const { dojo: a17 } = __m["dojo/a17.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17 };
 return { DOJOS };
 })();
 
@@ -9344,6 +10219,178 @@ const B10 = [
   },
 ];
 return { B10 };
+})();
+
+// ---- questions/b11.js ----
+__m["questions/b11.js"] = (function () {
+// B11 植生の遷移 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { state } = __m["models/succession.js"];
+const { sample } = __m["lib/series.js"];
+
+const ORDER = ['荒原', '草原', '低木林', '陽樹林', '混交林', '陰樹林'];
+
+const B11 = [
+  {
+    id: 'b11-order',
+    stage: 'b11',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const correct = ORDER.join(' → ');
+      const swap = (i, j) => { const a = ORDER.slice(); [a[i], a[j]] = [a[j], a[i]]; return a.join(' → '); };
+      return {
+        text: '溶岩台地などの裸地から始まる遷移（一次遷移）で、植生が移り変わる順として正しいものはどれか。',
+        correct,
+        wrong: rng.shuffle([swap(3, 5), swap(1, 2), swap(0, 1), swap(3, 4), swap(2, 3)]),
+        explanation: '土壌のない裸地にはまず地衣類やコケ植物が侵入し、土壌ができると草原、低木林、陽樹林へと進む。陽樹林の林床は暗く、陽樹の芽ばえは育たないが陰樹の芽ばえは育つので、混交林を経て陰樹林（極相林）になる。',
+      };
+    },
+  },
+  {
+    id: 'b11-pioneer',
+    stage: 'b11',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '一次遷移で、裸地に最初に侵入する植物（先駆種）として最も適当なものはどれか。',
+        correct: '地衣類やコケ植物',
+        wrong: ['スダジイやタブノキ', 'アカマツやコナラ', 'ヤシャブシやヤマツツジ'],
+        explanation: '裸地には土壌がなく、水や栄養分が少ないので、乾燥や貧栄養に強い地衣類やコケ植物が最初に侵入する。これらの遺体や岩石の風化によって土壌がつくられるから、のちに草本や木本が生育できるようになる。',
+      };
+    },
+  },
+  {
+    id: 'b11-climax-why',
+    stage: 'b11',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '陽樹林が、やがて陰樹林に移り変わる理由として最も適当なものはどれか。',
+        correct: '陽樹林の林床は暗く、陽樹の芽ばえは育たないが、陰樹の芽ばえは育つことができるから',
+        wrong: ['陰樹のほうが強い光のもとでの光合成速度が大きいから', '陽樹林の林床は明るく、陰樹の芽ばえだけが育つから', '陽樹は土壌の栄養分がないと育たないから'],
+        explanation: '陽樹林が茂ると林床に届く光が弱くなり、補償点の高い陽樹の芽ばえは育たない。陰樹の芽ばえは補償点が低く弱い光でも成長できるので、陽樹が枯れるとしだいに陰樹に置きかわる。',
+      };
+    },
+  },
+  {
+    id: 'b11-relative-light',
+    stage: 'b11',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const open = rng.pick([50, 80, 100, 120]);
+      const pct = rng.pick([2, 3, 5, 10, 20, 40]);
+      const floor = (open * pct) / 100;
+      const d = distinctNumbers(pct, [open / floor, floor, 100 - pct, pct * 10, pct / 10], ' %', 1);
+      return {
+        text: `晴れた日の正午に、森林の外の照度が ${open} キロルクス、林床の照度が ${fmt(floor, 1)} キロルクスであった。林床の相対照度は何%か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `相対照度 ＝ 林床の照度 ÷ 林外の照度 × 100 ＝ ${fmt(floor, 1)} ÷ ${open} × 100 ＝ ${pct}% となる。天気や時刻で照度そのものは変わるので、林外に対する割合で比べると林床の明るさを比べやすいからである。`,
+      };
+    },
+  },
+  {
+    id: 'b11-light-graph',
+    stage: 'b11',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const t = rng.pick([20, 100, 250, 450]);
+      const s = state(t);
+      const grows = s.floorLight > 10;
+      return {
+        text: `図は、一次遷移が進むにつれて林床の相対照度がどう変わるかを表した模式図である。遷移が始まってから約${t}年（●）の林床で、陽樹の芽ばえは育つことができるか。陽樹の芽ばえは相対照度が約10%より明るくないと育たないものとする。`,
+        chart: {
+          x: { min: 0, max: 600, label: '遷移が始まってからの年数', step: 100 },
+          y: { min: 0, max: 110, label: '林床の相対照度（%）', step: 20 },
+          series: [{ points: sample((x) => state(x).floorLight, 0, 600, 300), color: 'c5', width: 3 }],
+          hlines: [{ y: 10, color: 'c2', dash: 'dash', label: '10%', align: 'right' }],
+          markers: [{ x: t, y: s.floorLight, color: 'c1', label: `約${fmt(s.floorLight, 0)}%` }],
+          alt: '林床の相対照度の変化',
+        },
+        correct: grows ? '育つ（林床が十分に明るいから）' : '育たない（林床が暗いから）',
+        wrong: ['育つ（林床が十分に明るいから）', '育たない（林床が暗いから）', '育つ（林床が暗いほど陽樹はよく育つから）', '育たない（林床が明るすぎるから）'],
+        explanation: grows
+          ? `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より明るいので、陽樹の芽ばえは育つことができる。遷移の初期は植生が低く、林床まで光がよく届くからである。`
+          : `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より暗いので、陽樹の芽ばえは育たない。高い木が茂って光がさえぎられるので、補償点の高い陽樹の芽ばえは光合成で呼吸を補えないからである。`,
+      };
+    },
+  },
+  {
+    id: 'b11-secondary',
+    stage: 'b11',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '山火事や森林の伐採のあとに始まる遷移（二次遷移）が、一次遷移より速く進む理由として最も適当なものはどれか。',
+        correct: '土壌がすでにあり、土壌中に種子や地下茎・根などが残っているから',
+        wrong: ['土壌がなく、地衣類やコケ植物から始まるから', '山火事のあとは林床が暗いから', '二次遷移では陰樹から先に侵入するから'],
+        explanation: '二次遷移は、土壌がすでにあるところから始まる。土壌中に種子や地下茎・根などが残っていて、すぐに草本などが生育できるので、一次遷移より速く進む。',
+      };
+    },
+  },
+  {
+    id: 'b11-species',
+    stage: 'b11',
+    level: 2,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['草原', '陽樹林', '陰樹林'], ['ススキ', 'アカマツ', 'スダジイ']);
+      return {
+        text: '暖温帯での遷移の各段階で優占する植物の組合せとして正しいものはどれか。',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: '草原ではススキなどの草本、陽樹林ではアカマツ・コナラなどの陽樹、陰樹林ではスダジイ・タブノキなどの陰樹が優占する。陽樹は強い光のもとで速く成長し、陰樹は弱い光でも育つので、遷移の段階によって優占する樹種が変わるのである。',
+      };
+    },
+  },
+  {
+    id: 'b11-gap',
+    stage: 'b11',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '極相林でも、高木が倒れて林冠にすき間（ギャップ）ができると、そこに陽樹が生えることがある。この理由として最も適当なものはどれか。',
+        correct: 'ギャップでは林床まで強い光が届き、陽樹の芽ばえも成長できるから',
+        wrong: ['ギャップでは土壌がなくなり、一次遷移が始まるから', 'ギャップでは光が弱くなり、陽樹だけが育つから', '高木が倒れると、陰樹の芽ばえはすべて枯れるから'],
+        explanation: 'ギャップができると林床まで強い光が届くので、成長の速い陽樹の芽ばえも育つことができる。大きなギャップでは陽樹が、小さなギャップでは陰樹の幼木が成長しやすく、このような入れかわり（ギャップ更新）によって極相林の中にも多様な樹種が保たれるのである。',
+      };
+    },
+  },
+  {
+    id: 'b11-curve-read',
+    stage: 'b11',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const sunIsA = rng.chance(0.5);
+      const lab = sunIsA ? { sun: KATA[0], shade: KATA[1] } : { sun: KATA[1], shade: KATA[0] };
+      return {
+        text: '図のア・イは、遷移が進むにつれて、森林の高木に占める陽樹と陰樹の割合がどう変わるかを表した模式図である。陰樹を表すのはどちらか。',
+        chart: {
+          x: { min: 0, max: 600, label: '遷移が始まってからの年数', step: 100 },
+          y: { min: 0, max: 110, label: '高木に占める割合（%）', step: 20 },
+          series: [
+            { points: sample((x) => state(x).sunTrees, 0, 600, 300), color: 'c2', dash: sunIsA ? 'solid' : 'dash', width: 3, label: lab.sun, labelAt: 220 },
+            { points: sample((x) => state(x).shadeTrees, 0, 600, 300), color: 'c3', dash: sunIsA ? 'dash' : 'solid', width: 3, label: lab.shade, labelAt: 520 },
+          ],
+          alt: '陽樹と陰樹の割合の変化（ア・イ）',
+        },
+        correct: `${lab.shade}：遷移の後半に増え、最後まで優占しているから`,
+        wrong: [`${lab.sun}：遷移の後半に増え、最後まで優占しているから`, `${lab.sun}：遷移の前半に増え、のちに減っているから`, `${lab.shade}：遷移の前半に増え、のちに減っているから`],
+        explanation: `陰樹は${lab.shade}である。陽樹林の暗い林床でも陰樹の芽ばえは育つので、陽樹が枯れると陰樹に置きかわり、陰樹が極相林で優占するからである。`,
+      };
+    },
+  },
+];
+return { B11 };
 })();
 
 // ---- questions/a1.js ----
@@ -12154,6 +13201,670 @@ const A13 = [
 return { A13 };
 })();
 
+// ---- questions/a14.js ----
+__m["questions/a14.js"] = (function () {
+// A14 シナプスと興奮の統合 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { potential, buildInputs, REST, THRESHOLD } = __m["models/synapse.js"];
+const { sample } = __m["lib/series.js"];
+
+const mv = (v) => String(v).replace('-', '−');
+
+const A14 = [
+  {
+    id: 'a14-one-way',
+    stage: 'a14',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'シナプスでは、興奮はシナプス前細胞からシナプス後細胞への一方向にしか伝わらない。この理由として最も適当なものはどれか。',
+        correct: '神経伝達物質はシナプス前細胞の末端からだけ放出され、その受容体はシナプス後細胞の膜にあるから',
+        wrong: ['シナプス後細胞の末端からも神経伝達物質が放出されるから', '軸索では興奮が一方向にしか伝導しないから', 'シナプス間隙では活動電位がそのまま伝わるから'],
+        explanation: '神経伝達物質を含むシナプス小胞は軸索の末端（シナプス前細胞）にあり、受容体はシナプス後細胞の膜にある。そのため伝達物質はシナプス前細胞からシナプス後細胞へしか作用しないので、興奮の伝達は一方向になる。',
+      };
+    },
+  },
+  {
+    id: 'a14-epsp-ipsp',
+    stage: 'a14',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const e = rng.chance(0.5);
+      return e
+        ? {
+          text: '興奮性シナプスで、シナプス後細胞に興奮性シナプス後電位（EPSP）が生じるしくみとして正しいものはどれか。',
+          correct: '神経伝達物質が受容体に結合し、Na⁺ などの陽イオンが流入して脱分極する',
+          wrong: ['神経伝達物質が受容体に結合し、Cl⁻ が流入して過分極する', '神経伝達物質がシナプス後細胞の中に入り、ATPをつくる', 'シナプス前細胞の活動電位が、そのままシナプス後細胞に流れ込む'],
+          explanation: '神経伝達物質が受容体（イオンチャネル）に結合すると、Na⁺ などの陽イオンが流入して膜電位が上がる（EPSP）。EPSPが加重して閾値に達すると、シナプス後細胞に活動電位が生じるからである。',
+        }
+        : {
+          text: '抑制性シナプスで、シナプス後細胞に抑制性シナプス後電位（IPSP）が生じるしくみとして正しいものはどれか。',
+          correct: '神経伝達物質が受容体に結合し、Cl⁻ が流入するなどして過分極する',
+          wrong: ['神経伝達物質が受容体に結合し、Na⁺ が流入して脱分極する', '神経伝達物質がシナプス前細胞にもどり、放出が止まる', 'シナプス後細胞のナトリウムポンプが止まり、静止電位がなくなる'],
+          explanation: '抑制性の神経伝達物質（GABA など）が受容体に結合すると、Cl⁻ が流入するなどして膜電位が下がる（IPSP）。膜電位が閾値から遠ざかるので、シナプス後細胞は興奮しにくくなる。',
+        };
+    },
+  },
+  {
+    id: 'a14-sum-calc',
+    stage: 'a14',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const e = rng.pick([4, 5, 6, 8]);
+      const need = THRESHOLD - REST;
+      const ans = Math.ceil(need / e);
+      const d = distinctNumbers(ans, [Math.floor(need / e), ans + 1, need, Math.round(70 / e), ans * 2], ' 個', 0);
+      return {
+        text: `あるシナプス後細胞の静止電位は ${mv(REST)} mV、閾値は ${mv(THRESHOLD)} mV である。1つのシナプスからの EPSP が ${e} mV の脱分極を起こすとき、閾値に達するには、同時にいくつのシナプスから EPSP が生じる必要があるか（EPSP は単純に足し合わされるものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `閾値までに必要な脱分極は ${mv(THRESHOLD)} − (${mv(REST)}) ＝ ${need} mV で、${need} ÷ ${e} ＝ ${fmt(need / e, 2)} だから、${ans} 個以上必要である。複数のシナプスから同時に入力があると EPSP が足し合わされる（空間的加重）ので、1つでは閾値に届かなくても興奮が起こるのである。`,
+      };
+    },
+  },
+  {
+    id: 'a14-ei-calc',
+    stage: 'a14',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const e = rng.pick([6, 8]);
+      const i = rng.pick([4, 5]);
+      const nE = rng.pick([2, 3, 4]);
+      const nI = rng.pick([1, 2]);
+      const v = REST + nE * e - nI * i;
+      const fire = v >= THRESHOLD;
+      return {
+        text: `静止電位 ${mv(REST)} mV、閾値 ${mv(THRESHOLD)} mV のシナプス後細胞に、${e} mV の EPSP を起こすシナプス ${nE} つと、${i} mV の IPSP を起こすシナプス ${nI} つから同時に入力があった。膜電位は何 mV になり、活動電位は生じるか（電位の変化は単純に足し合わされるものとする）。`,
+        correct: `${mv(v)} mV で、活動電位は${fire ? '生じる' : '生じない'}`,
+        wrong: [`${mv(v)} mV で、活動電位は${fire ? '生じない' : '生じる'}`, `${mv(REST + nE * e)} mV で、活動電位は生じる`, `${mv(REST + nE * e + nI * i)} mV で、活動電位は生じる`, `${mv(REST - nE * e + nI * i)} mV で、活動電位は生じない`],
+        explanation: `${mv(REST)} ＋ ${e} × ${nE} − ${i} × ${nI} ＝ ${mv(v)} mV となり、閾値 ${mv(THRESHOLD)} mV ${fire ? '以上なので活動電位が生じる' : 'に達しないので活動電位は生じない'}。EPSP は膜電位を上げ、IPSP は下げるので、両方の和で興奮するかどうかが決まるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a14-summation-graph',
+    stage: 'a14',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const kind = rng.pick(['temporal', 'spatial']);
+      const inputs = kind === 'temporal' ? buildInputs({ nA: 2, interval: 2 }) : buildInputs({ nA: 1, useB: true });
+      return {
+        text: `図は、シナプス後細胞の膜電位の変化を表している。${kind === 'temporal' ? '1つのシナプス前細胞から、短い間隔で2回続けて入力があった' : '2つのシナプス前細胞から、同時に1回ずつ入力があった'}ときの変化である（活動電位は描いていない）。このような EPSP の足し合わせを何というか。`,
+        chart: {
+          x: { min: 0, max: 40, label: '時間（ミリ秒）', step: 10 },
+          y: { min: -75, max: -50, label: '膜電位（mV）', step: 5 },
+          series: [{ points: sample((t) => potential(t, inputs), 0, 40, 400), color: 'c1', width: 3 }],
+          hlines: [{ y: THRESHOLD, color: 'c2', dash: 'dash', label: '閾値', align: 'right' }],
+          alt: 'EPSP の加重',
+        },
+        correct: kind === 'temporal' ? '時間的加重' : '空間的加重',
+        wrong: ['時間的加重', '空間的加重', '全か無かの法則', '跳躍伝導'],
+        explanation: kind === 'temporal'
+          ? '1つのシナプスで短い間隔で入力がくり返されると、前の EPSP が消えないうちに次の EPSP が重なる。これを時間的加重といい、1回では届かない閾値に達することがあるからである。'
+          : '複数のシナプスから同時に入力があると、それぞれの EPSP が足し合わされる。これを空間的加重といい、1つのシナプスだけでは届かない閾値に達することがあるからである。',
+      };
+    },
+  },
+  {
+    id: 'a14-transmitter',
+    stage: 'a14',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        const q = assignmentQuestion(['運動神経と骨格筋の接合部', '交感神経の末端（多くの器官）', '抑制性シナプスの例'], ['アセチルコリン', 'ノルアドレナリン', 'GABA（γ-アミノ酪酸）']);
+        return {
+          text: '神経伝達物質と、それがはたらく場所の組合せとして正しいものはどれか。',
+          correct: q.correct,
+          wrong: q.wrong,
+          explanation: '運動神経の末端からはアセチルコリン、交感神経の末端からは主にノルアドレナリンが放出される。GABA は抑制性の神経伝達物質で、Cl⁻ を通すチャネルを開いてシナプス後細胞を興奮しにくくするからである。',
+        };
+      }
+      return {
+        text: 'シナプス前細胞の末端に興奮が伝わったとき、神経伝達物質の放出のきっかけとなるイオンの流入はどれか。',
+        correct: 'Ca²⁺ の流入',
+        wrong: ['Cl⁻ の流入', 'K⁺ の流入', 'Na⁺ の流出'],
+        explanation: '興奮が末端に達すると、電位依存性のカルシウムチャネルが開いて Ca²⁺ が流入する。これがきっかけとなってシナプス小胞が細胞膜と融合し、神経伝達物質がシナプス間隙に放出されるからである。',
+      };
+    },
+  },
+  {
+    id: 'a14-delay-calc',
+    stage: 'a14',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([20, 40, 50]); // m/s ＝ mm/ms
+      const d1 = rng.pick([20, 40, 60]);
+      const d2 = rng.pick([40, 60, 80]);
+      const delay = rng.pick([0.5, 1, 1.5, 2]);
+      const total = d1 / v + delay + d2 / v;
+      if (Math.abs(total * 100 - Math.round(total * 100)) > 1e-6) return this.make(rng);
+      const d = distinctNumbers(delay, [total - d1 / v, total - d2 / v, total, (d1 + d2) / v, delay * 2, delay + 0.5, delay / 2], ' ミリ秒', 2);
+      return {
+        text: `2つのニューロンがシナプスでつながっている。1つ目のニューロンの軸索上で、シナプスまで ${d1} mm の点を刺激したところ、${total} ミリ秒後に、シナプスから ${d2} mm 先の2つ目のニューロンの軸索上で活動電位が記録された。どちらの軸索も伝導速度は ${v} m/s である。シナプスでの伝達にかかった時間は何ミリ秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `伝導にかかる時間は (${d1} ＋ ${d2}) mm ÷ ${v} mm/ms ＝ ${fmt((d1 + d2) / v, 2)} ミリ秒なので、伝達の時間は ${total} − ${fmt((d1 + d2) / v, 2)} ＝ ${fmt(delay, 2)} ミリ秒である。シナプスでは神経伝達物質の放出・拡散・受容体への結合が起こるので、伝導に比べて時間がかかる（シナプス遅延）からである。`,
+      };
+    },
+  },
+  {
+    id: 'a14-ipsp-graph',
+    stage: 'a14',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(['e', 'i']);
+      const tr = { e: buildInputs({ nA: 1 }), i: [{ t: 5, amp: -5 }] };
+      return {
+        text: '図のア・イは、あるシナプス後細胞に生じた膜電位の変化である。抑制性シナプスからの入力によるものはどちらか。',
+        chart: {
+          x: { min: 0, max: 40, label: '時間（ミリ秒）', step: 10 },
+          y: { min: -80, max: -55, label: '膜電位（mV）', step: 5 },
+          series: order.map((k, idx) => ({ points: sample((t) => potential(t, tr[k]), 0, 40, 300), color: idx ? 'c2' : 'c1', dash: idx ? 'dash' : 'solid', width: 3, label: KATA[idx], labelAt: 9 })),
+          hlines: [{ y: REST, color: 'muted', dash: 'dot', label: '静止電位', align: 'right' }],
+          alt: '膜電位の変化ア・イ',
+        },
+        correct: `${KATA[order.indexOf('i')]}：膜電位が静止電位より下がっている（過分極）から`,
+        wrong: [`${KATA[order.indexOf('e')]}：膜電位が静止電位より上がっている（脱分極）から`, `${KATA[order.indexOf('e')]}：膜電位が静止電位より下がっている（過分極）から`, `${KATA[order.indexOf('i')]}：膜電位が静止電位より上がっている（脱分極）から`],
+        explanation: `抑制性シナプスからの入力は${KATA[order.indexOf('i')]}である。抑制性シナプスでは Cl⁻ の流入などで膜電位が下がり（IPSP）、閾値から遠ざかるので、シナプス後細胞は興奮しにくくなるからである。`,
+      };
+    },
+  },
+];
+return { A14 };
+})();
+
+// ---- questions/a15.js ----
+__m["questions/a15.js"] = (function () {
+// A15 PCR と電気泳動 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { copies, distanceOf, LADDER, fragments } = __m["models/biotech.js"];
+
+const A15 = [
+  {
+    id: 'a15-copies',
+    stage: 'a15',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const init = rng.pick([1, 2, 5, 10]);
+      const n = rng.pick([3, 4, 5, 6, 8, 10]);
+      const ans = copies(init, n);
+      const d = distinctNumbers(ans, [init * 2 * n, init * n * n, copies(init, n - 1), copies(init, n + 1), init + Math.pow(2, n)], ' 分子', 0);
+      return {
+        text: `2本鎖 DNA が ${init} 分子ある。PCR法で ${n} サイクルの反応を行うと、目的の DNA 領域は理論上何分子になるか（1サイクルで2倍になるものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1サイクルごとに2倍になるので、${init} × 2^${n} ＝ ${ans.toLocaleString('ja-JP')} 分子となる。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型として新しい鎖が合成されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a15-cycles',
+    stage: 'a15',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const k = rng.pick([10, 20, 30]);
+      const target = Math.pow(2, k);
+      const label = { 10: '約1000倍（2¹⁰ ＝ 1024倍）', 20: '約100万倍（2²⁰ ≒ 10⁶倍）', 30: '約10億倍（2³⁰ ≒ 10⁹倍）' }[k];
+      const d = distinctNumbers(k, [k / 2, k * 2, Math.round(Math.log10(target)), k + 10, k - 5], ' サイクル', 0);
+      return {
+        text: `PCR法で、目的の DNA を${label.split('（')[0]}に増やしたい。理論上、少なくとも何サイクルの反応が必要か（1サイクルで2倍になるものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `n サイクルで 2ⁿ 倍になるので、${label}より ${k} サイクル必要である。2¹⁰ ＝ 1024 ≒ 10³ なので、10サイクルごとにおよそ1000倍になると覚えておくと計算しやすいからである。`,
+      };
+    },
+  },
+  {
+    id: 'a15-steps',
+    stage: 'a15',
+    level: 1,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['約95℃', '約55〜60℃', '約72℃'], ['熱変性', 'アニーリング（プライマーの結合）', '伸長（DNAの合成）']);
+      return {
+        text: 'PCR法の1サイクルの各段階の温度と、そのときに起こることの組合せとして正しいものはどれか。',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: '約95℃で2本鎖が1本ずつに分かれ（熱変性）、約55〜60℃に下げるとプライマーが相補的な部分に結合し（アニーリング）、約72℃で DNAポリメラーゼが DNA を合成する（伸長）。温度を変えるだけで各段階を切りかえられるので、これを自動でくり返して DNA を増やすのである。',
+      };
+    },
+  },
+  {
+    id: 'a15-polymerase',
+    stage: 'a15',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: 'PCR法で使う DNAポリメラーゼとして、好熱菌などから得た耐熱性の酵素が使われる理由として最も適当なものはどれか。',
+        correct: '熱変性のたびに約95℃に加熱しても失活しないので、くり返し使えるから',
+        wrong: ['高温でないと DNA の2本鎖が合成されないから', '耐熱性の酵素はプライマーがなくても DNA を合成できるから', '耐熱性の酵素は RNA を鋳型にして DNA をつくれるから'],
+        explanation: 'ふつうの酵素は約95℃の熱変性で失活してしまい、サイクルごとに加え直す必要がある。好熱菌などから得た耐熱性の DNAポリメラーゼは高温でも失活しないので、反応液に一度入れればサイクルをくり返せるからである。',
+      };
+    },
+  },
+  {
+    id: 'a15-direction',
+    stage: 'a15',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'アガロースゲル電気泳動での DNA 断片の移動について正しいものはどれか。',
+        correct: 'DNA は負の電荷をもつので陽極側へ移動し、短い断片ほど遠くまで移動する',
+        wrong: ['DNA は負の電荷をもつので陽極側へ移動し、長い断片ほど遠くまで移動する', 'DNA は正の電荷をもつので陰極側へ移動し、短い断片ほど遠くまで移動する', 'DNA は電荷をもたないので、断片の長さに関係なく同じ距離だけ移動する'],
+        explanation: 'DNA はリン酸を含むので負の電荷をもち、電圧をかけると陽極（＋）側へ移動する。ゲルの網目の中では短い断片ほど通り抜けやすいので、一定時間で遠くまで移動する。',
+      };
+    },
+  },
+  {
+    id: 'a15-standard',
+    stage: 'a15',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const bp = rng.pick([700, 1500, 2500, 4000]);
+      const d = distanceOf(bp);
+      const lpts = [];
+      for (let l = 200; l <= 12000; l *= 1.05) lpts.push([Math.log10(l), distanceOf(l)]);
+      const dd = distinctNumbers(bp, [bp * 2, bp / 2, Math.round(d * 10), bp * 10, 10000 - bp], ' 塩基対', 0);
+      return {
+        text: `図は、長さのわかっている DNA 断片（マーカー：◆）の移動距離から作った検量線である。同じゲルで電気泳動した試料の DNA 断片は ${fmt(d, 1)} mm 移動していた。この断片の長さはおよそ何塩基対か。`,
+        chart: {
+          x: { min: Math.log10(200), max: Math.log10(12000), label: '断片の長さ（塩基対・対数目盛り）', ticks: [250, 500, 1000, 2000, 5000, 10000].map((v) => ({ v: Math.log10(v), text: v.toLocaleString('ja-JP') })) },
+          y: { min: 0, max: 80, label: '移動距離（mm）', step: 10 },
+          series: [{ points: lpts, color: 'c4', width: 2 }],
+          markers: LADDER.map((l) => ({ x: Math.log10(l), y: distanceOf(l), color: 'c4', shape: 'diamond' })),
+          hlines: [{ y: d, color: 'c2', dash: 'dash', label: `${fmt(d, 1)} mm`, align: 'right' }],
+          alt: '検量線',
+        },
+        correct: dd.correct,
+        wrong: dd.wrong,
+        explanation: `移動距離 ${fmt(d, 1)} mm の横線と検量線の交点の横軸を読むと、約 ${bp.toLocaleString('ja-JP')} 塩基対である。移動距離は断片の長さの対数に対してほぼ直線的に変わるので、長さのわかっているマーカーと比べれば、未知の断片の長さを推定できるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a15-restriction',
+    stage: 'a15',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const len = rng.pick([4000, 5000, 6000, 8000]);
+      const a = rng.pick([500, 1000, 1500]);
+      const b = a + rng.pick([1000, 1500, 2000, 2500]);
+      if (b >= len) return this.make(rng);
+      const frs = fragments(len, [a, b]);
+      const ask = rng.pick(['short', 'long']);
+      const ans = ask === 'short' ? Math.min(...frs) : Math.max(...frs);
+      const d = distinctNumbers(ans, [len - a, len - b, a, b, len / 2, len], ' 塩基対', 0);
+      return {
+        text: `全長 ${len.toLocaleString('ja-JP')} 塩基対の環状のプラスミドに、制限酵素 X の切断部位が2か所（基準点から ${a.toLocaleString('ja-JP')} 塩基対と ${b.toLocaleString('ja-JP')} 塩基対の位置）ある。X で完全に切断して電気泳動すると、${ask === 'short' ? '最も遠くまで移動する' : '移動距離が最も小さい'}断片は何塩基対か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `環状の DNA を2か所で切ると断片は2本で、${(b - a).toLocaleString('ja-JP')} 塩基対と ${len.toLocaleString('ja-JP')} − ${(b - a).toLocaleString('ja-JP')} ＝ ${(len - (b - a)).toLocaleString('ja-JP')} 塩基対になる。${ask === 'short' ? '短い断片ほど遠くまで移動する' : '長い断片ほど移動距離が小さい'}ので、答えは ${ans.toLocaleString('ja-JP')} 塩基対である。`,
+      };
+    },
+  },
+  {
+    id: 'a15-restriction-term',
+    stage: 'a15',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: 'DNA の特定の塩基配列を認識して切断する酵素を何というか。',
+          correct: '制限酵素',
+          wrong: ['DNAリガーゼ', 'DNAポリメラーゼ', 'RNAポリメラーゼ', '逆転写酵素'],
+          explanation: 'これは制限酵素である。なお、制限酵素は細菌がもつ酵素で、侵入したウイルスの DNA を切断して身を守るはたらきをもっているので、遺伝子組換えで DNA を切り出す道具として使われる。',
+        };
+      }
+      return {
+        text: '遺伝子組換えで、切り出した DNA 断片をプラスミドなどにつなぐ酵素を何というか。',
+        correct: 'DNAリガーゼ',
+        wrong: ['制限酵素', 'DNAポリメラーゼ', 'RNAポリメラーゼ', 'ヘリカーゼ'],
+        explanation: 'これは DNAリガーゼである。なお、同じ制限酵素で切断した DNA どうしは切り口の塩基配列が相補的なので、DNAリガーゼでつなぐと組換え DNA をつくることができる。',
+      };
+    },
+  },
+];
+return { A15 };
+})();
+
+// ---- questions/a16.js ----
+__m["questions/a16.js"] = (function () {
+// A16 動物の行動 の問題
+const { distinctNumbers } = __m["questions/common.js"];
+const { danceAngle, foodAzimuth, azName, SUN_SPEED } = __m["models/behavior.js"];
+
+const AZ = [0, 45, 90, 135, 180, 225, 270, 315];
+const angleText = (a) => (a === 0 ? '真上' : Math.abs(a) === 180 ? '真下' : `真上から${a > 0 ? '右' : '左'}に${Math.abs(a)}°`);
+
+const A16 = [
+  {
+    id: 'a16-dance-angle',
+    stage: 'a16',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const sun = rng.pick([90, 135, 180, 225, 270]);
+      const food = rng.pick(AZ);
+      const a = danceAngle(sun, food);
+      const correct = angleText(a);
+      const cands = [-180, -135, -90, -45, 0, 45, 90, 135].map(angleText);
+      return {
+        text: `太陽が${azName(sun)}にあるとき、巣から${azName(food)}の方向にあるえさ場（巣から 1 km）を見つけたミツバチが、巣の中の垂直な巣板の上で8の字ダンスを踊った。尻を振りながら直進する向きはどれか。`,
+        correct,
+        wrong: [angleText(-a === 0 ? 180 : -a), ...cands],
+        explanation: `えさ場は太陽の方向から時計回りに ${((food - sun) % 360 + 360) % 360}° の方向にある。巣板の上では真上を太陽の方向とみなすので、真上から同じ角度だけ回した向き（${correct}）に直進するからである。`,
+      };
+    },
+  },
+  {
+    id: 'a16-food-from-dance',
+    stage: 'a16',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const sun = rng.pick([90, 135, 180, 225, 270]);
+      const dance = rng.pick([-135, -90, -45, 45, 90, 135, 180]);
+      const food = foodAzimuth(sun, dance);
+      return {
+        text: `太陽が${azName(sun)}にあるとき、8の字ダンスの直進方向が${angleText(dance)}であった。えさ場は巣から見てどの方位にあるか。`,
+        correct: azName(food),
+        wrong: AZ.map(azName),
+        explanation: `真上が太陽の方向（${azName(sun)}）にあたるので、えさ場は${azName(sun)}から${dance > 0 ? '時計回り' : '反時計回り'}に ${Math.abs(dance)}° 回した方位、つまり${azName(food)}にある。ダンスの角度は、太陽の方向とえさ場の方向のなす角を、重力の方向を基準にして表しているからである。`,
+      };
+    },
+  },
+  {
+    id: 'a16-time-shift',
+    stage: 'a16',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const hours = rng.pick([1, 2, 3, 4]);
+      const ans = hours * SUN_SPEED;
+      const d = distinctNumbers(ans, [hours * 30, hours * 10, 15, hours * 360 / 24 * 2, 90], '°', 0);
+      return {
+        text: `同じえさ場に通っているミツバチの8の字ダンスを ${hours} 時間後に観察すると、直進方向の角度が変わっていた。太陽の方位が1時間に約${SUN_SPEED}°移動するとすると、ダンスの角度はおよそ何度変わったか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `太陽は ${hours} 時間で約 ${SUN_SPEED} × ${hours} ＝ ${ans}° 移動するので、ダンスの角度もおよそ ${ans}° 変わる。ダンスはえさ場の方向を太陽の方向を基準に表すので、えさ場が同じでも太陽が動けば角度が変わるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a16-round',
+    stage: 'a16',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ミツバチのダンスについて正しいものはどれか。',
+        correct: 'えさ場が近いときは円形ダンス、遠いときは8の字ダンスを踊る',
+        wrong: ['えさ場が近いときは8の字ダンス、遠いときは円形ダンスを踊る', 'えさ場が遠いほど、一定時間あたりの8の字ダンスの回数は多くなる', '8の字ダンスの直進方向は、えさ場の方位をそのまま（北を真上として）表す'],
+        explanation: 'えさ場が近いときは円形ダンス、遠いときは8の字ダンスを踊り、8の字ダンスは方向と距離を伝える。えさ場が遠いほどダンスはゆっくりになり、一定時間あたりの回数が少なくなるので、仲間は回数から距離を知ることができる。',
+      };
+    },
+  },
+  {
+    id: 'a16-innate',
+    stage: 'a16',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['imprint', 'taxis', 'sign', 'habit']);
+      const Q = {
+        imprint: { text: 'カモやガンのひなが、ふ化後の限られた時期に見た動くものを親と認識し、あとを追うようになる学習を何というか。', correct: '刷込み', explanation: 'これは刷込みである。なお、刷込みは生後の限られた時期（臨界期）にだけ成立する学習なので、その時期を過ぎると同じ経験をしても成立しにくい。' },
+        taxis: { text: 'ミドリムシが光の方へ移動するように、刺激に対して一定の方向へ移動する生得的行動を何というか。', correct: '走性', explanation: 'これは走性で、刺激源へ近づくものを正、遠ざかるものを負という。なお、ミドリムシは光の方へ移動するので正の光走性であり、光合成に有利な場所へ移動できる。' },
+        sign: { text: 'イトヨの雄が、腹の赤い模型に対して攻撃行動を示すように、特定の行動を引き起こす刺激を何というか。', correct: 'かぎ刺激（信号刺激）', explanation: 'これはかぎ刺激（信号刺激）である。なお、イトヨの雄は形が似ていなくても腹が赤い模型を攻撃するので、行動を引き起こしているのは「腹の赤色」という特定の刺激だとわかる。' },
+        habit: { text: 'アメフラシの水管に弱い刺激をくり返し与えると、えらを引っこめる反応がしだいに起こらなくなる。このような単純な学習を何というか。', correct: '慣れ', explanation: 'これは慣れである。なお、くり返し刺激を受けると感覚ニューロンから放出される神経伝達物質の量が減るので、運動ニューロンが興奮しにくくなり、反応が弱まる。' },
+      }[which];
+      return { text: Q.text, correct: Q.correct, wrong: ['刷込み', '走性', 'かぎ刺激（信号刺激）', '慣れ', '条件づけ', '鋭敏化'], explanation: Q.explanation };
+    },
+  },
+  {
+    id: 'a16-sun-compass',
+    stage: 'a16',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '渡り鳥やミツバチが、時刻とともに位置が変わる太陽を基準にしても、正しい方向を知ることができる理由として最も適当なものはどれか。',
+        correct: '体内時計によって時刻を知り、太陽の方位の変化を補正しているから',
+        wrong: ['太陽の位置は1日中変わらないから', '地磁気だけを使い、太陽はまったく使っていないから', '方向を知るのは夜だけで、昼は移動しないから'],
+        explanation: '太陽の方位は時刻とともに変わるので、太陽だけでは方向は決まらない。動物は体内時計で時刻を知り、太陽の方位の変化を補正しているので、太陽を基準に方向を知ることができる（太陽コンパス）。',
+      };
+    },
+  },
+  {
+    id: 'a16-dance-graph',
+    stage: 'a16',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const near = rng.chance(0.5);
+      const pts = [];
+      for (let d = 100; d <= 4000; d += 50) pts.push([d, 10 / (1 + d / 500)]);
+      return {
+        text: '図は、巣からえさ場までの距離と、15秒あたりの8の字ダンスの回数の関係を表した模式図である。この図から考えられることとして正しいものはどれか。',
+        chart: {
+          x: { min: 0, max: 4000, label: 'えさ場までの距離（m）', step: 1000 },
+          y: { min: 0, max: 10, label: '15秒あたりの回数', step: 2 },
+          series: [{ points: pts, color: 'c1', width: 3 }],
+          alt: '距離とダンスの回数',
+        },
+        correct: near ? 'ダンスの回数が多いほど、えさ場は近い' : 'えさ場が遠いほど、ダンスの回数は少ない',
+        wrong: ['ダンスの回数が多いほど、えさ場は遠い', 'えさ場が遠いほど、ダンスの回数は多い', 'ダンスの回数は、えさ場までの距離に関係しない', 'ダンスの回数は、えさ場の方向を表している'],
+        explanation: '図では距離が大きいほど15秒あたりの回数が少なくなっている。ダンスの回数（速さ）でえさ場までの距離が伝わるので、仲間のミツバチは回数から距離を知ることができるからである。',
+      };
+    },
+  },
+  {
+    id: 'a16-learning',
+    stage: 'a16',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '生得的行動と学習による行動の説明として正しいものはどれか。',
+        correct: '生得的行動は経験がなくても生まれつき行うことができ、学習は経験によって行動が変化することである',
+        wrong: ['生得的行動は経験によって獲得され、学習は生まれつき備わっている', '生得的行動はヒトだけに見られ、学習は他の動物だけに見られる', '刷込みは生得的行動であり、学習ではない'],
+        explanation: '走性やかぎ刺激による行動は、経験がなくても生まれつき行うことができる生得的行動である。慣れ・刷込み・条件づけなどは経験によって行動が変化するので学習である。',
+      };
+    },
+  },
+];
+return { A16 };
+})();
+
+// ---- questions/a17.js ----
+__m["questions/a17.js"] = (function () {
+// A17 光周性と花芽形成 の問題
+const { KATA } = __m["questions/common.js"];
+const { TYPES, darkPeriods, flowers } = __m["models/photoperiod.js"];
+
+const yesNo = (b) => (b ? '花芽を形成する' : '花芽を形成しない');
+
+const A17 = [
+  {
+    id: 'a17-judge',
+    stage: 'a17',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const type = rng.pick(['short', 'long']);
+      const critical = rng.pick([9.5, 10.5, 11.5, 12.5]);
+      const light = rng.pick([8, 10, 12, 14, 16]);
+      const dark = 24 - light;
+      const ok = flowers(type, dark, critical);
+      return {
+        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、明期 ${light} 時間・暗期 ${dark} 時間の条件で育てた。この植物は花芽を形成するか。`,
+        correct: `${yesNo(ok)}（連続した暗期 ${dark} 時間が限界暗期より${dark > critical ? '長い' : '短い'}から）`,
+        wrong: [`${yesNo(!ok)}（連続した暗期 ${dark} 時間が限界暗期より${dark > critical ? '長い' : '短い'}から）`, `${yesNo(!ok)}（明期 ${light} 時間が限界暗期より${light > critical ? '長い' : '短い'}から）`, `${yesNo(ok)}（明期 ${light} 時間が限界暗期より${light > critical ? '長い' : '短い'}から）`],
+        explanation: `${TYPES[type].name}は、連続した暗期が限界暗期より${type === 'short' ? '長い' : '短い'}ときに花芽を形成する。この条件では暗期 ${dark} 時間が限界暗期 ${critical} 時間より${dark > critical ? '長い' : '短い'}ので、${yesNo(ok)}。花芽形成を決めるのは明期ではなく連続した暗期の長さだからである。`,
+      };
+    },
+  },
+  {
+    id: 'a17-break',
+    stage: 'a17',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const type = rng.pick(['short', 'long']);
+      const critical = rng.pick([9.5, 10.5, 11.5]);
+      const light = rng.pick([8, 9, 10]);
+      const dark = 24 - light;
+      const at = rng.pick([4, 5, 6, 7]);
+      const dp = darkPeriods(light, at, 1);
+      const ok = flowers(type, dp.longest, critical);
+      const okNoBreak = flowers(type, dark, critical);
+      return {
+        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、明期 ${light} 時間・暗期 ${dark} 時間で育て、暗期が始まってから ${at} 時間後に1時間だけ光を当てた（光中断）。この植物は花芽を形成するか。`,
+        correct: `${yesNo(ok)}（最も長い連続した暗期は ${dp.longest} 時間）`,
+        wrong: [`${yesNo(!ok)}（最も長い連続した暗期は ${dp.longest} 時間）`, `${yesNo(okNoBreak)}（連続した暗期は ${dark} 時間）`, `${yesNo(!okNoBreak)}（連続した暗期は ${dark} 時間）`, `${yesNo(!ok)}（連続した暗期は ${dark - 1} 時間）`],
+        explanation: `光中断で暗期は ${dp.periods.join(' 時間と ')} 時間に分けられ、最も長い連続した暗期は ${dp.longest} 時間になる。${TYPES[type].name}は連続した暗期が限界暗期 ${critical} 時間より${type === 'short' ? '長い' : '短い'}ときに花芽を形成するので、${yesNo(ok)}。`,
+      };
+    },
+  },
+  {
+    id: 'a17-types',
+    stage: 'a17',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const t = rng.pick(['short', 'long', 'neutral']);
+      return {
+        text: `${TYPES[t].examples.split('・').slice(0, 2).join('や')}のように、${t === 'short' ? '連続した暗期が限界暗期より長くなると花芽を形成する' : t === 'long' ? '連続した暗期が限界暗期より短くなると花芽を形成する' : '日長に関係なく花芽を形成する'}植物を何というか。`,
+        correct: TYPES[t].name,
+        wrong: ['短日植物', '長日植物', '中性植物', '陰生植物'],
+        explanation: `これは${TYPES[t].name}である。${t === 'neutral' ? 'なお、中性植物は日長ではなく、ある程度成長すると花芽を形成するので、季節に関係なく花をつけることができる。' : 'なお、名前は「日が短い（長い）ときに咲く」ことからついたが、実際に花芽形成を決めているのは連続した暗期の長さなので、光中断で結果が変わる。'}`,
+      };
+    },
+  },
+  {
+    id: 'a17-leaf',
+    stage: 'a17',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '短日植物の一部の葉だけを短日条件にし、残りを長日条件にしても花芽が形成された。また、短日処理した植物を、長日条件の植物に接ぎ木すると、長日条件の植物にも花芽が形成された。これらから考えられることとして最も適当なものはどれか。',
+        correct: '日長は葉で感じとられ、葉でつくられた物質が移動して花芽形成を促す',
+        wrong: ['日長は茎の先端（茎頂）で直接感じとられる', '日長は根で感じとられ、根でつくられた物質が花芽形成を促す', '花芽形成には、すべての葉が短日条件になる必要がある'],
+        explanation: '一部の葉が短日条件を受ければ花芽ができ、接ぎ木でも効果が伝わるので、日長は葉で感じとられ、そこでつくられた物質が移動すると考えられる。この物質はフロリゲン（花成ホルモン）とよばれ、師管を通って茎頂に運ばれるからである。',
+      };
+    },
+  },
+  {
+    id: 'a17-schedule-graph',
+    stage: 'a17',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const critical = 10.5;
+      const conds = [
+        { light: 14, at: null },
+        { light: 10, at: null },
+        { light: 10, at: 6 },
+      ];
+      const type = rng.pick(['short', 'long']);
+      const res = conds.map((c) => flowers(type, darkPeriods(c.light, c.at, 1).longest, critical));
+      const ansIdx = res.map((r, i) => (r ? i : -1)).filter((i) => i >= 0);
+      // 短日植物ではイだけ、長日植物ではアとウが正答になる
+      const polys = [];
+      conds.forEach((c, i) => {
+        const y = 2.5 - i;
+        const rect = (x0, x1, fill) => polys.push({ points: [[x0, y - 0.3], [x1, y - 0.3], [x1, y + 0.3], [x0, y + 0.3]], fill, stroke: 'fg' });
+        rect(0, c.light, 'region-4');
+        if (c.at == null) rect(c.light, 24, 'surface-2');
+        else {
+          rect(c.light, c.light + c.at, 'surface-2');
+          rect(c.light + c.at, c.light + c.at + 1, 'c5');
+          rect(c.light + c.at + 1, 24, 'surface-2');
+        }
+      });
+      const names = (ans) => ans.map((i) => KATA[i]).join('と');
+      const correct = names(ansIdx);
+      return {
+        text: `図のア〜ウは、1日24時間の明期（うすい色）・暗期（濃い色）・光中断（黄）の条件である。限界暗期が ${critical} 時間の${TYPES[type].name}が花芽を形成するのはどの条件か。`,
+        chart: {
+          x: { min: 0, max: 24, label: '明期の開始からの時間（時間）', step: 2 },
+          y: { min: 0, max: 3, ticks: [{ v: 2.5, text: 'ア' }, { v: 1.5, text: 'イ' }, { v: 0.5, text: 'ウ' }] },
+          polygons: polys,
+          alt: 'ア：明期14・暗期10、イ：明期10・暗期14、ウ：明期10・暗期14で6時間後に光中断',
+        },
+        correct,
+        wrong: ['ア', 'イ', 'ウ', 'アとイ', 'アとウ', 'イとウ', 'アとイとウ'],
+        explanation: `連続した暗期は、アが10時間、イが14時間、ウが6時間と7時間（最長7時間）である。${TYPES[type].name}は連続した暗期が ${critical} 時間より${type === 'short' ? '長い' : '短い'}ときに花芽を形成するので、${correct}で花芽を形成する。`,
+      };
+    },
+  },
+  {
+    id: 'a17-vernal',
+    stage: 'a17',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '秋まきコムギは、冬の低温を一定期間経験しないと、春になっても花芽を形成しない。このように、低温を経験することで花芽形成が促進される現象を何というか。',
+        correct: '春化',
+        wrong: ['光中断', '休眠', '頂芽優勢', '光屈性'],
+        explanation: 'これは春化である。なお、冬の低温を経験したあとに花芽をつけるので、寒い冬の間に花が咲いてしまうことを防ぎ、春の適した時期に開花できる。',
+      };
+    },
+  },
+  {
+    id: 'a17-photoreceptor',
+    stage: 'a17',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '短日植物で、暗期の途中に赤色光を当てると花芽形成が抑えられるが、その直後に遠赤色光を当てると花芽が形成される。この反応にかかわる光受容体はどれか。',
+        correct: 'フィトクロム',
+        wrong: ['フォトトロピン', 'クリプトクロム', 'ロドプシン', 'クロロフィル'],
+        explanation: 'これはフィトクロムで、赤色光を吸収すると遠赤色光吸収型（Pfr型）に、遠赤色光を吸収すると赤色光吸収型（Pr型）に変わる。最後に当てた光の種類でフィトクロムの型が決まるので、光中断の効果が赤色光と遠赤色光で打ち消し合うからである。',
+      };
+    },
+  },
+  {
+    id: 'a17-critical-calc',
+    stage: 'a17',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const critical = rng.pick([9.5, 10.5, 11.5]);
+      const type = rng.pick(['short', 'long']);
+      // 何時間以上（以下）の明期で花芽を形成するか
+      const lim = 24 - critical;
+      return {
+        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、1日24時間のうち明期の長さだけを変えて育てる（光中断はしない）。花芽を形成するのは、明期がどのような長さのときか。`,
+        correct: type === 'short' ? `明期が ${lim} 時間より短いとき` : `明期が ${lim} 時間より長いとき`,
+        wrong: [type === 'short' ? `明期が ${lim} 時間より長いとき` : `明期が ${lim} 時間より短いとき`, `明期が ${critical} 時間より短いとき`, `明期が ${critical} 時間より長いとき`],
+        explanation: `暗期 ＝ 24 − 明期 なので、暗期が限界暗期 ${critical} 時間より${type === 'short' ? '長い' : '短い'}のは、明期が 24 − ${critical} ＝ ${lim} 時間より${type === 'short' ? '短い' : '長い'}ときである。花芽形成を決めるのは連続した暗期の長さなので、明期の長さに直すときは24時間から引いて考えなければならないからである。`,
+      };
+    },
+  },
+];
+return { A17 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
@@ -12167,6 +13878,7 @@ const { B7 } = __m["questions/b7.js"];
 const { B8 } = __m["questions/b8.js"];
 const { B9 } = __m["questions/b9.js"];
 const { B10 } = __m["questions/b10.js"];
+const { B11 } = __m["questions/b11.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
@@ -12180,9 +13892,13 @@ const { A10 } = __m["questions/a10.js"];
 const { A11 } = __m["questions/a11.js"];
 const { A12 } = __m["questions/a12.js"];
 const { A13 } = __m["questions/a13.js"];
+const { A14 } = __m["questions/a14.js"];
+const { A15 } = __m["questions/a15.js"];
+const { A16 } = __m["questions/a16.js"];
+const { A17 } = __m["questions/a17.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;

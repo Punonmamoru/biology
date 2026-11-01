@@ -15,6 +15,7 @@ export const STAGES = [
   { id: 'b8', code: 'B8', course: 'basic', title: 'バイオーム', unit: '生物の多様性と生態系', lead: '年平均気温と年降水量でバイオームが決まる。日本の水平分布・垂直分布。' },
   { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '遺伝子とそのはたらき', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
+  { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -28,6 +29,10 @@ export const STAGES = [
   { id: 'a11', code: 'A11', course: 'advanced', title: '分子系統と分子時計', unit: '生物の進化', lead: 'アミノ酸の違いの数から分岐年代を求め、違いの数の表から系統樹をつくる。' },
   { id: 'a12', code: 'A12', course: 'advanced', title: '植物ホルモン（オーキシン）', unit: '生物の環境応答', lead: 'オーキシン濃度と根・芽・茎の成長。水平に置いた芽ばえの重力屈性。' },
   { id: 'a13', code: 'A13', course: 'advanced', title: '生態系の物質生産', unit: '生態と環境', lead: '総生産量・純生産量・成長量と、栄養段階ごとのエネルギー効率の計算。' },
+  { id: 'a14', code: 'A14', course: 'advanced', title: 'シナプスと興奮の統合', unit: '生物の環境応答', lead: 'EPSP と IPSP。時間的加重・空間的加重で閾値に達するかどうか。' },
+  { id: 'a15', code: 'A15', course: 'advanced', title: 'PCRと電気泳動', unit: '遺伝情報の発現と発生', lead: 'PCR法で DNA を増やす計算と、電気泳動による DNA 断片の長さの推定。' },
+  { id: 'a16', code: 'A16', course: 'advanced', title: '動物の行動', unit: '生物の環境応答', lead: 'ミツバチの8の字ダンスの角度と太陽コンパス。生得的行動と学習。' },
+  { id: 'a17', code: 'A17', course: 'advanced', title: '光周性と花芽形成', unit: '生物の環境応答', lead: '連続した暗期と限界暗期。短日植物・長日植物と光中断。' },
 ];
 
 export function stageById(id) {
