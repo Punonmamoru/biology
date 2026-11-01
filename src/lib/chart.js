@@ -28,6 +28,11 @@ export function redrawAllCharts() {
   }
 }
 
+// 自作の Canvas 図（模式図など）を、テーマ切替のときに描き直す対象に加える
+export function keepRedrawn(canvas, redraw) {
+  live.add({ canvas, redraw });
+}
+
 // きりのよい目盛り間隔
 export function niceStep(range, target = 5) {
   const raw = range / target;

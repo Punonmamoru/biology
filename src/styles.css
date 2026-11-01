@@ -25,6 +25,8 @@
   --region-2: rgba(196, 68, 26, 0.08);
   --region-3: rgba(30, 127, 69, 0.22);
   --region-4: rgba(138, 106, 0, 0.10);
+  --day: #fff1a8;   /* 明期（明るい黄） */
+  --night: #3a3f47; /* 暗期（濃い灰） */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -54,6 +56,8 @@
     --region-2: rgba(255, 154, 107, 0.12);
     --region-3: rgba(111, 220, 149, 0.22);
     --region-4: rgba(240, 201, 90, 0.10);
+    --day: #e8d36a;
+    --night: #050607;
     --shadow: none;
   }
 }
@@ -83,6 +87,8 @@
   --region-2: rgba(255, 154, 107, 0.12);
   --region-3: rgba(111, 220, 149, 0.22);
   --region-4: rgba(240, 201, 90, 0.10);
+  --day: #e8d36a;
+  --night: #050607;
   --shadow: none;
 }
 
@@ -311,3 +317,9 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 .codon-table td { vertical-align: top; font-size: 0.78rem; line-height: 1.45; white-space: nowrap; }
 .codon-table td div.used { font-weight: 700; color: var(--c1); }
 .codon-table td div.used::before { content: "▶"; font-size: 0.7em; margin-right: 2px; }
+.legend .swatch { display: inline-block; width: 22px; height: 12px; margin-right: 6px; border: 1px solid var(--fg); vertical-align: -1px; }
+.legend .swatch.oval { border-radius: 50%; }
+.legend .swatch.dot { width: 12px; border-radius: 50%; }
+.legend .swatch.rep { clip-path: polygon(0 0, 100% 0, 100% 60%, 70% 60%, 70% 100%, 30% 100%, 30% 60%, 0 60%); border: 0; }
+.legend .swatch.wave { height: 4px; border: 0; vertical-align: 3px; }
+table.data tr.hl td { background: var(--accent-soft); font-weight: 700; }
