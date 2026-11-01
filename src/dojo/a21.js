@@ -1,4 +1,4 @@
-// B13 炭素の循環 の図解道場
+// A21 炭素の循環 の図解道場
 import { h } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
 import { createChart, legend, legendFromSpec } from '../lib/chart.js';
@@ -6,7 +6,7 @@ import { slider, segmented, explainBox, panel, modelNote } from './common.js';
 import { BASE, atmosphereChange, PPM_PER, co2 } from '../models/carbon.js';
 import { sample } from '../lib/series.js';
 
-const NAMES = { photo: '光合成', ocean: '海洋への吸収', respP: '生産者の呼吸', respC: '消費者の呼吸', decomp: '分解者の呼吸', fossil: '化石燃料の燃焼', landUse: '森林の伐採・焼却' };
+const NAMES = { photo: '光合成', ocean: '海洋への吸収（正味）', respP: '生産者の呼吸', respC: '消費者の呼吸', decomp: '分解者の呼吸', fossil: '化石燃料の燃焼', landUse: '森林の伐採・焼却' };
 
 export const dojo = {
   tasks: [
@@ -60,9 +60,9 @@ export const dojo = {
         bars: {
           categories: ['大気から出る', '大気へ入る'],
           groups: [
-            { values: [f.photo, f.respP], color: 'c3', label: '光合成 ／ 生産者の呼吸' },
-            { values: [f.ocean, f.respC + f.decomp], color: 'c1', label: '海洋への吸収 ／ 消費者・分解者の呼吸' },
-            { values: [0, f.fossil + f.landUse], color: 'c2', label: '化石燃料の燃焼・森林の伐採' },
+            { values: [f.photo, f.respP], color: 'c3', label: '左：光合成　右：生産者の呼吸' },
+            { values: [f.ocean, f.respC + f.decomp], color: 'c1', label: '左：海洋への吸収（正味）　右：消費者・分解者の呼吸' },
+            { values: [0, f.fossil + f.landUse], color: 'c2', label: '右：化石燃料の燃焼・森林の伐採' },
           ],
         },
       };
@@ -93,7 +93,7 @@ export const dojo = {
       const m = Math.floor(((y + 1e-6) % 1) * 12) + 1;
       exp.set([
         `${m}月：約 ${fmt(co2(y), 1)} ppm。大気中の CO₂ 濃度は、1年の中で上がり下がりをくり返しながら、長期的には毎年 約2〜3 ppm ずつ増えている。`,
-        '北半球では、春から夏に植物の光合成がさかんになって CO₂ が吸収されるので濃度が下がり、秋から冬は光合成が少なく呼吸や分解が上回るので濃度が上がる。そのため、濃度は5月ごろ最も高く、9〜10月ごろ最も低い。',
+        '北半球では、初夏から夏（5月ごろから9月ごろ）に植物の光合成がさかんになって CO₂ が吸収されるので濃度が下がり、秋から翌年の春は光合成が少なく呼吸や分解が上回るので濃度が上がる。そのため、濃度は5月ごろ最も高く、9月ごろ最も低い。',
       ]);
       return { month: m };
     }

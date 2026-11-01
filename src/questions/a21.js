@@ -1,13 +1,13 @@
-// B13 炭素の循環 の問題
+// A21 炭素の循環 の問題
 import { fmt } from '../lib/format.js';
 import { distinctNumbers } from './common.js';
 import { co2, PPM_PER } from '../models/carbon.js';
 import { sample } from '../lib/series.js';
 
-export const B13 = [
+export const A21 = [
   {
-    id: 'b13-balance',
-    stage: 'b13',
+    id: 'a21-balance',
+    stage: 'a21',
     level: 2,
     kind: 'calc',
     make(rng) {
@@ -20,7 +20,7 @@ export const B13 = [
       if (ans <= 0) return this.make(rng);
       const d = distinctNumbers(ans, [resp + decomp + fossil + photo + ocean, fossil, resp + decomp - photo + ocean + fossil, fossil - ocean, ans + 2 * ocean], ' 億トン', 0);
       return {
-        text: `ある時期の地球全体の炭素の出入り（億トン/年）を、陸上の生産者の光合成 ${photo}、生物の呼吸（生産者・消費者）${resp}、分解者の呼吸 ${decomp}、化石燃料の燃焼 ${fossil}、海洋への吸収 ${ocean} とする。大気中の炭素は1年に何億トン増えるか。`,
+        text: `ある時期の地球全体の炭素の出入り（億トン/年）を、陸上の生産者の光合成 ${photo}、生産者と消費者（分解者を除く）の呼吸 ${resp}、分解者の呼吸（遺体・排出物の分解）${decomp}、化石燃料の燃焼 ${fossil}、海洋への吸収（正味）${ocean} とする。大気中の炭素は1年に何億トン増えるか。`,
         correct: d.correct,
         wrong: d.wrong,
         explanation: `大気へ入る量は ${resp} ＋ ${decomp} ＋ ${fossil} ＝ ${resp + decomp + fossil}、大気から出る量は ${photo} ＋ ${ocean} ＝ ${photo + ocean} なので、差は ${ans} 億トンである。呼吸・分解・燃焼で CO₂ が大気にもどり、光合成と海洋への溶け込みで大気から取り除かれるからである。`,
@@ -28,8 +28,8 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-ppm',
-    stage: 'b13',
+    id: 'a21-ppm',
+    stage: 'a21',
     level: 3,
     kind: 'calc',
     make(rng) {
@@ -45,13 +45,13 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-season',
-    stage: 'b13',
+    id: 'a21-season',
+    stage: 'a21',
     level: 2,
     kind: 'graph',
     make() {
       return {
-        text: '図は、北半球のある観測地点での大気中の CO₂ 濃度の変化（模式）である。毎年、夏から秋にかけて濃度が下がる理由として最も適当なものはどれか。',
+        text: '図は、北半球のある観測地点での大気中の CO₂ 濃度の変化（模式）である。毎年、初夏から夏にかけて（5月ごろから9月ごろまで）濃度が下がる理由として最も適当なものはどれか。',
         chart: {
           x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
           y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
@@ -60,13 +60,13 @@ export const B13 = [
         },
         correct: '植物の光合成がさかんになり、大気中の CO₂ が多く吸収されるから',
         wrong: ['化石燃料の燃焼がさかんになるから', '植物の呼吸がさかんになり、CO₂ が多く放出されるから', '海水の温度が上がり、海洋が CO₂ を多く放出するから'],
-        explanation: '北半球の陸地では、春から夏に植物がさかんに光合成を行うので、大気中の CO₂ が吸収されて濃度が下がる。冬は光合成が少なく、呼吸や分解で放出される CO₂ のほうが多いので、濃度が上がるからである。',
+        explanation: '北半球の陸地では、初夏から夏に植物がさかんに光合成を行うので、大気中の CO₂ が吸収されて濃度が下がる。秋から翌年の春は光合成が少なく、呼吸や分解で放出される CO₂ のほうが多いので、濃度が上がるからである。',
       };
     },
   },
   {
-    id: 'b13-flow',
-    stage: 'b13',
+    id: 'a21-flow',
+    stage: 'a21',
     level: 1,
     kind: 'term',
     make() {
@@ -79,8 +79,8 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-fossil',
-    stage: 'b13',
+    id: 'a21-fossil',
+    stage: 'a21',
     level: 1,
     kind: 'term',
     make() {
@@ -93,8 +93,8 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-greenhouse',
-    stage: 'b13',
+    id: 'a21-greenhouse',
+    stage: 'a21',
     level: 2,
     kind: 'term',
     make() {
@@ -107,8 +107,8 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-decomposer',
-    stage: 'b13',
+    id: 'a21-decomposer',
+    stage: 'a21',
     level: 1,
     kind: 'term',
     make() {
@@ -121,15 +121,17 @@ export const B13 = [
     },
   },
   {
-    id: 'b13-trend-calc',
-    stage: 'b13',
+    id: 'a21-trend-calc',
+    stage: 'a21',
     level: 2,
     kind: 'calc',
     make(rng) {
-      const y1 = rng.pick([2000, 2005, 2010]);
-      const span = rng.pick([10, 15, 20]);
-      const c1 = rng.pick([370, 380, 390]);
-      const rate = rng.pick([2, 2.2, 2.4, 2.5]);
+      // 年と濃度は実際の観測値の目安に対応させ、現在以前の年だけを使う
+      const obs = rng.pick([[2000, 370], [2005, 380], [2010, 390]]);
+      const y1 = obs[0];
+      const span = rng.pick([10, 15, 20].filter((x) => y1 + x <= 2025));
+      const c1 = obs[1];
+      const rate = rng.pick([1.9, 2, 2.1, 2.2, 2.4]);
       const c2 = c1 + rate * span;
       const d = distinctNumbers(rate, [(c2 - c1) / 10, c2 - c1, rate * 2, rate / 2, (c2 - c1) / (span * 2)], ' ppm', 1);
       return {

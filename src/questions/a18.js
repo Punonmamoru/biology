@@ -72,8 +72,9 @@ export const A18 = [
     level: 3,
     kind: 'calc',
     make(rng) {
+      // 実際の盲斑（直径 約1.5〜1.8 mm）に近い組合せにする：紙の上の幅 ≒ 距離 × 約0.1
       const dist = rng.pick([20, 25, 30, 34, 40]);
-      const width = rng.pick([1.5, 2, 2.5, 3]);
+      const width = Number((dist * rng.pick([0.09, 0.1])).toFixed(1));
       const ans = retinaSize(width, dist) * 10; // mm
       const d = distinctNumbers(ans, [ans * 10, ans / 10, (width * dist) / EYE_DEPTH, width * EYE_DEPTH, (dist * EYE_DEPTH) / width], ' mm', 2);
       return {
@@ -111,7 +112,7 @@ export const A18 = [
         text: `暗順応曲線で、縦軸（感じとれる最小の光の強さ）は対数目盛りで、1目盛りが10倍を表す。暗い所に入った直後と30分後で、縦軸の値が ${k} 目盛り下がっていた。30分後には、直後の何分の1の強さの光まで感じとれるようになったか。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `1目盛りで10倍なので、${k} 目盛りでは 10^${k} ＝ ${ans.toLocaleString('ja-JP')} 倍になる。感じとれる最小の光の強さが ${ans.toLocaleString('ja-JP')} 分の1になったので、それだけ弱い光まで感じとれるようになったからである。`,
+        explanation: `1目盛り下がるごとに感じとれる最小の光の強さが10分の1になるので、${k} 目盛り下がると ${ans.toLocaleString('ja-JP')} 分の1になる。感じとれる最小の光が弱くなるほど、それだけ弱い光まで感じとれる（感度が高い）からである。`,
       };
     },
   },
@@ -139,7 +140,7 @@ export const A18 = [
         text: '眼に入った光が網膜に達するまでに通る順として正しいものはどれか。',
         correct: '角膜 → 瞳孔 → 水晶体 → ガラス体 → 網膜',
         wrong: ['角膜 → 水晶体 → 瞳孔 → ガラス体 → 網膜', '瞳孔 → 角膜 → 水晶体 → ガラス体 → 網膜', '角膜 → 瞳孔 → ガラス体 → 水晶体 → 網膜'],
-        explanation: '光は角膜を通り、虹彩に囲まれた瞳孔を通って水晶体で屈折し、ガラス体を通って網膜に像を結ぶ。水晶体の厚さを変えてピントを合わせるので、遠近にかかわらず網膜上に像ができる。',
+        explanation: '光は角膜を通り、虹彩に囲まれた瞳孔を通り、角膜と水晶体で屈折して、ガラス体を通って網膜に像を結ぶ。水晶体の厚さを変えてピントを合わせるので、遠近にかかわらず網膜上に像ができる。',
       };
     },
   },

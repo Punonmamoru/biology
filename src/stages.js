@@ -17,7 +17,6 @@ export const STAGES = [
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'b12', code: 'B12', course: 'basic', title: 'ホルモンと負のフィードバック', unit: 'ヒトの体の調節', lead: 'TRH → TSH → チロキシン。甲状腺の除去やチロキシンの注射で、ホルモンの量はどう変わるか。' },
-  { id: 'b13', code: 'B13', course: 'basic', title: '炭素の循環', unit: '生物の多様性と生態系', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -38,6 +37,7 @@ export const STAGES = [
   { id: 'a18', code: 'A18', course: 'advanced', title: '視覚', unit: '生物の環境応答', lead: '暗順応の曲線、錐体と桿体の分布、盲斑の大きさの計算。' },
   { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
   { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
+  { id: 'a21', code: 'A21', course: 'advanced', title: '炭素の循環', unit: '生態と環境', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
 ];
 
 export function stageById(id) {

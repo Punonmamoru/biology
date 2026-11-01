@@ -14,7 +14,7 @@ export const dojo = {
     { id: 'blind', text: '②で、盲斑の位置に合わせて、視細胞がない（光を受容できない）ことを確かめよう。', short: '盲斑' },
   ],
   mount(root, ctx) {
-    const st = { tab: 'dark', t: 0, angle: 0, dist: 30, width: 2, touched: 0 };
+    const st = { tab: 'dark', t: 0, angle: 0, dist: 30, width: 3, touched: 0 };
 
     const tabs = segmented({ label: '内容', options: [{ value: 'dark', label: '①暗順応' }, { value: 'retina', label: '②視細胞の分布と盲斑' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
     const top = panel(null);
@@ -66,7 +66,7 @@ export const dojo = {
       lines.push(t < bt
         ? `はじめの数分は、錐体の感度が上がることで暗さに慣れていく。約${fmt(bt, 0)}分で錐体の感度は頭打ちになる。`
         : `約${fmt(bt, 0)}分を過ぎると、桿体の感度が錐体を上回り、曲線が折れ曲がる（屈曲点）。桿体では光を受容する物質ロドプシンが暗所で再合成されて蓄積するので、感度がさらに大きく上がる。`);
-      lines.push('明るい所では桿体のロドプシンが分解されて少なくなっているので、暗所に入ってすぐは桿体ははたらかない。このように、暗い所でしだいに感度が上がることを暗順応という。');
+      lines.push('明るい所では桿体のロドプシンが分解されて少なくなっているので、暗所に入ってすぐは桿体の感度が低い。このように、暗い所でしだいに感度が上がることを暗順応という。');
       exp.set(lines);
       return { dark: thresholdLog(0) - v, afterBreak: t >= bt && t <= bt + 3 };
     }
@@ -78,7 +78,7 @@ export const dojo = {
       title.replaceChildren('網膜の視細胞の分布 ', modelNote('ヒトの右眼の模式'));
       chart.draw({
         alt: `${a}°：錐体 ${fmt(c, 0)}、桿体 ${fmt(r, 0)}`,
-        x: { min: -60, max: 60, label: '網膜上の、黄斑（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
+        x: { min: -60, max: 60, label: '網膜上の、黄斑の中心（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
         y: { min: 0, max: 180, label: '視細胞の密度（千個/mm²）', step: 40 },
         regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: '盲斑' }],
         series: [
@@ -98,9 +98,9 @@ export const dojo = {
       );
       exp.set([
         inBlind
-          ? `${a}° は盲斑の位置で、錐体も桿体もない。ここに結んだ像は見えない。視神経の繊維や血管が眼球から出ていく部分だからである。`
+          ? `${a}° は盲斑の位置で、錐体も桿体もない。ここに結んだ像は見えない。視神経の繊維が束になって眼球から出ていき、血管が出入りする部分だからである。`
           : `${a > 0 ? '鼻側' : a < 0 ? '耳側' : ''}${Math.abs(a)}°：錐体 約${fmt(c, 0)}、桿体 約${fmt(r, 0)}（千個/mm²）。`,
-        '黄斑（中心窩）には錐体が集中していて桿体はほとんどないので、視野の中心では色や形をくわしく見分けられる。周辺部には桿体が多いので、暗い所では少し視線をずらしたほうが弱い光を感じやすい。',
+        '黄斑（中央のくぼみが中心窩）には錐体が集中していて桿体はほとんどないので、視野の中心では色や形をくわしく見分けられる。周辺部には桿体が多いので、暗い所では少し視線をずらしたほうが弱い光を感じやすい。',
       ]);
       return { inBlind, fovea: Math.abs(a) < 0.6 };
     }

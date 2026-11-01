@@ -833,8 +833,8 @@ section('B12 ホルモンと負のフィードバック');
   check('ヨウ素不足：チロキシン減少、TSH 増加（甲状腺が刺激され続ける）', d.T < 1 && d.S > 1);
 }
 
-// ---------- B13 ----------
-section('B13 炭素の循環');
+// ---------- A21 ----------
+section('A21 炭素の循環');
 {
   const a = cb.atmosphereChange(cb.BASE);
   check('大気中の炭素は ＋50億トン/年（約2.4 ppm/年）', a.change === 50 && near(a.change / cb.PPM_PER, cb.TREND, 0.05));

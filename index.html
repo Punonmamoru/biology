@@ -1084,7 +1084,6 @@ const STAGES = [
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'b12', code: 'B12', course: 'basic', title: 'ホルモンと負のフィードバック', unit: 'ヒトの体の調節', lead: 'TRH → TSH → チロキシン。甲状腺の除去やチロキシンの注射で、ホルモンの量はどう変わるか。' },
-  { id: 'b13', code: 'B13', course: 'basic', title: '炭素の循環', unit: '生物の多様性と生態系', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -1105,6 +1104,7 @@ const STAGES = [
   { id: 'a18', code: 'A18', course: 'advanced', title: '視覚', unit: '生物の環境応答', lead: '暗順応の曲線、錐体と桿体の分布、盲斑の大きさの計算。' },
   { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
   { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
+  { id: 'a21', code: 'A21', course: 'advanced', title: '炭素の循環', unit: '生態と環境', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
 ];
 
 function stageById(id) {
@@ -3851,7 +3851,7 @@ const dojo = {
         normal: ['チロキシンが多くなると TRH と TSH の分泌がおさえられ、少なくなると分泌が促される。結果が原因にもどってはたらきをおさえるこのしくみを負のフィードバックといい、チロキシンの量はほぼ一定に保たれる。'],
         thyroidectomy: ['甲状腺がないのでチロキシンがつくられず、減っていく。チロキシンによる抑制がなくなるので、視床下部からの TRH と脳下垂体前葉からの TSH の分泌が増える（負のフィードバックがはたらかない）。'],
         injection: ['注射でチロキシンが多くなるので、負のフィードバックによって TRH と TSH の分泌がおさえられる。TSH が減るので、甲状腺自身がつくるチロキシンは少なくなる。'],
-        pituitary: ['脳下垂体前葉がないので TSH が分泌されず、甲状腺はチロキシンをつくれなくなる。チロキシンが減るので、視床下部からの TRH の分泌は増える。'],
+        pituitary: ['脳下垂体前葉がないので TSH が分泌されず、甲状腺はチロキシンをほとんどつくらなくなる。チロキシンが減るので、視床下部からの TRH の分泌は増える。'],
         iodine: ['チロキシンの材料のヨウ素が不足すると、甲状腺がチロキシンを十分につくれない。チロキシンが少ないので TRH と TSH の分泌が増え、甲状腺は TSH によって強く刺激され続ける。'],
       }[st.c];
       exp.set([...L, 'チロキシンは代謝（化学反応）を促進するホルモンで、体温の維持や成長にもかかわる。']);
@@ -3866,161 +3866,6 @@ dojo.tasks[0].check = (s) => s.c === 'thyroidectomy';
 dojo.tasks[1].check = (s) => s.c === 'injection';
 dojo.tasks[2].check = (s) => s.c === 'pituitary';
 dojo.tasks[3].check = (s) => s.c === 'iodine' && s.end.S > 1;
-return { dojo };
-})();
-
-// ---- models/carbon.js ----
-__m["models/carbon.js"] = (function () {
-const { monotoneCubic } = __m["lib/interp.js"];
-// B13 炭素の循環（模式）
-// 単位：炭素の量［億トン/年］の目安を丸めた模式的な値。大気中の CO₂ の増減を、出入りの差として考える。
-//   大気から出ていく：生産者の光合成（総生産量）、海洋への溶け込み
-//   大気へ入る：生産者の呼吸、消費者の呼吸、分解者の呼吸（分解）、化石燃料の燃焼、森林の伐採・焼却
-const BASE = {
-  photo: 1200, // 陸上の生産者の光合成
-  respP: 600, // 生産者の呼吸
-  respC: 50, // 消費者の呼吸
-  decomp: 520, // 分解者の呼吸（遺体・排出物の分解）
-  fossil: 100, // 化石燃料の燃焼
-  landUse: 10, // 森林の伐採・焼却
-  ocean: 30, // 海洋が吸収する正味の量
-};
-
-// 大気中の炭素の増加量［億トン/年］（大気中の炭素 約21億トンが CO₂濃度 1 ppm にあたる）
-const PPM_PER = 21;
-function atmosphereChange(f) {
-  const inflow = f.respP + f.respC + f.decomp + f.fossil + f.landUse;
-  const outflow = f.photo + f.ocean;
-  return { inflow, outflow, change: inflow - outflow };
-}
-
-// 大気中の CO₂ 濃度（ppm）の季節変動（北半球の観測点の模式）
-//   長期的に増加（約 2.4 ppm/年）しながら、夏に植物の光合成がさかんになると減り、冬に増える。
-//   最大は5月ごろ、最小は9〜10月ごろ。振れ幅は約6 ppm。
-const TREND = 2.4;
-// 1年の中の変動（ppm）：5月中ごろに最大、9月下旬〜10月に最小になる非対称な形（目安の点を単調3次補間でつなぐ）
-const SEASON = monotoneCubic([[0, 1.2], [0.37, 3], [0.74, -3], [0.9, -1], [1, 1.2]]);
-function co2(year) {
-  const f = year - Math.floor(year);
-  return 412 + TREND * (year - 2020) + SEASON(f);
-}
-return { BASE, PPM_PER, atmosphereChange, TREND, co2 };
-})();
-
-// ---- dojo/b13.js ----
-__m["dojo/b13.js"] = (function () {
-// B13 炭素の循環 の図解道場
-const { h } = __m["lib/dom.js"];
-const { fmt } = __m["lib/format.js"];
-const { createChart, legend, legendFromSpec } = __m["lib/chart.js"];
-const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
-const { BASE, atmosphereChange, PPM_PER, co2 } = __m["models/carbon.js"];
-const { sample } = __m["lib/series.js"];
-
-const NAMES = { photo: '光合成', ocean: '海洋への吸収', respP: '生産者の呼吸', respC: '消費者の呼吸', decomp: '分解者の呼吸', fossil: '化石燃料の燃焼', landUse: '森林の伐採・焼却' };
-
-const dojo = {
-  tasks: [
-    { id: 'zero', text: '①で化石燃料の燃焼を減らし、大気中の炭素がほとんど増えない（増加量±5以内）条件を見つけよう。', short: '増えない条件' },
-    { id: 'forest', text: '①で森林を減らす（光合成を小さくする）と、大気中の炭素の増加量が大きくなることを確かめよう。', short: '森林が減ると' },
-    { id: 'season', text: '②で、大気中の CO₂ 濃度が1年のうちで最も低くなる季節を確かめよう（時期を変える）。', short: '季節変動' },
-  ],
-  mount(root, ctx) {
-    const st = { tab: 'flow', fossil: BASE.fossil, forest: 100, year: 2020.4, touched: 0, forestMoves: 0 };
-
-    const tabs = segmented({ label: '内容', options: [{ value: 'flow', label: '①炭素の出入り' }, { value: 'curve', label: '②大気中の CO₂ 濃度' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
-    const top = panel(null);
-    root.append(tabs.el, top);
-    const title = h('h2');
-    top.append(title);
-    const chart = createChart(top, { label: '炭素の循環のグラフ', aspect: 0.66 });
-    const leg = h('div');
-    const note = h('p', { class: 'small muted' });
-    top.append(leg, note);
-
-    const sF = slider({ label: '化石燃料の燃焼', min: 0, max: 200, step: 5, value: st.fossil, format: (v) => `${v}（億トン/年）`, onInput: (v) => { st.fossil = v; st.touched++; update(); } });
-    const sP = slider({ label: '陸上の森林などの量（いまを100%とする）', min: 60, max: 110, step: 5, value: st.forest, format: (v) => `${v}%`, onInput: (v) => { st.forest = v; st.forestMoves++; update(); } });
-    const ctlFlow = h('div', null, sF.el, sP.el);
-    const sY = slider({ label: '時期', min: 2020, max: 2023, step: 1 / 12, value: st.year, format: (v) => `${Math.floor(v + 1e-6)}年${Math.floor(((v + 1e-6) % 1) * 12) + 1}月`, onInput: (v) => { st.year = v; st.touched++; update(); } });
-    const ctlCurve = h('div', null, sY.el);
-    const exp = explainBox();
-    root.append(panel('操作', ctlFlow, ctlCurve), panel('いま何が起きているか', exp.el));
-
-    function layout() {
-      ctlFlow.hidden = st.tab !== 'flow';
-      ctlCurve.hidden = st.tab !== 'curve';
-      update();
-    }
-
-    function flows() {
-      const k = st.forest / 100;
-      // 森林が減ると、光合成・生産者の呼吸・消費者の呼吸・分解が同じ割合で減るとする（模式）
-      return { ...BASE, photo: BASE.photo * k, respP: BASE.respP * k, respC: BASE.respC * k, decomp: BASE.decomp * k, fossil: st.fossil, landUse: st.forest < 100 ? BASE.landUse + (100 - st.forest) * 2 : BASE.landUse };
-    }
-
-    function drawFlow() {
-      const f = flows();
-      const a = atmosphereChange(f);
-      title.replaceChildren('大気中の炭素の出入り ', modelNote('単位：億トン/年（目安を丸めた模式）'));
-      const outKeys = ['photo', 'ocean'];
-      const inKeys = ['respP', 'respC', 'decomp', 'fossil', 'landUse'];
-      const spec = {
-        alt: `大気へ入る ${fmt(a.inflow, 0)}、大気から出る ${fmt(a.outflow, 0)}、差 ${fmt(a.change, 0)}`,
-        x: { min: 0, max: 1 },
-        y: { min: 0, max: 1500, label: '炭素の量（億トン/年）', step: 300 },
-        bars: {
-          categories: ['大気から出る', '大気へ入る'],
-          groups: [
-            { values: [f.photo, f.respP], color: 'c3', label: '光合成 ／ 生産者の呼吸' },
-            { values: [f.ocean, f.respC + f.decomp], color: 'c1', label: '海洋への吸収 ／ 消費者・分解者の呼吸' },
-            { values: [0, f.fossil + f.landUse], color: 'c2', label: '化石燃料の燃焼・森林の伐採' },
-          ],
-        },
-      };
-      chart.draw(spec);
-      leg.replaceChildren(legendFromSpec(spec));
-      note.textContent = `大気から出る：${outKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。大気へ入る：${inKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。`;
-      exp.set([
-        `大気中の炭素の増加量 ＝ 入る量 − 出る量 ＝ ${fmt(a.inflow, 0)} − ${fmt(a.outflow, 0)} ＝ ${fmt(a.change, 0)} 億トン/年（CO₂濃度にして 約${fmt(a.change / PPM_PER, 1)} ppm/年）。`,
-        '炭素は、大気中の CO₂ → 光合成で生産者の有機物 → 食物連鎖で消費者へ → 遺体・排出物は分解者へと移り、それぞれの呼吸で CO₂ として大気にもどる。このように炭素は生態系の中を循環している。',
-        '化石燃料は、昔の生物の遺体の炭素が長い間地中にたくわえられたものである。これを燃やすと大気中の CO₂ が増え、温室効果が強まって地球温暖化の原因になる。森林を減らすと、光合成で大気から取り込まれる CO₂ も減る。',
-      ]);
-      return { change: a.change };
-    }
-
-    function drawCurve() {
-      const y = st.year;
-      title.replaceChildren('大気中の CO₂ 濃度の変化 ', modelNote('北半球の観測地点の模式'));
-      chart.draw({
-        alt: `${fmt(y, 2)} 年：約 ${fmt(co2(y), 1)} ppm`,
-        x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
-        y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
-        series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
-        vlines: [{ x: y, color: 'c2', dash: 'dot' }],
-        markers: [{ x: y, y: co2(y), color: 'c2', label: `${fmt(co2(y), 1)} ppm` }],
-      });
-      leg.replaceChildren(legend([{ label: '大気中の CO₂ 濃度（ppm ＝ 100万分の1）', color: 'c1' }]));
-      note.textContent = '濃度の値と振れ幅は目安（実際の観測値は地点や年によって異なる）。';
-      const m = Math.floor(((y + 1e-6) % 1) * 12) + 1;
-      exp.set([
-        `${m}月：約 ${fmt(co2(y), 1)} ppm。大気中の CO₂ 濃度は、1年の中で上がり下がりをくり返しながら、長期的には毎年 約2〜3 ppm ずつ増えている。`,
-        '北半球では、春から夏に植物の光合成がさかんになって CO₂ が吸収されるので濃度が下がり、秋から冬は光合成が少なく呼吸や分解が上回るので濃度が上がる。そのため、濃度は5月ごろ最も高く、9〜10月ごろ最も低い。',
-      ]);
-      return { month: m };
-    }
-
-    function update() {
-      const r = st.tab === 'flow' ? drawFlow() : drawCurve();
-      ctx.update({ ...st, ...r });
-    }
-    layout();
-    return null;
-  },
-};
-
-dojo.tasks[0].check = (s) => s.tab === 'flow' && s.touched > 0 && Math.abs(s.change) <= 5;
-dojo.tasks[1].check = (s) => s.tab === 'flow' && s.forestMoves > 0 && s.forest < 100;
-dojo.tasks[2].check = (s) => s.tab === 'curve' && s.touched > 0 && (s.month === 9 || s.month === 10);
 return { dojo };
 })();
 
@@ -7961,7 +7806,7 @@ const dojo = {
     { id: 'blind', text: '②で、盲斑の位置に合わせて、視細胞がない（光を受容できない）ことを確かめよう。', short: '盲斑' },
   ],
   mount(root, ctx) {
-    const st = { tab: 'dark', t: 0, angle: 0, dist: 30, width: 2, touched: 0 };
+    const st = { tab: 'dark', t: 0, angle: 0, dist: 30, width: 3, touched: 0 };
 
     const tabs = segmented({ label: '内容', options: [{ value: 'dark', label: '①暗順応' }, { value: 'retina', label: '②視細胞の分布と盲斑' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
     const top = panel(null);
@@ -8013,7 +7858,7 @@ const dojo = {
       lines.push(t < bt
         ? `はじめの数分は、錐体の感度が上がることで暗さに慣れていく。約${fmt(bt, 0)}分で錐体の感度は頭打ちになる。`
         : `約${fmt(bt, 0)}分を過ぎると、桿体の感度が錐体を上回り、曲線が折れ曲がる（屈曲点）。桿体では光を受容する物質ロドプシンが暗所で再合成されて蓄積するので、感度がさらに大きく上がる。`);
-      lines.push('明るい所では桿体のロドプシンが分解されて少なくなっているので、暗所に入ってすぐは桿体ははたらかない。このように、暗い所でしだいに感度が上がることを暗順応という。');
+      lines.push('明るい所では桿体のロドプシンが分解されて少なくなっているので、暗所に入ってすぐは桿体の感度が低い。このように、暗い所でしだいに感度が上がることを暗順応という。');
       exp.set(lines);
       return { dark: thresholdLog(0) - v, afterBreak: t >= bt && t <= bt + 3 };
     }
@@ -8025,7 +7870,7 @@ const dojo = {
       title.replaceChildren('網膜の視細胞の分布 ', modelNote('ヒトの右眼の模式'));
       chart.draw({
         alt: `${a}°：錐体 ${fmt(c, 0)}、桿体 ${fmt(r, 0)}`,
-        x: { min: -60, max: 60, label: '網膜上の、黄斑（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
+        x: { min: -60, max: 60, label: '網膜上の、黄斑の中心（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
         y: { min: 0, max: 180, label: '視細胞の密度（千個/mm²）', step: 40 },
         regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: '盲斑' }],
         series: [
@@ -8045,9 +7890,9 @@ const dojo = {
       );
       exp.set([
         inBlind
-          ? `${a}° は盲斑の位置で、錐体も桿体もない。ここに結んだ像は見えない。視神経の繊維や血管が眼球から出ていく部分だからである。`
+          ? `${a}° は盲斑の位置で、錐体も桿体もない。ここに結んだ像は見えない。視神経の繊維が束になって眼球から出ていき、血管が出入りする部分だからである。`
           : `${a > 0 ? '鼻側' : a < 0 ? '耳側' : ''}${Math.abs(a)}°：錐体 約${fmt(c, 0)}、桿体 約${fmt(r, 0)}（千個/mm²）。`,
-        '黄斑（中心窩）には錐体が集中していて桿体はほとんどないので、視野の中心では色や形をくわしく見分けられる。周辺部には桿体が多いので、暗い所では少し視線をずらしたほうが弱い光を感じやすい。',
+        '黄斑（中央のくぼみが中心窩）には錐体が集中していて桿体はほとんどないので、視野の中心では色や形をくわしく見分けられる。周辺部には桿体が多いので、暗い所では少し視線をずらしたほうが弱い光を感じやすい。',
       ]);
       return { inBlind, fovea: Math.abs(a) < 0.6 };
     }
@@ -8158,9 +8003,9 @@ const dojo = {
       seg(b, 1, 'region-4', '腹部など');
       chart2.draw({ alt: '卵の模式図', x: { min: 0, max: 1, ticks: [{ v: 0, text: '前' }, { v: 1, text: '後' }], grid: false }, y: { min: 0, max: 1, ticks: [] }, polygons: polys });
       const lines = [];
-      lines.push('ビコイド遺伝子は母親の遺伝子で、その mRNA は卵形成のときに未受精卵の前端に局在する（母性効果遺伝子）。受精後に翻訳されたビコイドタンパク質が後方へ拡散するので、前端で高く後方ほど低い濃度勾配ができる。');
-      if (a === 0) lines.push('母親のビコイド遺伝子が欠損していると、卵にビコイドがなく、どの位置でも閾値に達しない。そのため頭部と胸部がつくられない（胚の遺伝子型に関係なく、母親の遺伝子型で決まる）。');
-      else lines.push(`濃度が閾値以上の範囲（前端から ${fmt(b, 2)} まで）で前方の構造をつくる遺伝子が発現する。各細胞はビコイドの濃度を、自分の位置を知るための情報（位置情報）として受け取っている。`);
+      lines.push('ビコイド遺伝子は、卵形成のときに母親の体内で発現する遺伝子（母性効果遺伝子）で、その mRNA は未受精卵の前端に局在する。この時期の胚は核が分裂しても細胞に仕切られていない（多核体）ので、受精後に翻訳されたビコイドタンパク質が後方へ拡散し、前端で高く後方ほど低い濃度勾配ができる。');
+      if (a === 0) lines.push('母親のビコイド遺伝子が欠損していると、卵にビコイドがなく、どの位置でも閾値に達しない。そのため頭部と胸部がつくられず、前端にも尾部の構造ができる（胚の遺伝子型に関係なく、母親の遺伝子型で決まる）。');
+      else lines.push(`濃度が閾値以上の範囲（前端から ${fmt(b, 2)} まで）で前方の構造をつくる遺伝子が発現する。各核（細胞）はビコイドの濃度を、自分の位置を知るための情報（位置情報）として受け取っている。`);
       if (a === 2) lines.push(`ビコイドが2倍になると、閾値に達する位置が 約${fmt(halfDistance(), 2)}（濃度が半分になる距離）だけ後方へずれ、頭部・胸部になる範囲が広がる。`);
       if (a === 0.5) lines.push(`ビコイドが半分になると、閾値に達する位置が 約${fmt(halfDistance(), 2)} だけ前方へずれる。`);
       lines.push('後端にはナノス遺伝子の mRNA が局在し、後方（腹部）の構造の形成にかかわる。このように、物質の濃度勾配によって体の前後などの軸が決まっていく。');
@@ -8345,6 +8190,161 @@ dojo.tasks[2].check = (s) => s.tab === 'comb' && s.n === 23;
 return { dojo };
 })();
 
+// ---- models/carbon.js ----
+__m["models/carbon.js"] = (function () {
+const { monotoneCubic } = __m["lib/interp.js"];
+// A21 炭素の循環（模式）
+// 単位：炭素の量［億トン/年］の目安を丸めた模式的な値。大気中の CO₂ の増減を、出入りの差として考える。
+//   大気から出ていく：生産者の光合成（総生産量）、海洋への溶け込み
+//   大気へ入る：生産者の呼吸、消費者の呼吸、分解者の呼吸（分解）、化石燃料の燃焼、森林の伐採・焼却
+const BASE = {
+  photo: 1200, // 陸上の生産者の光合成
+  respP: 600, // 生産者の呼吸
+  respC: 50, // 消費者の呼吸
+  decomp: 520, // 分解者の呼吸（遺体・排出物の分解）
+  fossil: 100, // 化石燃料の燃焼
+  landUse: 10, // 森林の伐採・焼却
+  ocean: 30, // 海洋が吸収する正味の量
+};
+
+// 大気中の炭素の増加量［億トン/年］（大気中の炭素 約21億トンが CO₂濃度 1 ppm にあたる）
+const PPM_PER = 21;
+function atmosphereChange(f) {
+  const inflow = f.respP + f.respC + f.decomp + f.fossil + f.landUse;
+  const outflow = f.photo + f.ocean;
+  return { inflow, outflow, change: inflow - outflow };
+}
+
+// 大気中の CO₂ 濃度（ppm）の季節変動（北半球の観測点の模式）
+//   長期的に増加（約 2.4 ppm/年）しながら、夏に植物の光合成がさかんになると減り、冬に増える。
+//   最大は5月ごろ、最小は9〜10月ごろ。振れ幅は約6 ppm。
+const TREND = 2.4;
+// 1年の中の変動（ppm）：5月中ごろに最大、9月下旬〜10月に最小になる非対称な形（目安の点を単調3次補間でつなぐ）
+const SEASON = monotoneCubic([[0, 1.2], [0.37, 3], [0.74, -3], [0.9, -1], [1, 1.2]]);
+function co2(year) {
+  const f = year - Math.floor(year);
+  return 412 + TREND * (year - 2020) + SEASON(f);
+}
+return { BASE, PPM_PER, atmosphereChange, TREND, co2 };
+})();
+
+// ---- dojo/a21.js ----
+__m["dojo/a21.js"] = (function () {
+// A21 炭素の循環 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { BASE, atmosphereChange, PPM_PER, co2 } = __m["models/carbon.js"];
+const { sample } = __m["lib/series.js"];
+
+const NAMES = { photo: '光合成', ocean: '海洋への吸収（正味）', respP: '生産者の呼吸', respC: '消費者の呼吸', decomp: '分解者の呼吸', fossil: '化石燃料の燃焼', landUse: '森林の伐採・焼却' };
+
+const dojo = {
+  tasks: [
+    { id: 'zero', text: '①で化石燃料の燃焼を減らし、大気中の炭素がほとんど増えない（増加量±5以内）条件を見つけよう。', short: '増えない条件' },
+    { id: 'forest', text: '①で森林を減らす（光合成を小さくする）と、大気中の炭素の増加量が大きくなることを確かめよう。', short: '森林が減ると' },
+    { id: 'season', text: '②で、大気中の CO₂ 濃度が1年のうちで最も低くなる季節を確かめよう（時期を変える）。', short: '季節変動' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'flow', fossil: BASE.fossil, forest: 100, year: 2020.4, touched: 0, forestMoves: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'flow', label: '①炭素の出入り' }, { value: 'curve', label: '②大気中の CO₂ 濃度' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '炭素の循環のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const sF = slider({ label: '化石燃料の燃焼', min: 0, max: 200, step: 5, value: st.fossil, format: (v) => `${v}（億トン/年）`, onInput: (v) => { st.fossil = v; st.touched++; update(); } });
+    const sP = slider({ label: '陸上の森林などの量（いまを100%とする）', min: 60, max: 110, step: 5, value: st.forest, format: (v) => `${v}%`, onInput: (v) => { st.forest = v; st.forestMoves++; update(); } });
+    const ctlFlow = h('div', null, sF.el, sP.el);
+    const sY = slider({ label: '時期', min: 2020, max: 2023, step: 1 / 12, value: st.year, format: (v) => `${Math.floor(v + 1e-6)}年${Math.floor(((v + 1e-6) % 1) * 12) + 1}月`, onInput: (v) => { st.year = v; st.touched++; update(); } });
+    const ctlCurve = h('div', null, sY.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlFlow, ctlCurve), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlFlow.hidden = st.tab !== 'flow';
+      ctlCurve.hidden = st.tab !== 'curve';
+      update();
+    }
+
+    function flows() {
+      const k = st.forest / 100;
+      // 森林が減ると、光合成・生産者の呼吸・消費者の呼吸・分解が同じ割合で減るとする（模式）
+      return { ...BASE, photo: BASE.photo * k, respP: BASE.respP * k, respC: BASE.respC * k, decomp: BASE.decomp * k, fossil: st.fossil, landUse: st.forest < 100 ? BASE.landUse + (100 - st.forest) * 2 : BASE.landUse };
+    }
+
+    function drawFlow() {
+      const f = flows();
+      const a = atmosphereChange(f);
+      title.replaceChildren('大気中の炭素の出入り ', modelNote('単位：億トン/年（目安を丸めた模式）'));
+      const outKeys = ['photo', 'ocean'];
+      const inKeys = ['respP', 'respC', 'decomp', 'fossil', 'landUse'];
+      const spec = {
+        alt: `大気へ入る ${fmt(a.inflow, 0)}、大気から出る ${fmt(a.outflow, 0)}、差 ${fmt(a.change, 0)}`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 1500, label: '炭素の量（億トン/年）', step: 300 },
+        bars: {
+          categories: ['大気から出る', '大気へ入る'],
+          groups: [
+            { values: [f.photo, f.respP], color: 'c3', label: '左：光合成　右：生産者の呼吸' },
+            { values: [f.ocean, f.respC + f.decomp], color: 'c1', label: '左：海洋への吸収（正味）　右：消費者・分解者の呼吸' },
+            { values: [0, f.fossil + f.landUse], color: 'c2', label: '右：化石燃料の燃焼・森林の伐採' },
+          ],
+        },
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+      note.textContent = `大気から出る：${outKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。大気へ入る：${inKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。`;
+      exp.set([
+        `大気中の炭素の増加量 ＝ 入る量 − 出る量 ＝ ${fmt(a.inflow, 0)} − ${fmt(a.outflow, 0)} ＝ ${fmt(a.change, 0)} 億トン/年（CO₂濃度にして 約${fmt(a.change / PPM_PER, 1)} ppm/年）。`,
+        '炭素は、大気中の CO₂ → 光合成で生産者の有機物 → 食物連鎖で消費者へ → 遺体・排出物は分解者へと移り、それぞれの呼吸で CO₂ として大気にもどる。このように炭素は生態系の中を循環している。',
+        '化石燃料は、昔の生物の遺体の炭素が長い間地中にたくわえられたものである。これを燃やすと大気中の CO₂ が増え、温室効果が強まって地球温暖化の原因になる。森林を減らすと、光合成で大気から取り込まれる CO₂ も減る。',
+      ]);
+      return { change: a.change };
+    }
+
+    function drawCurve() {
+      const y = st.year;
+      title.replaceChildren('大気中の CO₂ 濃度の変化 ', modelNote('北半球の観測地点の模式'));
+      chart.draw({
+        alt: `${fmt(y, 2)} 年：約 ${fmt(co2(y), 1)} ppm`,
+        x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
+        y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
+        series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
+        vlines: [{ x: y, color: 'c2', dash: 'dot' }],
+        markers: [{ x: y, y: co2(y), color: 'c2', label: `${fmt(co2(y), 1)} ppm` }],
+      });
+      leg.replaceChildren(legend([{ label: '大気中の CO₂ 濃度（ppm ＝ 100万分の1）', color: 'c1' }]));
+      note.textContent = '濃度の値と振れ幅は目安（実際の観測値は地点や年によって異なる）。';
+      const m = Math.floor(((y + 1e-6) % 1) * 12) + 1;
+      exp.set([
+        `${m}月：約 ${fmt(co2(y), 1)} ppm。大気中の CO₂ 濃度は、1年の中で上がり下がりをくり返しながら、長期的には毎年 約2〜3 ppm ずつ増えている。`,
+        '北半球では、初夏から夏（5月ごろから9月ごろ）に植物の光合成がさかんになって CO₂ が吸収されるので濃度が下がり、秋から翌年の春は光合成が少なく呼吸や分解が上回るので濃度が上がる。そのため、濃度は5月ごろ最も高く、9月ごろ最も低い。',
+      ]);
+      return { month: m };
+    }
+
+    function update() {
+      const r = st.tab === 'flow' ? drawFlow() : drawCurve();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'flow' && s.touched > 0 && Math.abs(s.change) <= 5;
+dojo.tasks[1].check = (s) => s.tab === 'flow' && s.forestMoves > 0 && s.forest < 100;
+dojo.tasks[2].check = (s) => s.tab === 'curve' && s.touched > 0 && (s.month === 9 || s.month === 10);
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -8360,7 +8360,6 @@ const { dojo: b9 } = __m["dojo/b9.js"];
 const { dojo: b10 } = __m["dojo/b10.js"];
 const { dojo: b11 } = __m["dojo/b11.js"];
 const { dojo: b12 } = __m["dojo/b12.js"];
-const { dojo: b13 } = __m["dojo/b13.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
@@ -8381,8 +8380,9 @@ const { dojo: a17 } = __m["dojo/a17.js"];
 const { dojo: a18 } = __m["dojo/a18.js"];
 const { dojo: a19 } = __m["dojo/a19.js"];
 const { dojo: a20 } = __m["dojo/a20.js"];
+const { dojo: a21 } = __m["dojo/a21.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21 };
 return { DOJOS };
 })();
 
@@ -11177,9 +11177,9 @@ const B12 = [
     make(rng) {
       const k = rng.pick(['thyroidectomy', 'injection', 'pituitary']);
       const Q = {
-        thyroidectomy: { text: 'ある動物の甲状腺を除去した。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる）。', ans: choice(UP, UP, DOWN), ex: '甲状腺がないのでチロキシンが減る。チロキシンによる負のフィードバックがはたらかなくなるので、視床下部からの TRH と脳下垂体前葉からの TSH の分泌が増える。' },
-        injection: { text: 'ある動物にチロキシンを注射し続けた。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる）。', ans: choice(DOWN, DOWN, UP), ex: '注射でチロキシンが多くなるので、負のフィードバックによって視床下部と脳下垂体前葉のはたらきがおさえられる。そのため TRH と TSH の分泌が減る。' },
-        pituitary: { text: 'ある動物の脳下垂体（前葉）を除去した。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる。TSH は除去後に検出されなくなった）。', ans: choice(UP, DOWN, DOWN), ex: '脳下垂体前葉がないので TSH が分泌されず、甲状腺が刺激されないのでチロキシンが減る。チロキシンが減ると負のフィードバックによる抑制が弱まるので、視床下部からの TRH の分泌は増える。' },
+        thyroidectomy: { text: 'ある動物の甲状腺を除去した。しばらくたったあとの、TRH・TSH・チロキシンの分泌量（血中濃度）の変化として正しいものはどれか（正常なときと比べる）。', ans: choice(UP, UP, DOWN), ex: '甲状腺がないのでチロキシンが減る。チロキシンによる負のフィードバックがはたらかなくなるので、視床下部からの TRH と脳下垂体前葉からの TSH の分泌が増える。' },
+        injection: { text: 'ある動物にチロキシンを注射し続けた。しばらくたったあとの、TRH・TSH・チロキシンの分泌量（血中濃度）の変化として正しいものはどれか（正常なときと比べる。チロキシンは注射した分も含めた血中濃度）。', ans: choice(DOWN, DOWN, UP), ex: '注射でチロキシンが多くなるので、負のフィードバックによって視床下部と脳下垂体前葉のはたらきがおさえられる。そのため TRH と TSH の分泌が減る。' },
+        pituitary: { text: 'ある動物の脳下垂体（前葉）を除去した。しばらくたったあとの、TRH・TSH・チロキシンの分泌量（血中濃度）の変化として正しいものはどれか（正常なときと比べる。TSH は除去後に検出されなくなった）。', ans: choice(UP, DOWN, DOWN), ex: '脳下垂体前葉がないので TSH が分泌されず、甲状腺が刺激されないのでチロキシンが減る。チロキシンが減ると負のフィードバックによる抑制が弱まるので、視床下部からの TRH の分泌は増える。' },
       }[k];
       return { text: Q.text, correct: Q.ans, wrong: ALL, explanation: Q.ex };
     },
@@ -11234,8 +11234,8 @@ const B12 = [
         correct: lab.S,
         wrong: [KATA[0], KATA[1], 'どちらともいえない', 'ア・イの両方'],
         explanation: k === 'thyroidectomy'
-          ? `甲状腺を除去するとチロキシンが減り、負のフィードバックによる抑制がなくなって TSH が増えるので、増加している${lab.S}が TSH である。チロキシンは甲状腺でしかつくられないからである。`
-          : `チロキシンを注射すると、負のフィードバックによって TSH の分泌がおさえられるので、減少している${lab.S}が TSH である。チロキシンは注射によって増えるからである。`,
+          ? `甲状腺を除去するとチロキシンが減り、負のフィードバックによる抑制がなくなって TSH が増えるので、増加している${lab.S}が TSH である。もう一方はチロキシンで、甲状腺がないのでつくられず、減少しているからである。`
+          : `チロキシンを注射すると、負のフィードバックによって TSH の分泌がおさえられるので、減少している${lab.S}が TSH である。もう一方はチロキシンで、注射した分が加わるので増加しているからである。`,
       };
     },
   },
@@ -11287,7 +11287,7 @@ const B12 = [
         text: `ある動物で${label}ところ、しばらくして血液中の ${name} の量が、正常なときの ${before} から ${v}（相対値）になった。${name} の量は正常なときの何倍になったか。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `${v} ÷ ${before} ＝ ${fmt(ans, 1)} 倍である。チロキシンが減って負のフィードバックによる抑制が弱まったので、${name} の分泌が増えたからである。`,
+        explanation: `${v} ÷ ${before} ＝ ${fmt(v / before, 2)} ≒ ${fmt(ans, 1)} 倍である。チロキシンが減って負のフィードバックによる抑制が弱まったので、${name} の分泌が増えたからである。`,
       };
     },
   },
@@ -11307,154 +11307,6 @@ const B12 = [
   },
 ];
 return { B12 };
-})();
-
-// ---- questions/b13.js ----
-__m["questions/b13.js"] = (function () {
-// B13 炭素の循環 の問題
-const { fmt } = __m["lib/format.js"];
-const { distinctNumbers } = __m["questions/common.js"];
-const { co2, PPM_PER } = __m["models/carbon.js"];
-const { sample } = __m["lib/series.js"];
-
-const B13 = [
-  {
-    id: 'b13-balance',
-    stage: 'b13',
-    level: 2,
-    kind: 'calc',
-    make(rng) {
-      const photo = rng.pick([1000, 1100, 1200]);
-      const resp = rng.pick([550, 600]);
-      const decomp = rng.pick([450, 500, 520]);
-      const fossil = rng.pick([80, 100, 120]);
-      const ocean = rng.pick([20, 30]);
-      const ans = resp + decomp + fossil - photo - ocean;
-      if (ans <= 0) return this.make(rng);
-      const d = distinctNumbers(ans, [resp + decomp + fossil + photo + ocean, fossil, resp + decomp - photo + ocean + fossil, fossil - ocean, ans + 2 * ocean], ' 億トン', 0);
-      return {
-        text: `ある時期の地球全体の炭素の出入り（億トン/年）を、陸上の生産者の光合成 ${photo}、生物の呼吸（生産者・消費者）${resp}、分解者の呼吸 ${decomp}、化石燃料の燃焼 ${fossil}、海洋への吸収 ${ocean} とする。大気中の炭素は1年に何億トン増えるか。`,
-        correct: d.correct,
-        wrong: d.wrong,
-        explanation: `大気へ入る量は ${resp} ＋ ${decomp} ＋ ${fossil} ＝ ${resp + decomp + fossil}、大気から出る量は ${photo} ＋ ${ocean} ＝ ${photo + ocean} なので、差は ${ans} 億トンである。呼吸・分解・燃焼で CO₂ が大気にもどり、光合成と海洋への溶け込みで大気から取り除かれるからである。`,
-      };
-    },
-  },
-  {
-    id: 'b13-ppm',
-    stage: 'b13',
-    level: 3,
-    kind: 'calc',
-    make(rng) {
-      const inc = rng.pick([42, 50, 63, 84]);
-      const ans = inc / PPM_PER;
-      const d = distinctNumbers(ans, [inc * PPM_PER / 100, PPM_PER / inc, ans * 2, ans / 2, inc / 10], ' ppm', 1);
-      return {
-        text: `大気中の炭素が ${PPM_PER} 億トン増えると、大気中の CO₂ 濃度は約 1 ppm 上がる。大気中の炭素が1年に ${inc} 億トン増えると、CO₂ 濃度は1年に約何 ppm 上がるか。`,
-        correct: d.correct,
-        wrong: d.wrong,
-        explanation: `${inc} ÷ ${PPM_PER} ＝ ${fmt(ans, 1)} ppm である。CO₂ 濃度の上がり方は大気中の炭素の増加量に比例するから、1 ppm にあたる量で割ればよい。`,
-      };
-    },
-  },
-  {
-    id: 'b13-season',
-    stage: 'b13',
-    level: 2,
-    kind: 'graph',
-    make() {
-      return {
-        text: '図は、北半球のある観測地点での大気中の CO₂ 濃度の変化（模式）である。毎年、夏から秋にかけて濃度が下がる理由として最も適当なものはどれか。',
-        chart: {
-          x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
-          y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
-          series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
-          alt: 'CO₂濃度の季節変動',
-        },
-        correct: '植物の光合成がさかんになり、大気中の CO₂ が多く吸収されるから',
-        wrong: ['化石燃料の燃焼がさかんになるから', '植物の呼吸がさかんになり、CO₂ が多く放出されるから', '海水の温度が上がり、海洋が CO₂ を多く放出するから'],
-        explanation: '北半球の陸地では、春から夏に植物がさかんに光合成を行うので、大気中の CO₂ が吸収されて濃度が下がる。冬は光合成が少なく、呼吸や分解で放出される CO₂ のほうが多いので、濃度が上がるからである。',
-      };
-    },
-  },
-  {
-    id: 'b13-flow',
-    stage: 'b13',
-    level: 1,
-    kind: 'term',
-    make() {
-      return {
-        text: '炭素の循環で、大気中の CO₂ を生物の体内（有機物）に取り込むはたらきはどれか。',
-        correct: '生産者の光合成',
-        wrong: ['生産者の呼吸', '分解者による遺体の分解', '化石燃料の燃焼', '消費者の呼吸'],
-        explanation: '大気中の CO₂ は、生産者の光合成によって有機物に取り込まれる。有機物の炭素は食物連鎖で消費者に移り、呼吸や分解で再び CO₂ として大気にもどるので、炭素は生態系の中を循環する。',
-      };
-    },
-  },
-  {
-    id: 'b13-fossil',
-    stage: 'b13',
-    level: 1,
-    kind: 'term',
-    make() {
-      return {
-        text: '大気中の CO₂ 濃度が長期的に増え続けている主な原因として最も適当なものはどれか。',
-        correct: '化石燃料の大量消費や森林の減少',
-        wrong: ['植物の光合成の増加', '海洋による CO₂ の吸収', '分解者の減少'],
-        explanation: '化石燃料には、昔の生物の遺体の炭素が長い間たくわえられている。それを大量に燃やすと CO₂ が大気に放出され、森林が減ると光合成による吸収も減るので、大気中の CO₂ 濃度が増え続けている。',
-      };
-    },
-  },
-  {
-    id: 'b13-greenhouse',
-    stage: 'b13',
-    level: 2,
-    kind: 'term',
-    make() {
-      return {
-        text: '大気中の CO₂ 濃度の増加が地球温暖化の原因になる理由として最も適当なものはどれか。',
-        correct: 'CO₂ は地表から放出される熱（赤外線）を吸収し、その一部を地表にもどすから',
-        wrong: ['CO₂ が太陽の光をさえぎるから', 'CO₂ がオゾン層を破壊するから', 'CO₂ が燃えて熱を出すから'],
-        explanation: 'CO₂ などの温室効果ガスは、地表から宇宙へ出ていく熱（赤外線）を吸収し、その一部を地表にもどす。温室効果ガスが増えるとこのはたらき（温室効果）が強まるので、地表付近の気温が上がる。',
-      };
-    },
-  },
-  {
-    id: 'b13-decomposer',
-    stage: 'b13',
-    level: 1,
-    kind: 'term',
-    make() {
-      return {
-        text: '生態系で、生物の遺体や排出物に含まれる有機物を分解して、CO₂ などの無機物にもどすはたらきをする生物を何というか。',
-        correct: '分解者',
-        wrong: ['生産者', '一次消費者', '二次消費者'],
-        explanation: 'これは分解者で、菌類や細菌などが含まれる。分解者が有機物を無機物にもどすので、炭素などの物質は生態系の中を循環できる。',
-      };
-    },
-  },
-  {
-    id: 'b13-trend-calc',
-    stage: 'b13',
-    level: 2,
-    kind: 'calc',
-    make(rng) {
-      const y1 = rng.pick([2000, 2005, 2010]);
-      const span = rng.pick([10, 15, 20]);
-      const c1 = rng.pick([370, 380, 390]);
-      const rate = rng.pick([2, 2.2, 2.4, 2.5]);
-      const c2 = c1 + rate * span;
-      const d = distinctNumbers(rate, [(c2 - c1) / 10, c2 - c1, rate * 2, rate / 2, (c2 - c1) / (span * 2)], ' ppm', 1);
-      return {
-        text: `ある観測地点の大気中の CO₂ 濃度（年平均）は、${y1}年に ${c1} ppm、${y1 + span}年に ${fmt(c2, 1)} ppm であった。この間、CO₂ 濃度は1年あたり平均何 ppm 増加したか。`,
-        correct: d.correct,
-        wrong: d.wrong,
-        explanation: `(${fmt(c2, 1)} − ${c1}) ÷ ${span} ＝ ${fmt(rate, 1)} ppm である。季節による上下の変動を打ち消すために年平均どうしを比べ、増加量を年数で割るからである。`,
-      };
-    },
-  },
-];
-return { B13 };
 })();
 
 // ---- questions/a1.js ----
@@ -15008,8 +14860,9 @@ const A18 = [
     level: 3,
     kind: 'calc',
     make(rng) {
+      // 実際の盲斑（直径 約1.5〜1.8 mm）に近い組合せにする：紙の上の幅 ≒ 距離 × 約0.1
       const dist = rng.pick([20, 25, 30, 34, 40]);
-      const width = rng.pick([1.5, 2, 2.5, 3]);
+      const width = Number((dist * rng.pick([0.09, 0.1])).toFixed(1));
       const ans = retinaSize(width, dist) * 10; // mm
       const d = distinctNumbers(ans, [ans * 10, ans / 10, (width * dist) / EYE_DEPTH, width * EYE_DEPTH, (dist * EYE_DEPTH) / width], ' mm', 2);
       return {
@@ -15047,7 +14900,7 @@ const A18 = [
         text: `暗順応曲線で、縦軸（感じとれる最小の光の強さ）は対数目盛りで、1目盛りが10倍を表す。暗い所に入った直後と30分後で、縦軸の値が ${k} 目盛り下がっていた。30分後には、直後の何分の1の強さの光まで感じとれるようになったか。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `1目盛りで10倍なので、${k} 目盛りでは 10^${k} ＝ ${ans.toLocaleString('ja-JP')} 倍になる。感じとれる最小の光の強さが ${ans.toLocaleString('ja-JP')} 分の1になったので、それだけ弱い光まで感じとれるようになったからである。`,
+        explanation: `1目盛り下がるごとに感じとれる最小の光の強さが10分の1になるので、${k} 目盛り下がると ${ans.toLocaleString('ja-JP')} 分の1になる。感じとれる最小の光が弱くなるほど、それだけ弱い光まで感じとれる（感度が高い）からである。`,
       };
     },
   },
@@ -15075,7 +14928,7 @@ const A18 = [
         text: '眼に入った光が網膜に達するまでに通る順として正しいものはどれか。',
         correct: '角膜 → 瞳孔 → 水晶体 → ガラス体 → 網膜',
         wrong: ['角膜 → 水晶体 → 瞳孔 → ガラス体 → 網膜', '瞳孔 → 角膜 → 水晶体 → ガラス体 → 網膜', '角膜 → 瞳孔 → ガラス体 → 水晶体 → 網膜'],
-        explanation: '光は角膜を通り、虹彩に囲まれた瞳孔を通って水晶体で屈折し、ガラス体を通って網膜に像を結ぶ。水晶体の厚さを変えてピントを合わせるので、遠近にかかわらず網膜上に像ができる。',
+        explanation: '光は角膜を通り、虹彩に囲まれた瞳孔を通り、角膜と水晶体で屈折して、ガラス体を通って網膜に像を結ぶ。水晶体の厚さを変えてピントを合わせるので、遠近にかかわらず網膜上に像ができる。',
       };
     },
   },
@@ -15101,7 +14954,7 @@ const A19 = [
       return {
         text: 'ショウジョウバエのビコイド遺伝子のように、母親の遺伝子型によって子の形質（体の前後軸など）が決まる遺伝子を何というか。',
         correct: '母性効果遺伝子',
-        wrong: ['ホメオティック遺伝子', 'ギャップ遺伝子', 'ペア・ルール遺伝子', '調節遺伝子'],
+        wrong: ['ホメオティック遺伝子', 'ギャップ遺伝子', 'ペアルール遺伝子', '伴性遺伝子'],
         explanation: 'これは母性効果遺伝子である。母親の体内で卵がつくられるときに、その mRNA が卵に蓄えられるので、子の遺伝子型ではなく母親の遺伝子型によって子の形質が決まる。',
       };
     },
@@ -15129,7 +14982,7 @@ const A19 = [
       const x = rng.pick([0.1, 0.2, 0.3, 0.5, 0.7]);
       const above = bicoid(x) >= THRESH;
       return {
-        text: `図は、ショウジョウバエの受精卵のビコイドタンパク質の濃度（前端を0、後端を1とした位置）と、前方の構造をつくる遺伝子が発現する閾値を表した模式図である。位置 ${x} の細胞について正しいものはどれか。`,
+        text: `図は、ショウジョウバエの受精卵のビコイドタンパク質の濃度（前端を0、後端を1とした位置）と、前方の構造をつくる遺伝子が発現する閾値を表した模式図である。位置 ${x} の核（細胞）について正しいものはどれか。`,
         chart: {
           x: { min: 0, max: 1, label: '卵の前端からの位置', step: 0.2, digits: 1 },
           y: { min: 0, max: 1.1, label: 'ビコイドの濃度（相対値）', step: 0.2, digits: 1 },
@@ -15140,7 +14993,7 @@ const A19 = [
         },
         correct: above ? '濃度が閾値以上なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する' : '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子は発現しない',
         wrong: ['濃度が閾値以上なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する', '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子は発現しない', '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する', 'ビコイドの濃度は、遺伝子の発現に関係しない'],
-        explanation: `位置 ${x} では濃度が約 ${fmt(bicoid(x), 2)} で、閾値 ${THRESH} ${above ? '以上' : 'より低い'}。各細胞はビコイドの濃度を位置情報として受け取り、濃度が閾値以上の前方の細胞でだけ前方の構造をつくる遺伝子が発現するからである。`,
+        explanation: `位置 ${x} では濃度が約 ${fmt(bicoid(x), 2)} で、閾値 ${THRESH} ${above ? '以上' : 'より低い'}。各核（細胞）はビコイドの濃度を位置情報として受け取り、濃度が閾値以上の前方でだけ前方の構造をつくる遺伝子が発現するからである。`,
       };
     },
   },
@@ -15205,7 +15058,7 @@ const A19 = [
         text: '発生の過程で、ある胚の領域が、隣接する別の領域にはたらきかけて、その分化の方向を決めるはたらきを何というか。',
         correct: '誘導',
         wrong: ['分裂', '分化全能性', '細胞死（アポトーシス）', '再生'],
-        explanation: 'これは誘導である。誘導された組織がさらに次の誘導を行うことがあり、眼の形成では眼胞が表皮から水晶体を誘導し、水晶体が表皮から角膜を誘導するので、誘導の連鎖によって複雑な器官がつくられる。',
+        explanation: 'これは誘導である。誘導された組織がさらに次の誘導を行うことがあり、眼の形成では眼杯が表皮から水晶体を誘導し、水晶体が表皮から角膜を誘導するので、誘導の連鎖によって複雑な器官がつくられる。',
       };
     },
   },
@@ -15218,7 +15071,7 @@ const A19 = [
       return {
         text: 'ショウジョウバエで、体節ごとにどのような器官をつくるかを決めている遺伝子に突然変異が起こると、触角が生えるべき位置に脚が生えることがある。このような遺伝子を何というか。',
         correct: 'ホメオティック遺伝子',
-        wrong: ['母性効果遺伝子', 'ギャップ遺伝子', 'ペア・ルール遺伝子'],
+        wrong: ['母性効果遺伝子', 'ギャップ遺伝子', 'ペアルール遺伝子'],
         explanation: 'これはホメオティック遺伝子で、各体節の性質（どの器官をつくるか）を決めている。突然変異が起こると別の体節の性質がつくられるので、触角の位置に脚が生えるような変化（ホメオティック突然変異）が起こる。',
       };
     },
@@ -15245,20 +15098,22 @@ const A20 = [
       let acc = 0;
       const at = {};
       for (const p of PHASES) { at[p.id] = [acc, acc + p.len]; acc += p.len; }
-      const pts = { S: (at.S[0] + at.S[1]) / 2, M1end: at.M1[1], M2end: TOTAL };
-      const labels = { S: KATA[0], M1end: KATA[1], M2end: KATA[2] };
+      // ア〜ウの位置：S期の途中（複製）、第一分裂の終わり、第二分裂の終わり。記号の割り当ては毎回変える
+      const keys = rng.shuffle(['S', 'M1end', 'M2end']);
+      const labels = Object.fromEntries(keys.map((k, i) => [k, KATA[i]]));
+      const pos = { S: [(at.S[0] + at.S[1]) / 2, 3.6], M1end: [at.M1[1], 4.5], M2end: [TOTAL - 0.4, 2.6] };
       return {
-        text: '図は、減数分裂での細胞1個あたりの DNA 量の変化を表している。ア〜ウのうち、相同染色体が分かれて別々の細胞に入り、染色体数が半分（n）になるところはどれか。',
+        text: '図は、減数分裂での細胞1個あたりの DNA 量の変化を表している（▼は記号の位置）。ア〜ウのうち、相同染色体が分かれて別々の細胞に入り、染色体数が半分（n）になるところはどれか。',
         chart: {
           x: { min: 0, max: TOTAL, label: '時間', ticks: [] },
           y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
           series: [{ points: sample((x) => dnaAt(x), 0, TOTAL - 1e-6, 600), color: 'c1', width: 3 }],
-          texts: Object.keys(pts).map((k) => ({ x: pts[k] - (k === 'M2end' ? 0.8 : 0), y: dnaAt(Math.min(pts[k] - 0.01, TOTAL - 0.01)) + 0.5, text: labels[k], color: 'c2' })),
+          texts: keys.map((k) => ({ x: pos[k][0], y: pos[k][1], text: `${labels[k]}▼`, color: 'c2' })),
           alt: '減数分裂の DNA 量ア〜ウ',
         },
-        correct: `${labels.M1end}（第一分裂の終わり）`,
-        wrong: [`${labels.S}（DNA の複製）`, `${labels.M2end}（第二分裂の終わり）`, 'ア〜ウのどれでもない'],
-        explanation: `相同染色体が分かれるのは第一分裂で、その終わりの${labels.M1end}で DNA 量が4から2になり、染色体数が n になる。第二分裂（${labels.M2end}）では染色分体が分かれるので、DNA 量は半分になるが染色体数は n のままだからである。`,
+        correct: labels.M1end,
+        wrong: [KATA[0], KATA[1], KATA[2], 'ア〜ウのどれでもない'],
+        explanation: `相同染色体が分かれるのは第一分裂で、その終わり（${labels.M1end}）で DNA 量が4から2になり、染色体数が n になる。${labels.S}は DNA の複製、${labels.M2end}は第二分裂の終わりで、第二分裂では染色分体が分かれるので、DNA 量は半分になるが染色体数は n のままだからである。`,
       };
     },
   },
@@ -15380,18 +15235,168 @@ const A20 = [
       const wrong = [fmtBig(g * 2), fmtBig(46), fmtBig(g * g * 2), fmtBig(g), fmtBig(g * g), fmtBig(Math.pow(2, 46) * 2)].map((x) => `${x} 通り`);
       return {
         text: ask === 'gamete'
-          ? 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、1人がつくる配偶子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。'
-          : 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、同じ両親から生まれる子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。',
+          ? 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、1人がつくる配偶子の染色体の組合せはおよそ何通りか。'
+          : 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、同じ両親から生まれる子の染色体の組合せはおよそ何通りか。',
         correct,
         wrong,
         explanation: ask === 'gamete'
           ? `相同染色体は23組なので、2^23 ＝ ${g.toLocaleString('ja-JP')}、つまり ${correct} である。各組で2通りずつの選び方があるので、23組分をかけ合わせればよいからである。`
-          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも遺伝的に同じ子はほぼ生まれない。`,
+          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも、一卵性双生児を除いて遺伝的に同じ子はほぼ生まれない。`,
       };
     },
   },
 ];
 return { A20 };
+})();
+
+// ---- questions/a21.js ----
+__m["questions/a21.js"] = (function () {
+// A21 炭素の循環 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers } = __m["questions/common.js"];
+const { co2, PPM_PER } = __m["models/carbon.js"];
+const { sample } = __m["lib/series.js"];
+
+const A21 = [
+  {
+    id: 'a21-balance',
+    stage: 'a21',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const photo = rng.pick([1000, 1100, 1200]);
+      const resp = rng.pick([550, 600]);
+      const decomp = rng.pick([450, 500, 520]);
+      const fossil = rng.pick([80, 100, 120]);
+      const ocean = rng.pick([20, 30]);
+      const ans = resp + decomp + fossil - photo - ocean;
+      if (ans <= 0) return this.make(rng);
+      const d = distinctNumbers(ans, [resp + decomp + fossil + photo + ocean, fossil, resp + decomp - photo + ocean + fossil, fossil - ocean, ans + 2 * ocean], ' 億トン', 0);
+      return {
+        text: `ある時期の地球全体の炭素の出入り（億トン/年）を、陸上の生産者の光合成 ${photo}、生産者と消費者（分解者を除く）の呼吸 ${resp}、分解者の呼吸（遺体・排出物の分解）${decomp}、化石燃料の燃焼 ${fossil}、海洋への吸収（正味）${ocean} とする。大気中の炭素は1年に何億トン増えるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `大気へ入る量は ${resp} ＋ ${decomp} ＋ ${fossil} ＝ ${resp + decomp + fossil}、大気から出る量は ${photo} ＋ ${ocean} ＝ ${photo + ocean} なので、差は ${ans} 億トンである。呼吸・分解・燃焼で CO₂ が大気にもどり、光合成と海洋への溶け込みで大気から取り除かれるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a21-ppm',
+    stage: 'a21',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const inc = rng.pick([42, 50, 63, 84]);
+      const ans = inc / PPM_PER;
+      const d = distinctNumbers(ans, [inc * PPM_PER / 100, PPM_PER / inc, ans * 2, ans / 2, inc / 10], ' ppm', 1);
+      return {
+        text: `大気中の炭素が ${PPM_PER} 億トン増えると、大気中の CO₂ 濃度は約 1 ppm 上がる。大気中の炭素が1年に ${inc} 億トン増えると、CO₂ 濃度は1年に約何 ppm 上がるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${inc} ÷ ${PPM_PER} ＝ ${fmt(ans, 1)} ppm である。CO₂ 濃度の上がり方は大気中の炭素の増加量に比例するから、1 ppm にあたる量で割ればよい。`,
+      };
+    },
+  },
+  {
+    id: 'a21-season',
+    stage: 'a21',
+    level: 2,
+    kind: 'graph',
+    make() {
+      return {
+        text: '図は、北半球のある観測地点での大気中の CO₂ 濃度の変化（模式）である。毎年、初夏から夏にかけて（5月ごろから9月ごろまで）濃度が下がる理由として最も適当なものはどれか。',
+        chart: {
+          x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
+          y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
+          series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
+          alt: 'CO₂濃度の季節変動',
+        },
+        correct: '植物の光合成がさかんになり、大気中の CO₂ が多く吸収されるから',
+        wrong: ['化石燃料の燃焼がさかんになるから', '植物の呼吸がさかんになり、CO₂ が多く放出されるから', '海水の温度が上がり、海洋が CO₂ を多く放出するから'],
+        explanation: '北半球の陸地では、初夏から夏に植物がさかんに光合成を行うので、大気中の CO₂ が吸収されて濃度が下がる。秋から翌年の春は光合成が少なく、呼吸や分解で放出される CO₂ のほうが多いので、濃度が上がるからである。',
+      };
+    },
+  },
+  {
+    id: 'a21-flow',
+    stage: 'a21',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '炭素の循環で、大気中の CO₂ を生物の体内（有機物）に取り込むはたらきはどれか。',
+        correct: '生産者の光合成',
+        wrong: ['生産者の呼吸', '分解者による遺体の分解', '化石燃料の燃焼', '消費者の呼吸'],
+        explanation: '大気中の CO₂ は、生産者の光合成によって有機物に取り込まれる。有機物の炭素は食物連鎖で消費者に移り、呼吸や分解で再び CO₂ として大気にもどるので、炭素は生態系の中を循環する。',
+      };
+    },
+  },
+  {
+    id: 'a21-fossil',
+    stage: 'a21',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '大気中の CO₂ 濃度が長期的に増え続けている主な原因として最も適当なものはどれか。',
+        correct: '化石燃料の大量消費や森林の減少',
+        wrong: ['植物の光合成の増加', '海洋による CO₂ の吸収', '分解者の減少'],
+        explanation: '化石燃料には、昔の生物の遺体の炭素が長い間たくわえられている。それを大量に燃やすと CO₂ が大気に放出され、森林が減ると光合成による吸収も減るので、大気中の CO₂ 濃度が増え続けている。',
+      };
+    },
+  },
+  {
+    id: 'a21-greenhouse',
+    stage: 'a21',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '大気中の CO₂ 濃度の増加が地球温暖化の原因になる理由として最も適当なものはどれか。',
+        correct: 'CO₂ は地表から放出される熱（赤外線）を吸収し、その一部を地表にもどすから',
+        wrong: ['CO₂ が太陽の光をさえぎるから', 'CO₂ がオゾン層を破壊するから', 'CO₂ が燃えて熱を出すから'],
+        explanation: 'CO₂ などの温室効果ガスは、地表から宇宙へ出ていく熱（赤外線）を吸収し、その一部を地表にもどす。温室効果ガスが増えるとこのはたらき（温室効果）が強まるので、地表付近の気温が上がる。',
+      };
+    },
+  },
+  {
+    id: 'a21-decomposer',
+    stage: 'a21',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '生態系で、生物の遺体や排出物に含まれる有機物を分解して、CO₂ などの無機物にもどすはたらきをする生物を何というか。',
+        correct: '分解者',
+        wrong: ['生産者', '一次消費者', '二次消費者'],
+        explanation: 'これは分解者で、菌類や細菌などが含まれる。分解者が有機物を無機物にもどすので、炭素などの物質は生態系の中を循環できる。',
+      };
+    },
+  },
+  {
+    id: 'a21-trend-calc',
+    stage: 'a21',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      // 年と濃度は実際の観測値の目安に対応させ、現在以前の年だけを使う
+      const obs = rng.pick([[2000, 370], [2005, 380], [2010, 390]]);
+      const y1 = obs[0];
+      const span = rng.pick([10, 15, 20].filter((x) => y1 + x <= 2025));
+      const c1 = obs[1];
+      const rate = rng.pick([1.9, 2, 2.1, 2.2, 2.4]);
+      const c2 = c1 + rate * span;
+      const d = distinctNumbers(rate, [(c2 - c1) / 10, c2 - c1, rate * 2, rate / 2, (c2 - c1) / (span * 2)], ' ppm', 1);
+      return {
+        text: `ある観測地点の大気中の CO₂ 濃度（年平均）は、${y1}年に ${c1} ppm、${y1 + span}年に ${fmt(c2, 1)} ppm であった。この間、CO₂ 濃度は1年あたり平均何 ppm 増加したか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `(${fmt(c2, 1)} − ${c1}) ÷ ${span} ＝ ${fmt(rate, 1)} ppm である。季節による上下の変動を打ち消すために年平均どうしを比べ、増加量を年数で割るからである。`,
+      };
+    },
+  },
+];
+return { A21 };
 })();
 
 // ---- questions/index.js ----
@@ -15409,7 +15414,6 @@ const { B9 } = __m["questions/b9.js"];
 const { B10 } = __m["questions/b10.js"];
 const { B11 } = __m["questions/b11.js"];
 const { B12 } = __m["questions/b12.js"];
-const { B13 } = __m["questions/b13.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
@@ -15430,9 +15434,10 @@ const { A17 } = __m["questions/a17.js"];
 const { A18 } = __m["questions/a18.js"];
 const { A19 } = __m["questions/a19.js"];
 const { A20 } = __m["questions/a20.js"];
+const { A21 } = __m["questions/a21.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -16212,14 +16217,6 @@ const GLOSSARY = {
     { term: '負のフィードバック', desc: '結果が原因にもどって、そのはたらきをおさえるしくみ。チロキシンが多くなると TRH と TSH の分泌がおさえられる。' },
     { term: 'TRH・TSH', desc: 'TRH は視床下部から分泌される甲状腺刺激ホルモン放出ホルモン、TSH は脳下垂体前葉から分泌される甲状腺刺激ホルモン。' },
   ],
-  b13: [
-    { term: '炭素の循環', desc: '大気中の CO₂ が光合成で有機物に取り込まれ、食物連鎖で移動し、呼吸や分解で再び CO₂ として大気にもどること。' },
-    { term: '分解者', desc: '遺体や排出物の有機物を無機物に分解する生物。菌類や細菌など。' },
-    { term: '化石燃料', desc: '石油・石炭・天然ガスなど。昔の生物の遺体の炭素が長い間地中にたくわえられたもの。燃やすと CO₂ が大気に放出される。' },
-    { term: '温室効果', desc: 'CO₂ などの温室効果ガスが、地表から出ていく熱（赤外線）を吸収し、その一部を地表にもどすはたらき。' },
-    { term: '地球温暖化', desc: '温室効果ガスの増加などによって、地球全体の平均気温が上がること。' },
-    { term: 'CO₂ 濃度の季節変動', desc: '北半球では、春から夏に光合成がさかんになって CO₂ 濃度が下がり、秋から冬に上がる。' },
-  ],
   a1: [
     { term: '酵素', desc: '生体内の化学反応を促進する触媒としてはたらくタンパク質。反応の前後で変化せず、くり返しはたらく。' },
     { term: '基質・活性部位', desc: '酵素が作用する物質が基質。酵素の中で基質が結合して反応が起こる部分が活性部位。' },
@@ -16400,16 +16397,16 @@ const GLOSSARY = {
     { term: '春化', desc: '一定期間の低温を経験することで花芽形成が促進される現象。秋まきコムギなど。' },
   ],
   a18: [
-    { term: '錐体', desc: '網膜の視細胞の一つ。色の識別にはたらき、明るい所で感度がよい。黄斑に集中している。' },
-    { term: '桿体', desc: '網膜の視細胞の一つ。視物質ロドプシンをもち、弱い光でも反応するが、色は区別しない。網膜の周辺部に多い。' },
-    { term: '黄斑（中心窩）', desc: '網膜の中央付近で、錐体が集中している部分。視野の中心で色や形をくわしく見分けられる。' },
-    { term: '盲斑', desc: '視神経が束になって眼球から出ていく部分。視細胞がないので、ここに結んだ像は見えない。' },
+    { term: '錐体（錐体細胞）', desc: '網膜の視細胞の一つ。色の識別にはたらき、明るい所ではたらく（感度は桿体より低い）。黄斑に集中している。' },
+    { term: '桿体（桿体細胞）', desc: '網膜の視細胞の一つ。視物質ロドプシンをもち、弱い光でも反応するが、色は区別しない。網膜の周辺部に多い。' },
+    { term: '黄斑', desc: '網膜の中央付近で、錐体が集中している部分。中央のくぼみを中心窩という。視野の中心で色や形をくわしく見分けられる。' },
+    { term: '盲斑', desc: '視神経の繊維が束になって眼球から出ていき、血管が出入りする部分。視細胞がないので、ここに結んだ像は見えない。' },
     { term: '暗順応', desc: '明るい所から暗い所に入ると、しだいに弱い光も感じられるようになること。桿体でロドプシンが再合成されて感度が上がる。' },
     { term: 'ロドプシン', desc: '桿体に含まれる視物質。光を受けると分解され、暗所では再合成される。' },
   ],
   a19: [
     { term: '母性効果遺伝子', desc: '母親の遺伝子型によって子の形質が決まる遺伝子。その mRNA やタンパク質が卵に蓄えられる。ビコイド遺伝子など。' },
-    { term: 'ビコイド', desc: 'ショウジョウバエの卵の前端に mRNA が局在する母性効果遺伝子。そのタンパク質の濃度勾配が前後軸の位置情報になる。' },
+    { term: 'ビコイド', desc: 'ショウジョウバエの卵の前端に mRNA が局在する母性効果遺伝子。そのタンパク質の濃度勾配が前後軸の位置情報になる。欠損した母親の卵では頭部・胸部ができない。' },
     { term: '位置情報', desc: '細胞が胚の中での自分の位置を知るための情報。物質の濃度勾配などとして与えられる。' },
     { term: '形成体（オーガナイザー）', desc: 'まわりの細胞にはたらきかけて分化を引き起こす胚の領域。イモリの原口背唇部など。' },
     { term: '誘導', desc: '胚のある領域が、隣接する別の領域にはたらきかけて、その分化の方向を決めること。' },
@@ -16422,6 +16419,14 @@ const GLOSSARY = {
     { term: '乗換え', desc: '二価染色体で、相同染色体の間で一部が交換されること。遺伝子の組合せが変わる（組換え）。' },
     { term: '配偶子の組合せ', desc: '相同染色体が n 組あると、乗換えがなくても配偶子の染色体の組合せは 2ⁿ 通り。受精では 2ⁿ × 2ⁿ 通り。' },
     { term: '減数分裂での DNA 量', desc: 'G1期 2 → 複製後 4 → 第一分裂のあと 2 → 第二分裂のあと 1（相対値）。' },
+  ],
+  a21: [
+    { term: '炭素の循環', desc: '大気中の CO₂ が光合成で有機物に取り込まれ、食物連鎖で移動し、呼吸や分解で再び CO₂ として大気にもどること。' },
+    { term: '分解者', desc: '遺体や排出物の有機物を無機物に分解する生物。菌類や細菌など。' },
+    { term: '化石燃料', desc: '石油・石炭・天然ガスなど。昔の生物の遺体の炭素が長い間地中にたくわえられたもの。燃やすと CO₂ が大気に放出される。' },
+    { term: '温室効果', desc: 'CO₂ などの温室効果ガスが、地表から出ていく熱（赤外線）を吸収し、その一部を地表にもどすはたらき。' },
+    { term: '地球温暖化', desc: '温室効果ガスの増加などによって、地球全体の平均気温が上がること。' },
+    { term: 'CO₂ 濃度の季節変動', desc: '北半球では、初夏から夏（5月ごろから9月ごろ）に光合成がさかんになって CO₂ 濃度が下がり、秋から翌年の春に上がる。' },
   ],
 };
 return { GLOSSARY };

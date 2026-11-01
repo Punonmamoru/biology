@@ -14,20 +14,22 @@ export const A20 = [
       let acc = 0;
       const at = {};
       for (const p of PHASES) { at[p.id] = [acc, acc + p.len]; acc += p.len; }
-      const pts = { S: (at.S[0] + at.S[1]) / 2, M1end: at.M1[1], M2end: TOTAL };
-      const labels = { S: KATA[0], M1end: KATA[1], M2end: KATA[2] };
+      // ア〜ウの位置：S期の途中（複製）、第一分裂の終わり、第二分裂の終わり。記号の割り当ては毎回変える
+      const keys = rng.shuffle(['S', 'M1end', 'M2end']);
+      const labels = Object.fromEntries(keys.map((k, i) => [k, KATA[i]]));
+      const pos = { S: [(at.S[0] + at.S[1]) / 2, 3.6], M1end: [at.M1[1], 4.5], M2end: [TOTAL - 0.4, 2.6] };
       return {
-        text: '図は、減数分裂での細胞1個あたりの DNA 量の変化を表している。ア〜ウのうち、相同染色体が分かれて別々の細胞に入り、染色体数が半分（n）になるところはどれか。',
+        text: '図は、減数分裂での細胞1個あたりの DNA 量の変化を表している（▼は記号の位置）。ア〜ウのうち、相同染色体が分かれて別々の細胞に入り、染色体数が半分（n）になるところはどれか。',
         chart: {
           x: { min: 0, max: TOTAL, label: '時間', ticks: [] },
           y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
           series: [{ points: sample((x) => dnaAt(x), 0, TOTAL - 1e-6, 600), color: 'c1', width: 3 }],
-          texts: Object.keys(pts).map((k) => ({ x: pts[k] - (k === 'M2end' ? 0.8 : 0), y: dnaAt(Math.min(pts[k] - 0.01, TOTAL - 0.01)) + 0.5, text: labels[k], color: 'c2' })),
+          texts: keys.map((k) => ({ x: pos[k][0], y: pos[k][1], text: `${labels[k]}▼`, color: 'c2' })),
           alt: '減数分裂の DNA 量ア〜ウ',
         },
-        correct: `${labels.M1end}（第一分裂の終わり）`,
-        wrong: [`${labels.S}（DNA の複製）`, `${labels.M2end}（第二分裂の終わり）`, 'ア〜ウのどれでもない'],
-        explanation: `相同染色体が分かれるのは第一分裂で、その終わりの${labels.M1end}で DNA 量が4から2になり、染色体数が n になる。第二分裂（${labels.M2end}）では染色分体が分かれるので、DNA 量は半分になるが染色体数は n のままだからである。`,
+        correct: labels.M1end,
+        wrong: [KATA[0], KATA[1], KATA[2], 'ア〜ウのどれでもない'],
+        explanation: `相同染色体が分かれるのは第一分裂で、その終わり（${labels.M1end}）で DNA 量が4から2になり、染色体数が n になる。${labels.S}は DNA の複製、${labels.M2end}は第二分裂の終わりで、第二分裂では染色分体が分かれるので、DNA 量は半分になるが染色体数は n のままだからである。`,
       };
     },
   },
@@ -149,13 +151,13 @@ export const A20 = [
       const wrong = [fmtBig(g * 2), fmtBig(46), fmtBig(g * g * 2), fmtBig(g), fmtBig(g * g), fmtBig(Math.pow(2, 46) * 2)].map((x) => `${x} 通り`);
       return {
         text: ask === 'gamete'
-          ? 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、1人がつくる配偶子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。'
-          : 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、同じ両親から生まれる子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。',
+          ? 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、1人がつくる配偶子の染色体の組合せはおよそ何通りか。'
+          : 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、同じ両親から生まれる子の染色体の組合せはおよそ何通りか。',
         correct,
         wrong,
         explanation: ask === 'gamete'
           ? `相同染色体は23組なので、2^23 ＝ ${g.toLocaleString('ja-JP')}、つまり ${correct} である。各組で2通りずつの選び方があるので、23組分をかけ合わせればよいからである。`
-          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも遺伝的に同じ子はほぼ生まれない。`,
+          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも、一卵性双生児を除いて遺伝的に同じ子はほぼ生まれない。`,
       };
     },
   },

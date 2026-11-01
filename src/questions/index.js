@@ -11,7 +11,6 @@ import { B9 } from './b9.js';
 import { B10 } from './b10.js';
 import { B11 } from './b11.js';
 import { B12 } from './b12.js';
-import { B13 } from './b13.js';
 import { A1 } from './a1.js';
 import { A2 } from './a2.js';
 import { A3 } from './a3.js';
@@ -32,9 +31,10 @@ import { A17 } from './a17.js';
 import { A18 } from './a18.js';
 import { A19 } from './a19.js';
 import { A20 } from './a20.js';
+import { A21 } from './a21.js';
 import { generate } from './common.js';
 
-export const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20];
+export const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21];
 
 export function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
