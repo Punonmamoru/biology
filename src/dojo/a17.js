@@ -51,21 +51,21 @@ export const dojo = {
           a = 0;
         }
       };
-      seg(L0, st.light, 'region-4', '明期');
+      seg(L0, st.light, 'day', '明期');
       const ds = L0 + st.light;
       if (br != null) {
-        seg(ds, br, 'surface-2', fmt(br, 1) + 'h');
-        seg(ds + br, 1, 'c5', '');
-        seg(ds + br + 1, Math.max(0, dark - br - 1), 'surface-2', fmt(Math.max(0, dark - br - 1), 1) + 'h');
-      } else seg(ds, dark, 'surface-2', `暗期 ${fmt(dark, 1)}h`);
+        seg(ds, br, 'night', fmt(br, 1) + 'h');
+        seg(ds + br, 1, 'c2', '');
+        seg(ds + br + 1, Math.max(0, dark - br - 1), 'night', fmt(Math.max(0, dark - br - 1), 1) + 'h');
+      } else seg(ds, dark, 'night', `暗期 ${fmt(dark, 1)}h`);
       chart.draw({
         alt: `明期 ${st.light} 時間、最も長い連続した暗期 ${dp.longest} 時間`,
         x: { min: 0, max: 24, label: '時刻（時）', step: 3 },
         y: { min: 0, max: 1, ticks: [] },
         polygons: polys,
-        texts: br != null ? [{ x: ((ds + br + 0.5) % 24), y: 0.88, text: '光中断', color: 'c5' }] : [],
+        texts: br != null ? [{ x: ((ds + br + 0.5) % 24), y: 0.88, text: '光中断', color: 'c2' }] : [],
       });
-      leg.replaceChildren(legend([{ label: '明期（6時から）', color: 'region-4', bar: true }, { label: '暗期', color: 'surface-2', bar: true }, { label: '光中断', color: 'c5', bar: true }]));
+      leg.replaceChildren(legend([{ label: '明期（6時から）', color: 'day', bar: true }, { label: '暗期', color: 'night', bar: true }, { label: '光中断', color: 'c2', bar: true }]));
       table.replaceChildren(
         h('table', { class: 'data' },
           h('thead', null, h('tr', null, h('th', null, '植物'), h('th', null, '例'), h('th', null, '花芽形成'))),

@@ -26,12 +26,12 @@ export function danceType(distance) {
   return distance < NEAR ? 'round' : 'waggle';
 }
 
-// 一定時間（15秒）あたりの8の字ダンスの回数（距離が大きいほど少ない。模式）
+// 一定時間（15秒）あたりの8の字ダンスの回数（距離が大きいほど少ない。フリッシュのデータの目安：100 m で約9回、1 km で約5回、3 km で約2回）
 export function dancesPer15s(distance) {
-  return 10 / (1 + distance / 500);
+  return 10 / (1 + distance / 900);
 }
 
-// 太陽の方位は1時間に約15°ずつ（東→南→西へ）移る（模式）
+// 太陽の方位は1時間に平均約15°ずつ（東→南→西へ）移る（平均の目安。実際の方位の変化は正午ごろ速く、朝夕は遅い）
 export const SUN_SPEED = 15;
 
 export const AZ_NAMES = [

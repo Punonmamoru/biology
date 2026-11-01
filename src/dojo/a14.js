@@ -3,7 +3,7 @@ import { h } from '../lib/dom.js';
 import { fmt } from '../lib/format.js';
 import { createChart, legend } from '../lib/chart.js';
 import { slider, segmented, explainBox, panel, modelNote } from './common.js';
-import { potential, firstCrossing, buildInputs, REST, THRESHOLD, EPSP, IPSP, T_END } from '../models/synapse.js';
+import { potential, firstCrossing, buildInputs, psp, REST, THRESHOLD, EPSP, IPSP, RISE, T_END } from '../models/synapse.js';
 import { monotoneCubic } from '../lib/interp.js';
 import { sample } from '../lib/series.js';
 
@@ -63,7 +63,9 @@ export const dojo = {
       lines.push('シナプス前細胞の末端に興奮が伝わると、神経伝達物質がシナプス間隙に放出され、シナプス後細胞の受容体に結合する。興奮性シナプスでは Na⁺ などが流入して脱分極（EPSP）、抑制性シナプスでは Cl⁻ が流入するなどして過分極（IPSP）が起こる。');
       if (tr.tc != null) lines.push(`膜電位の和が閾値に達したので（${fmt(tr.tc, 1)} ミリ秒）、シナプス後細胞に活動電位が生じた。`);
       else lines.push('膜電位の和が閾値に達しないので、シナプス後細胞に活動電位は生じない。');
-      if (st.nA >= 2) lines.push(st.interval <= 5 ? `Aからの入力の間隔が短い（${st.interval} ミリ秒）ので、前のEPSPが消えないうちに次のEPSPが重なる（時間的加重）。` : `間隔が ${st.interval} ミリ秒と長いので、前のEPSPがほとんど消えてから次のEPSPが起こり、重なりが小さい。`);
+      // 2回目の EPSP がピークになるとき、1回目の EPSP がどれだけ残っているか
+      const left = psp(st.interval + RISE);
+      if (st.nA >= 2) lines.push(left >= 0.3 ? `Aからの入力の間隔が ${st.interval} ミリ秒なので、2回目の EPSP がピークになるとき、1回目の EPSP がまだ約${fmt(left * 100, 0)}% 残っていて、重なり合う（時間的加重）。` : `間隔が ${st.interval} ミリ秒と長いので、2回目の EPSP がピークになるとき、1回目の EPSP は約${fmt(left * 100, 0)}% しか残っておらず、重なりが小さい。`);
       if (st.useB) lines.push('AとBから同時に入力があるので、2つのEPSPが足し合わされる（空間的加重）。');
       if (st.useC) lines.push('抑制性ニューロンCからの IPSP が加わり、膜電位が下げられる。このように、多くのシナプスからの入力が足し合わされ、その結果で興奮するかどうかが決まる（興奮の統合）。');
       exp.set(lines);

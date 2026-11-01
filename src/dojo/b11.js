@@ -8,7 +8,7 @@ import { sample } from '../lib/series.js';
 
 const SEC_END = 150;
 const SEC_START = 50; // 二次遷移は草原の段階から始まるとみなす（土壌や種子・根が残っている）
-const effOf = (mode, t) => (mode === 'primary' ? t : SEC_START + t * SECONDARY_SPEED * 0.9);
+const effOf = (mode, t) => (mode === 'primary' ? t : SEC_START + t * SECONDARY_SPEED);
 
 export const dojo = {
   tasks: [
@@ -55,8 +55,8 @@ export const dojo = {
       });
       leg.replaceChildren(legend([
         { label: '林床の相対照度（林外＝100）', color: 'c5' },
-        { label: '陽樹の割合（森林の高木に占める）', color: 'c2', dash: 'dash' },
-        { label: '陰樹の割合', color: 'c3', dash: 'dot' },
+        { label: '陽樹の量（最大＝100）', color: 'c2', dash: 'dash' },
+        { label: '陰樹の量（最大＝100）', color: 'c3', dash: 'dot' },
         { label: '植生の高さ（最大＝100）', color: 'c1', dash: 'dashdot' },
         { label: `相対照度 ${COMP.sun}%（陽樹の芽ばえが育つ明るさの目安）`, color: 'c2', dash: 'dot' },
       ]));
@@ -65,13 +65,13 @@ export const dojo = {
       status.textContent = `${st.t} 年：${stg.name}（${stg.plants}）。林床の相対照度 約${fmt(s.floorLight, 0)}%、陽樹の芽ばえ ${sunOk ? '育つ' : '育たない'}、陰樹の芽ばえ ${shadeOk ? '育つ' : '育たない'}。`;
       const lines = [];
       const id = stg.id;
-      if (id === 'bare') lines.push('溶岩台地などの裸地には土壌がなく、栄養分や水分が少ない。乾燥や栄養の少なさに強い地衣類やコケ植物が最初に侵入する（先駆種）。これらの遺体などから少しずつ土壌がつくられる。');
+      if (id === 'bare') lines.push('溶岩台地などの裸地には土壌がなく、栄養分や水分が少ない。乾燥や栄養の少なさに強い地衣類やコケ植物が最初に侵入する（先駆種）。日本の火山島などでは、ススキやイタドリなどの草本が先駆種になることも多い。');
       else if (id === 'grass') lines.push('土壌ができると、ススキなどの草本が生育して草原になる。遷移の初期に侵入する植物は、種子が小さく風で遠くまで運ばれるものが多い。');
       else if (id === 'shrub') lines.push('土壌がさらに発達すると、ヤシャブシ・ヤマツツジなどの低木が生育し、低木林になる。');
       else if (id === 'sun') lines.push('アカマツ・コナラなどの陽樹が育って陽樹林になる。陽樹は強い光のもとで成長が速いが、林が茂ると林床が暗くなり、陽樹の芽ばえは育ちにくくなる。');
       else if (id === 'mixed') lines.push('暗い林床でも育つ陰樹の芽ばえが成長し、陽樹と陰樹が混じった混交林になる。陽樹は寿命などで枯れると、陰樹に置きかわっていく。');
       else lines.push('スダジイ・タブノキなどの陰樹が優占する陰樹林になる。林床が暗くても陰樹の芽ばえは育つので、陰樹林は大きく変化しなくなる。この安定した状態を極相といい、その森林を極相林という。');
-      lines.push(`陽樹の芽ばえは補償点が高く、相対照度 約${COMP.sun}% 以下では育たない（模式）。陰樹の芽ばえは補償点が低いので、約${COMP.shade}% の暗い林床でも育つ。光の強さと光合成の関係（B4）が、遷移の進み方を決めている。`);
+      lines.push(`陽樹の芽ばえは補償点が高いので、相対照度 約${COMP.sun}% 以下の林床では生育できない（目安）。陰樹の芽ばえは補償点が低いので、約${COMP.shade}% の暗い林床でも生育できる。光の強さと光合成の関係（B4）が、遷移の進み方を決めている。`);
       if (st.mode === 'secondary') lines.push('二次遷移は、山火事や伐採のあとなど、土壌や種子・根が残っている場所から始まるので、一次遷移よりずっと速く進む。');
       exp.set(lines);
       ctx.update({ ...st, stage: id, t: st.t, sunOk });

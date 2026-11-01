@@ -36,6 +36,8 @@
   --region-2: rgba(196, 68, 26, 0.08);
   --region-3: rgba(30, 127, 69, 0.22);
   --region-4: rgba(138, 106, 0, 0.10);
+  --day: #fff1a8;   /* 明期（明るい黄） */
+  --night: #3a3f47; /* 暗期（濃い灰） */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -65,6 +67,8 @@
     --region-2: rgba(255, 154, 107, 0.12);
     --region-3: rgba(111, 220, 149, 0.22);
     --region-4: rgba(240, 201, 90, 0.10);
+    --day: #e8d36a;
+    --night: #050607;
     --shadow: none;
   }
 }
@@ -94,6 +98,8 @@
   --region-2: rgba(255, 154, 107, 0.12);
   --region-3: rgba(111, 220, 149, 0.22);
   --region-4: rgba(240, 201, 90, 0.10);
+  --day: #e8d36a;
+  --night: #050607;
   --shadow: none;
 }
 
@@ -3597,7 +3603,7 @@ __m["models/succession.js"] = (function () {
 // 一次遷移は土壌がない状態から始まるので長い年月（数百年以上）がかかる。
 // 二次遷移は土壌や種子・根などが残っているところから始まるので速く進む。
 const STAGES = [
-  { id: 'bare', name: '裸地・荒原', plants: '地衣類・コケ植物（先駆種）', from: 0 },
+  { id: 'bare', name: '裸地・荒原', plants: '地衣類・コケ植物など（先駆種）', from: 0 },
   { id: 'grass', name: '草原', plants: 'ススキ・イタドリなどの草本', from: 50 },
   { id: 'shrub', name: '低木林', plants: 'ヤシャブシ・ヤマツツジなど', from: 120 },
   { id: 'sun', name: '陽樹林', plants: 'アカマツ・コナラなど', from: 180 },
@@ -3605,7 +3611,7 @@ const STAGES = [
   { id: 'climax', name: '陰樹林（極相林）', plants: 'スダジイ・タブノキ・アラカシなど', from: 420 },
 ];
 const PRIMARY_END = 600;
-const SECONDARY_SPEED = 4; // 二次遷移では、このモデルでは4倍の速さで進む（模式）
+const SECONDARY_SPEED = 3.6; // 二次遷移では、このモデルでは約3.6倍の速さで進む（模式）
 
 const sig = (x, mid, w) => 1 / (1 + Math.exp(-(x - mid) / w));
 
@@ -3613,8 +3619,8 @@ const sig = (x, mid, w) => 1 / (1 + Math.exp(-(x - mid) / w));
 function state(t) {
   const soil = 100 * sig(t, 120, 40); // 土壌の発達
   const height = 2 + 23 * sig(t, 230, 45); // 植生の高さ［m］
-  const sunTrees = 100 * sig(t, 190, 25) * (1 - sig(t, 380, 45)); // 陽樹の割合（森林に占める）
-  const shadeTrees = 100 * sig(t, 360, 45);
+  const sunTrees = 100 * sig(t, 190, 25) * (1 - sig(t, 380, 45)); // 陽樹の量（相対値）
+  const shadeTrees = 100 * sig(t, 360, 45); // 陰樹の量（相対値）
   // 林床の相対照度［%］：植生が高く茂るほど小さくなる。陰樹林では数%以下
   const floorLight = 100 - 97 * sig(t, 170, 25);
   return { soil, height, sunTrees, shadeTrees, floorLight };
@@ -3631,8 +3637,8 @@ function relativeLight(floor, open) {
   return (floor / open) * 100;
 }
 
-// 芽ばえが育つかどうか（B4 の光―光合成曲線の考え方：補償点より明るくないと育たない。模式）
-// 陽樹の芽ばえの補償点は相対照度 約10%、陰樹の芽ばえは約2%（目安）
+// 芽ばえが育つかどうか（B4 の光―光合成曲線の考え方。模式）
+// 陽樹の芽ばえは補償点が高いので、相対照度 約10%以下の林床では生育できない。陰樹の芽ばえは約2%でも生育できる（生育できる明るさの下限の目安）
 const COMP = { sun: 10, shade: 2 };
 function seedlingGrows(kind, relLight) {
   return relLight > COMP[kind];
@@ -3652,7 +3658,7 @@ const { sample } = __m["lib/series.js"];
 
 const SEC_END = 150;
 const SEC_START = 50; // 二次遷移は草原の段階から始まるとみなす（土壌や種子・根が残っている）
-const effOf = (mode, t) => (mode === 'primary' ? t : SEC_START + t * SECONDARY_SPEED * 0.9);
+const effOf = (mode, t) => (mode === 'primary' ? t : SEC_START + t * SECONDARY_SPEED);
 
 const dojo = {
   tasks: [
@@ -3699,8 +3705,8 @@ const dojo = {
       });
       leg.replaceChildren(legend([
         { label: '林床の相対照度（林外＝100）', color: 'c5' },
-        { label: '陽樹の割合（森林の高木に占める）', color: 'c2', dash: 'dash' },
-        { label: '陰樹の割合', color: 'c3', dash: 'dot' },
+        { label: '陽樹の量（最大＝100）', color: 'c2', dash: 'dash' },
+        { label: '陰樹の量（最大＝100）', color: 'c3', dash: 'dot' },
         { label: '植生の高さ（最大＝100）', color: 'c1', dash: 'dashdot' },
         { label: `相対照度 ${COMP.sun}%（陽樹の芽ばえが育つ明るさの目安）`, color: 'c2', dash: 'dot' },
       ]));
@@ -3709,13 +3715,13 @@ const dojo = {
       status.textContent = `${st.t} 年：${stg.name}（${stg.plants}）。林床の相対照度 約${fmt(s.floorLight, 0)}%、陽樹の芽ばえ ${sunOk ? '育つ' : '育たない'}、陰樹の芽ばえ ${shadeOk ? '育つ' : '育たない'}。`;
       const lines = [];
       const id = stg.id;
-      if (id === 'bare') lines.push('溶岩台地などの裸地には土壌がなく、栄養分や水分が少ない。乾燥や栄養の少なさに強い地衣類やコケ植物が最初に侵入する（先駆種）。これらの遺体などから少しずつ土壌がつくられる。');
+      if (id === 'bare') lines.push('溶岩台地などの裸地には土壌がなく、栄養分や水分が少ない。乾燥や栄養の少なさに強い地衣類やコケ植物が最初に侵入する（先駆種）。日本の火山島などでは、ススキやイタドリなどの草本が先駆種になることも多い。');
       else if (id === 'grass') lines.push('土壌ができると、ススキなどの草本が生育して草原になる。遷移の初期に侵入する植物は、種子が小さく風で遠くまで運ばれるものが多い。');
       else if (id === 'shrub') lines.push('土壌がさらに発達すると、ヤシャブシ・ヤマツツジなどの低木が生育し、低木林になる。');
       else if (id === 'sun') lines.push('アカマツ・コナラなどの陽樹が育って陽樹林になる。陽樹は強い光のもとで成長が速いが、林が茂ると林床が暗くなり、陽樹の芽ばえは育ちにくくなる。');
       else if (id === 'mixed') lines.push('暗い林床でも育つ陰樹の芽ばえが成長し、陽樹と陰樹が混じった混交林になる。陽樹は寿命などで枯れると、陰樹に置きかわっていく。');
       else lines.push('スダジイ・タブノキなどの陰樹が優占する陰樹林になる。林床が暗くても陰樹の芽ばえは育つので、陰樹林は大きく変化しなくなる。この安定した状態を極相といい、その森林を極相林という。');
-      lines.push(`陽樹の芽ばえは補償点が高く、相対照度 約${COMP.sun}% 以下では育たない（模式）。陰樹の芽ばえは補償点が低いので、約${COMP.shade}% の暗い林床でも育つ。光の強さと光合成の関係（B4）が、遷移の進み方を決めている。`);
+      lines.push(`陽樹の芽ばえは補償点が高いので、相対照度 約${COMP.sun}% 以下の林床では生育できない（目安）。陰樹の芽ばえは補償点が低いので、約${COMP.shade}% の暗い林床でも生育できる。光の強さと光合成の関係（B4）が、遷移の進み方を決めている。`);
       if (st.mode === 'secondary') lines.push('二次遷移は、山火事や伐採のあとなど、土壌や種子・根が残っている場所から始まるので、一次遷移よりずっと速く進む。');
       exp.set(lines);
       ctx.update({ ...st, stage: id, t: st.t, sunOk });
@@ -7168,15 +7174,15 @@ return { dojo };
 __m["models/synapse.js"] = (function () {
 // A14 シナプスと興奮の統合
 // シナプス後細胞の膜電位（模式）：静止電位 −70 mV、閾値 −55 mV。
-//   興奮性シナプス後電位（EPSP）：1回で約 ＋8 mV の脱分極（Na⁺ などが流入）。
-//   抑制性シナプス後電位（IPSP）：1回で約 −5 mV の過分極（Cl⁻ が流入するなど）。
+//   興奮性シナプス後電位（EPSP）：1回で約 ＋10 mV の脱分極（Na⁺ などが流入）。
+//   抑制性シナプス後電位（IPSP）：1回で約 −6 mV の過分極（Cl⁻ が流入するなど）。
 // 1回の電位変化は数ミリ秒〜十数ミリ秒で消えていく。間隔が短いと重なり合う（時間的加重）。
 // 複数のシナプスから同時に入力があると足し合わされる（空間的加重）。
 // 和が閾値に達すると、シナプス後細胞に活動電位が生じる。
 const REST = -70;
 const THRESHOLD = -55;
-const EPSP = 8;
-const IPSP = -5;
+const EPSP = 10;
+const IPSP = -6;
 const RISE = 4; // ms（ピークまでの時間。そのあと十数ミリ秒で消えていく）
 const T_END = 50; // 表示する時間 ms
 
@@ -7221,7 +7227,7 @@ const { h } = __m["lib/dom.js"];
 const { fmt } = __m["lib/format.js"];
 const { createChart, legend } = __m["lib/chart.js"];
 const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
-const { potential, firstCrossing, buildInputs, REST, THRESHOLD, EPSP, IPSP, T_END } = __m["models/synapse.js"];
+const { potential, firstCrossing, buildInputs, psp, REST, THRESHOLD, EPSP, IPSP, RISE, T_END } = __m["models/synapse.js"];
 const { monotoneCubic } = __m["lib/interp.js"];
 const { sample } = __m["lib/series.js"];
 
@@ -7281,7 +7287,9 @@ const dojo = {
       lines.push('シナプス前細胞の末端に興奮が伝わると、神経伝達物質がシナプス間隙に放出され、シナプス後細胞の受容体に結合する。興奮性シナプスでは Na⁺ などが流入して脱分極（EPSP）、抑制性シナプスでは Cl⁻ が流入するなどして過分極（IPSP）が起こる。');
       if (tr.tc != null) lines.push(`膜電位の和が閾値に達したので（${fmt(tr.tc, 1)} ミリ秒）、シナプス後細胞に活動電位が生じた。`);
       else lines.push('膜電位の和が閾値に達しないので、シナプス後細胞に活動電位は生じない。');
-      if (st.nA >= 2) lines.push(st.interval <= 5 ? `Aからの入力の間隔が短い（${st.interval} ミリ秒）ので、前のEPSPが消えないうちに次のEPSPが重なる（時間的加重）。` : `間隔が ${st.interval} ミリ秒と長いので、前のEPSPがほとんど消えてから次のEPSPが起こり、重なりが小さい。`);
+      // 2回目の EPSP がピークになるとき、1回目の EPSP がどれだけ残っているか
+      const left = psp(st.interval + RISE);
+      if (st.nA >= 2) lines.push(left >= 0.3 ? `Aからの入力の間隔が ${st.interval} ミリ秒なので、2回目の EPSP がピークになるとき、1回目の EPSP がまだ約${fmt(left * 100, 0)}% 残っていて、重なり合う（時間的加重）。` : `間隔が ${st.interval} ミリ秒と長いので、2回目の EPSP がピークになるとき、1回目の EPSP は約${fmt(left * 100, 0)}% しか残っておらず、重なりが小さい。`);
       if (st.useB) lines.push('AとBから同時に入力があるので、2つのEPSPが足し合わされる（空間的加重）。');
       if (st.useC) lines.push('抑制性ニューロンCからの IPSP が加わり、膜電位が下げられる。このように、多くのシナプスからの入力が足し合わされ、その結果で興奮するかどうかが決まる（興奮の統合）。');
       exp.set(lines);
@@ -7433,9 +7441,9 @@ const dojo = {
         texts: STEPS.map((s, i) => ({ x: STEPS.slice(0, i).reduce((a, x) => a + x.sec, 0) + s.sec / 2, y: s.temp + 6, text: s.name, color: 'fg' })),
       });
       leg2.replaceChildren(legend([{ label: '温度の変化（2サイクル分。時間は目安）', color: 'c2' }]));
-      note.textContent = '実際には、サイクル数が多くなるとプライマーや材料が減って増え方が鈍る。また、はじめの数サイクルでは目的の長さより長い DNA も含まれる。';
+      note.textContent = '実際には、サイクル数が多くなるとプライマーや材料が減って増え方が鈍る。また、はじめの数サイクルでは目的の長さより長い DNA も含まれる（発展：両端がプライマーの位置でそろった目的の長さの2本鎖は、n サイクル後に 2ⁿ − 2n 分子になる）。';
       exp.set([
-        `${n} サイクル後の DNA ＝ ${st.initial} × 2^${n} ＝ ${sci(N)} 分子。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型に新しい鎖が合成されるので、理想的には毎回2倍になる。`,
+        `${n} サイクル後の DNA ＝ ${st.initial} × 2 の ${n} 乗 ＝ ${sci(N)} 分子。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型に新しい鎖が合成されるので、理想的には毎回2倍になる。`,
         STEPS.map((s) => `${s.name}（約${s.temp}℃）：${s.desc}`).join('。') + '。',
         '熱変性で約95℃の高温になるので、高温でも失活しない耐熱性の DNAポリメラーゼ（好熱菌などから得たもの）を使う。プライマーは増やしたい領域の両端に結合する短い1本鎖 DNA である。',
       ]);
@@ -7482,7 +7490,7 @@ const dojo = {
       exp.set([
         'DNA はリン酸を含み負の電荷をもつので、電圧をかけると陽極（＋）へ向かって移動する。寒天（アガロース）の網目の中では、短い断片ほど通りやすいので遠くまで移動する。',
         `${ENZ[st.enz].label} で切断すると、断片は ${frs.map((x) => x.toLocaleString('ja-JP')).join('・')} 塩基対（合計 ${sum.toLocaleString('ja-JP')}）。${cuts.length === 1 ? '環状の DNA を1か所で切ると、全長の直鎖状の DNA が1本できる。' : `環状の DNA を${cuts.length}か所で切ると、断片は${cuts.length}本できる。`}`,
-        '長さのわからない断片の長さは、マーカーの移動距離から作った検量線に、その断片の移動距離をあてはめて求める。同じ長さの断片は同じ位置に重なって1本のバンドに見える。',
+        '長さのわからない断片の長さは、マーカーの移動距離から作った検量線に、その断片の移動距離をあてはめて求める。同じ長さの断片は同じ位置に重なって1本のバンドに見え、そのぶん濃く（太く）見える。',
       ]);
       return { nFrag: frs.length, nBand: uniq.length };
     }
@@ -7533,12 +7541,12 @@ function danceType(distance) {
   return distance < NEAR ? 'round' : 'waggle';
 }
 
-// 一定時間（15秒）あたりの8の字ダンスの回数（距離が大きいほど少ない。模式）
+// 一定時間（15秒）あたりの8の字ダンスの回数（距離が大きいほど少ない。フリッシュのデータの目安：100 m で約9回、1 km で約5回、3 km で約2回）
 function dancesPer15s(distance) {
-  return 10 / (1 + distance / 500);
+  return 10 / (1 + distance / 900);
 }
 
-// 太陽の方位は1時間に約15°ずつ（東→南→西へ）移る（模式）
+// 太陽の方位は1時間に平均約15°ずつ（東→南→西へ）移る（平均の目安。実際の方位の変化は正午ごろ速く、朝夕は遅い）
 const SUN_SPEED = 15;
 
 const AZ_NAMES = [
@@ -7736,9 +7744,9 @@ const dojo = {
         lines.push(`えさ場が近い（${d} m）ので、円形ダンスを踊る。円形ダンスは、えさ場が巣の近くにあることを伝えるが、方向は表さない。`);
       } else {
         lines.push(`えさ場の方向は、太陽の方向から時計回りに ${((st.food - st.sun) % 360 + 360) % 360}°。巣板の上では、真上を太陽の方向とみなして、真上から同じ角度だけ回した向き（${angleText(dance)}）に尻を振りながら直進する。`);
-        lines.push(`えさ場が遠いほどダンスはゆっくりになり、15秒あたりの8の字ダンスの回数は少なくなる（いまは約${fmt(dancesPer15s(d), 1)}回、模式）。仲間のミツバチは、ダンスについて回ることで、えさ場の方向と距離を知る。`);
+        lines.push(`えさ場が遠いほどダンスの速さ（一定時間あたりの回数）が小さくなり、15秒あたりの8の字ダンスの回数は少なくなる（いまは約${fmt(dancesPer15s(d), 1)}回、模式）。仲間のミツバチは、ダンスについて回ることで、えさ場の方向と距離を知る。`);
       }
-      lines.push(`太陽の方位は時刻とともに1時間に約${SUN_SPEED}°ずつ移動する。同じえさ場でも、時刻が変わるとダンスの角度は変わる。このようなしくみで、太陽の方向を基準にして方向を知ることを太陽コンパスという。`);
+      lines.push(`太陽の方位は時刻とともに1時間に平均 約${SUN_SPEED}°ずつ移動する（平均の目安）。同じえさ場でも、時刻が変わるとダンスの角度は変わる。このようなしくみで、太陽の方向を基準にして方向を知ることを太陽コンパスという。`);
       exp.set(lines);
       ctx.update({ ...st, dance, type, d });
     }
@@ -7843,21 +7851,21 @@ const dojo = {
           a = 0;
         }
       };
-      seg(L0, st.light, 'region-4', '明期');
+      seg(L0, st.light, 'day', '明期');
       const ds = L0 + st.light;
       if (br != null) {
-        seg(ds, br, 'surface-2', fmt(br, 1) + 'h');
-        seg(ds + br, 1, 'c5', '');
-        seg(ds + br + 1, Math.max(0, dark - br - 1), 'surface-2', fmt(Math.max(0, dark - br - 1), 1) + 'h');
-      } else seg(ds, dark, 'surface-2', `暗期 ${fmt(dark, 1)}h`);
+        seg(ds, br, 'night', fmt(br, 1) + 'h');
+        seg(ds + br, 1, 'c2', '');
+        seg(ds + br + 1, Math.max(0, dark - br - 1), 'night', fmt(Math.max(0, dark - br - 1), 1) + 'h');
+      } else seg(ds, dark, 'night', `暗期 ${fmt(dark, 1)}h`);
       chart.draw({
         alt: `明期 ${st.light} 時間、最も長い連続した暗期 ${dp.longest} 時間`,
         x: { min: 0, max: 24, label: '時刻（時）', step: 3 },
         y: { min: 0, max: 1, ticks: [] },
         polygons: polys,
-        texts: br != null ? [{ x: ((ds + br + 0.5) % 24), y: 0.88, text: '光中断', color: 'c5' }] : [],
+        texts: br != null ? [{ x: ((ds + br + 0.5) % 24), y: 0.88, text: '光中断', color: 'c2' }] : [],
       });
-      leg.replaceChildren(legend([{ label: '明期（6時から）', color: 'region-4', bar: true }, { label: '暗期', color: 'surface-2', bar: true }, { label: '光中断', color: 'c5', bar: true }]));
+      leg.replaceChildren(legend([{ label: '明期（6時から）', color: 'day', bar: true }, { label: '暗期', color: 'night', bar: true }, { label: '光中断', color: 'c2', bar: true }]));
       table.replaceChildren(
         h('table', { class: 'data' },
           h('thead', null, h('tr', null, h('th', null, '植物'), h('th', null, '例'), h('th', null, '花芽形成'))),
@@ -11043,7 +11051,7 @@ const B11 = [
         text: `晴れた日の正午に、森林の外の照度が ${open} キロルクス、林床の照度が ${fmt(floor, 1)} キロルクスであった。林床の相対照度は何%か。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `相対照度 ＝ 林床の照度 ÷ 林外の照度 × 100 ＝ ${fmt(floor, 1)} ÷ ${open} × 100 ＝ ${pct}% となる。天気や時刻で照度そのものは変わるので、林外に対する割合で比べると林床の明るさを比べやすいからである。`,
+        explanation: `相対照度 ＝ 林床の照度 ÷ 林外の照度 × 100 ＝ ${fmt(floor, 1)} ÷ ${open} × 100 ＝ ${pct}% となる。照度そのものは天気や時刻で変わるので、林外に対する割合（相対照度）で比べる。`,
       };
     },
   },
@@ -11053,7 +11061,8 @@ const B11 = [
     level: 2,
     kind: 'graph',
     make(rng) {
-      const t = rng.pick([20, 100, 250, 450]);
+      // 森林ができている段階（陽樹林以降）だけを使う（遷移の初期は土壌がなく、明るくても木本は育たない）
+      const t = rng.pick([190, 200, 250, 300, 450]);
       const s = state(t);
       const grows = s.floorLight > 10;
       return {
@@ -11070,7 +11079,7 @@ const B11 = [
         wrong: ['育つ（林床が十分に明るいから）', '育たない（林床が暗いから）', '育つ（林床が暗いほど陽樹はよく育つから）', '育たない（林床が明るすぎるから）'],
         explanation: grows
           ? `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より明るいので、陽樹の芽ばえは育つことができる。遷移の初期は植生が低く、林床まで光がよく届くからである。`
-          : `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より暗いので、陽樹の芽ばえは育たない。高い木が茂って光がさえぎられるので、補償点の高い陽樹の芽ばえは光合成で呼吸を補えないからである。`,
+          : `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より暗いので、陽樹の芽ばえは育たない。高い木が茂って光がさえぎられるので、補償点の高い陽樹の芽ばえは光合成で呼吸を補えず、生育できないからである。`,
       };
     },
   },
@@ -11126,10 +11135,10 @@ const B11 = [
       const sunIsA = rng.chance(0.5);
       const lab = sunIsA ? { sun: KATA[0], shade: KATA[1] } : { sun: KATA[1], shade: KATA[0] };
       return {
-        text: '図のア・イは、遷移が進むにつれて、森林の高木に占める陽樹と陰樹の割合がどう変わるかを表した模式図である。陰樹を表すのはどちらか。',
+        text: '図のア・イは、遷移が進むにつれて、森林の陽樹と陰樹の量（それぞれの最大を100とした相対値）がどう変わるかを表した模式図である。陰樹を表すのはどちらか。',
         chart: {
           x: { min: 0, max: 600, label: '遷移が始まってからの年数', step: 100 },
-          y: { min: 0, max: 110, label: '高木に占める割合（%）', step: 20 },
+          y: { min: 0, max: 110, label: '量（相対値）', step: 20 },
           series: [
             { points: sample((x) => state(x).sunTrees, 0, 600, 300), color: 'c2', dash: sunIsA ? 'solid' : 'dash', width: 3, label: lab.sun, labelAt: 220 },
             { points: sample((x) => state(x).shadeTrees, 0, 600, 300), color: 'c3', dash: sunIsA ? 'dash' : 'solid', width: 3, label: lab.shade, labelAt: 520 },
@@ -14349,14 +14358,15 @@ const A14 = [
     kind: 'graph',
     make(rng) {
       const kind = rng.pick(['temporal', 'spatial']);
-      const inputs = kind === 'temporal' ? buildInputs({ nA: 2, interval: 2 }) : buildInputs({ nA: 1, useB: true });
+      // 図では閾値に達しない小さな EPSP（6 mV）で加重のようすだけを示す
+      const inputs = kind === 'temporal' ? [{ t: 5, amp: 6 }, { t: 8, amp: 6 }] : [{ t: 5, amp: 6 }, { t: 5, amp: 6 }];
       return {
-        text: `図は、シナプス後細胞の膜電位の変化を表している。${kind === 'temporal' ? '1つのシナプス前細胞から、短い間隔で2回続けて入力があった' : '2つのシナプス前細胞から、同時に1回ずつ入力があった'}ときの変化である（活動電位は描いていない）。このような EPSP の足し合わせを何というか。`,
+        text: `図は、シナプス後細胞の膜電位の変化を表している。${kind === 'temporal' ? '1つのシナプス前細胞から、短い間隔で2回続けて入力があった' : '2つのシナプス前細胞から、同時に1回ずつ入力があった'}ときの変化である（膜電位は閾値に達していない）。このような EPSP の足し合わせを何というか。`,
         chart: {
           x: { min: 0, max: 40, label: '時間（ミリ秒）', step: 10 },
           y: { min: -75, max: -50, label: '膜電位（mV）', step: 5 },
           series: [{ points: sample((t) => potential(t, inputs), 0, 40, 400), color: 'c1', width: 3 }],
-          hlines: [{ y: THRESHOLD, color: 'c2', dash: 'dash', label: '閾値', align: 'right' }],
+          hlines: [{ y: REST, color: 'muted', dash: 'dot', label: '静止電位', align: 'right' }],
           alt: 'EPSP の加重',
         },
         correct: kind === 'temporal' ? '時間的加重' : '空間的加重',
@@ -14460,7 +14470,7 @@ const A15 = [
         text: `2本鎖 DNA が ${init} 分子ある。PCR法で ${n} サイクルの反応を行うと、目的の DNA 領域は理論上何分子になるか（1サイクルで2倍になるものとする）。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `1サイクルごとに2倍になるので、${init} × 2^${n} ＝ ${ans.toLocaleString('ja-JP')} 分子となる。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型として新しい鎖が合成されるからである。`,
+        explanation: `1サイクルごとに2倍になるので、${init} × 2 の ${n} 乗 ＝ ${ans.toLocaleString('ja-JP')} 分子となる。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型として新しい鎖が合成されるからである。`,
       };
     },
   },
@@ -14561,7 +14571,7 @@ const A15 = [
       const len = rng.pick([4000, 5000, 6000, 8000]);
       const a = rng.pick([500, 1000, 1500]);
       const b = a + rng.pick([1000, 1500, 2000, 2500]);
-      if (b >= len) return this.make(rng);
+      if (b >= len || b - a === len / 2) return this.make(rng); // 2本が同じ長さになる組合せは使わない
       const frs = fragments(len, [a, b]);
       const ask = rng.pick(['short', 'long']);
       const ans = ask === 'short' ? Math.min(...frs) : Math.max(...frs);
@@ -14585,7 +14595,7 @@ const A15 = [
           text: 'DNA の特定の塩基配列を認識して切断する酵素を何というか。',
           correct: '制限酵素',
           wrong: ['DNAリガーゼ', 'DNAポリメラーゼ', 'RNAポリメラーゼ', '逆転写酵素'],
-          explanation: 'これは制限酵素である。なお、制限酵素は細菌がもつ酵素で、侵入したウイルスの DNA を切断して身を守るはたらきをもっているので、遺伝子組換えで DNA を切り出す道具として使われる。',
+          explanation: 'これは制限酵素である。なお、制限酵素はもともと細菌がもつ酵素で、侵入したウイルスの DNA を切断して身を守っている。特定の塩基配列だけで切断するので、遺伝子組換えで DNA を切り出す道具として使われる。',
         };
       }
       return {
@@ -14604,7 +14614,7 @@ return { A15 };
 __m["questions/a16.js"] = (function () {
 // A16 動物の行動 の問題
 const { distinctNumbers } = __m["questions/common.js"];
-const { danceAngle, foodAzimuth, azName, SUN_SPEED } = __m["models/behavior.js"];
+const { danceAngle, foodAzimuth, azName, SUN_SPEED, dancesPer15s } = __m["models/behavior.js"];
 
 const AZ = [0, 45, 90, 135, 180, 225, 270, 315];
 const angleText = (a) => (a === 0 ? '真上' : Math.abs(a) === 180 ? '真下' : `真上から${a > 0 ? '右' : '左'}に${Math.abs(a)}°`);
@@ -14673,7 +14683,7 @@ const A16 = [
         text: 'ミツバチのダンスについて正しいものはどれか。',
         correct: 'えさ場が近いときは円形ダンス、遠いときは8の字ダンスを踊る',
         wrong: ['えさ場が近いときは8の字ダンス、遠いときは円形ダンスを踊る', 'えさ場が遠いほど、一定時間あたりの8の字ダンスの回数は多くなる', '8の字ダンスの直進方向は、えさ場の方位をそのまま（北を真上として）表す'],
-        explanation: 'えさ場が近いときは円形ダンス、遠いときは8の字ダンスを踊り、8の字ダンスは方向と距離を伝える。えさ場が遠いほどダンスはゆっくりになり、一定時間あたりの回数が少なくなるので、仲間は回数から距離を知ることができる。',
+        explanation: 'えさ場が近いときは円形ダンス、遠いときは8の字ダンスを踊り、8の字ダンスは方向と距離を伝える。えさ場が遠いほどダンスの速さ（一定時間あたりの回数）が小さくなるので、仲間は回数から距離を知ることができる。',
       };
     },
   },
@@ -14715,7 +14725,7 @@ const A16 = [
     make(rng) {
       const near = rng.chance(0.5);
       const pts = [];
-      for (let d = 100; d <= 4000; d += 50) pts.push([d, 10 / (1 + d / 500)]);
+      for (let d = 100; d <= 4000; d += 50) pts.push([d, dancesPer15s(d)]);
       return {
         text: '図は、巣からえさ場までの距離と、15秒あたりの8の字ダンスの回数の関係を表した模式図である。この図から考えられることとして正しいものはどれか。',
         chart: {
@@ -14726,7 +14736,7 @@ const A16 = [
         },
         correct: near ? 'ダンスの回数が多いほど、えさ場は近い' : 'えさ場が遠いほど、ダンスの回数は少ない',
         wrong: ['ダンスの回数が多いほど、えさ場は遠い', 'えさ場が遠いほど、ダンスの回数は多い', 'ダンスの回数は、えさ場までの距離に関係しない', 'ダンスの回数は、えさ場の方向を表している'],
-        explanation: '図では距離が大きいほど15秒あたりの回数が少なくなっている。ダンスの回数（速さ）でえさ場までの距離が伝わるので、仲間のミツバチは回数から距離を知ることができるからである。',
+        explanation: '図では距離が大きいほど15秒あたりの回数が少なくなっている。ダンスの速さ（一定時間あたりの回数）でえさ場までの距離が伝わるので、仲間のミツバチは回数から距離を知ることができるからである。',
       };
     },
   },
@@ -14846,19 +14856,19 @@ const A17 = [
       const polys = [];
       conds.forEach((c, i) => {
         const y = 2.5 - i;
-        const rect = (x0, x1, fill) => polys.push({ points: [[x0, y - 0.3], [x1, y - 0.3], [x1, y + 0.3], [x0, y + 0.3]], fill, stroke: 'fg' });
-        rect(0, c.light, 'region-4');
-        if (c.at == null) rect(c.light, 24, 'surface-2');
+        const rect = (x0, x1, fill, label = '') => polys.push({ points: [[x0, y - 0.3], [x1, y - 0.3], [x1, y + 0.3], [x0, y + 0.3]], fill, stroke: 'fg', label: x1 - x0 >= 3 ? label : '', at: [(x0 + x1) / 2, y] });
+        rect(0, c.light, 'day', '明期');
+        if (c.at == null) rect(c.light, 24, 'night', '暗期');
         else {
-          rect(c.light, c.light + c.at, 'surface-2');
-          rect(c.light + c.at, c.light + c.at + 1, 'c5');
-          rect(c.light + c.at + 1, 24, 'surface-2');
+          rect(c.light, c.light + c.at, 'night', '暗期');
+          rect(c.light + c.at, c.light + c.at + 1, 'c2');
+          rect(c.light + c.at + 1, 24, 'night', '暗期');
         }
       });
       const names = (ans) => ans.map((i) => KATA[i]).join('と');
       const correct = names(ansIdx);
       return {
-        text: `図のア〜ウは、1日24時間の明期（うすい色）・暗期（濃い色）・光中断（黄）の条件である。限界暗期が ${critical} 時間の${TYPES[type].name}が花芽を形成するのはどの条件か。`,
+        text: `図のア〜ウは、1日24時間の明期（明るい黄色）・暗期（濃い色）・光中断（暗期の中の朱色の部分、1時間）の条件である。限界暗期が ${critical} 時間の${TYPES[type].name}が花芽を形成するのはどの条件か。`,
         chart: {
           x: { min: 0, max: 24, label: '明期の開始からの時間（時間）', step: 2 },
           y: { min: 0, max: 3, ticks: [{ v: 2.5, text: 'ア' }, { v: 1.5, text: 'イ' }, { v: 0.5, text: 'ウ' }] },
@@ -14910,9 +14920,10 @@ const A17 = [
       // 何時間以上（以下）の明期で花芽を形成するか
       const lim = 24 - critical;
       return {
-        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、1日24時間のうち明期の長さだけを変えて育てる（光中断はしない）。花芽を形成するのは、明期がどのような長さのときか。`,
+        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、1日24時間のうち明期の長さだけを変えて育てる（光中断はしない）。花芽を形成する明期の長さの範囲を、過不足なく表したものはどれか。`,
         correct: type === 'short' ? `明期が ${lim} 時間より短いとき` : `明期が ${lim} 時間より長いとき`,
-        wrong: [type === 'short' ? `明期が ${lim} 時間より長いとき` : `明期が ${lim} 時間より短いとき`, `明期が ${critical} 時間より短いとき`, `明期が ${critical} 時間より長いとき`],
+        // 短日植物で「明期が限界暗期の値より短いとき」は、花芽を形成する範囲の一部なので誤答に使わない
+        wrong: [type === 'short' ? `明期が ${lim} 時間より長いとき` : `明期が ${lim} 時間より短いとき`, type === 'short' ? '明期の長さに関係なく花芽を形成する' : `明期が ${critical} 時間より短いとき`, `明期が ${critical} 時間より長いとき`],
         explanation: `暗期 ＝ 24 − 明期 なので、暗期が限界暗期 ${critical} 時間より${type === 'short' ? '長い' : '短い'}のは、明期が 24 − ${critical} ＝ ${lim} 時間より${type === 'short' ? '短い' : '長い'}ときである。花芽形成を決めるのは連続した暗期の長さなので、明期の長さに直すときは24時間から引いて考えなければならないからである。`,
       };
     },
@@ -16186,7 +16197,7 @@ const GLOSSARY = {
     { term: '遷移', desc: '植生が時間とともに移り変わっていくこと。' },
     { term: '一次遷移', desc: '溶岩台地など、土壌のない裸地から始まる遷移。荒原 → 草原 → 低木林 → 陽樹林 → 混交林 → 陰樹林と進む。' },
     { term: '二次遷移', desc: '山火事や伐採のあとなど、土壌や種子・根などが残っている場所から始まる遷移。一次遷移より速く進む。' },
-    { term: '先駆種', desc: '遷移の初期に裸地に侵入する生物。地衣類やコケ植物など、乾燥や貧栄養に強い。' },
+    { term: '先駆種', desc: '遷移の初期に裸地に侵入する生物。地衣類やコケ植物など、乾燥や貧栄養に強い。日本の火山島などでは、ススキやイタドリなどの草本が先駆種になることも多い。' },
     { term: '陽樹', desc: '強い光のもとで成長が速いが、補償点が高く、暗い林床では芽ばえが育たない樹木。アカマツ・コナラなど。' },
     { term: '陰樹', desc: '補償点が低く、暗い林床でも芽ばえが育つ樹木。スダジイ・タブノキ・アラカシなど。' },
     { term: '極相（極相林）', desc: '遷移が進んで、大きく変化しなくなった安定した状態（森林）。暖温帯では陰樹林。' },
@@ -16367,7 +16378,7 @@ const GLOSSARY = {
     { term: '短日植物', desc: '連続した暗期が限界暗期より長くなると花芽を形成する植物。キク・アサガオ・オナモミなど。' },
     { term: '長日植物', desc: '連続した暗期が限界暗期より短くなると花芽を形成する植物。アブラナ・ホウレンソウ・コムギなど。' },
     { term: '中性植物', desc: '日長に関係なく花芽を形成する植物。トマト・トウモロコシなど。' },
-    { term: '光中断', desc: '暗期の途中で短時間光を当てること。連続した暗期が短くなるので、短日植物は花芽を形成しなくなる。' },
+    { term: '光中断', desc: '暗期の途中で短時間光を当てること。連続した暗期が分けられて短くなる。最長の連続した暗期が限界暗期より短くなると、短日植物は花芽を形成しなくなり、長日植物は花芽を形成するようになる。' },
     { term: 'フロリゲン', desc: '日長を感じた葉でつくられ、師管を通って茎頂に運ばれて花芽形成を促す物質（花成ホルモン）。' },
     { term: 'フィトクロム', desc: '赤色光と遠赤色光を吸収して型が変わる光受容体。光周性や光発芽にかかわる。' },
     { term: '春化', desc: '一定期間の低温を経験することで花芽形成が促進される現象。秋まきコムギなど。' },

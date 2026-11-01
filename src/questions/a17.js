@@ -94,19 +94,19 @@ export const A17 = [
       const polys = [];
       conds.forEach((c, i) => {
         const y = 2.5 - i;
-        const rect = (x0, x1, fill) => polys.push({ points: [[x0, y - 0.3], [x1, y - 0.3], [x1, y + 0.3], [x0, y + 0.3]], fill, stroke: 'fg' });
-        rect(0, c.light, 'region-4');
-        if (c.at == null) rect(c.light, 24, 'surface-2');
+        const rect = (x0, x1, fill, label = '') => polys.push({ points: [[x0, y - 0.3], [x1, y - 0.3], [x1, y + 0.3], [x0, y + 0.3]], fill, stroke: 'fg', label: x1 - x0 >= 3 ? label : '', at: [(x0 + x1) / 2, y] });
+        rect(0, c.light, 'day', '明期');
+        if (c.at == null) rect(c.light, 24, 'night', '暗期');
         else {
-          rect(c.light, c.light + c.at, 'surface-2');
-          rect(c.light + c.at, c.light + c.at + 1, 'c5');
-          rect(c.light + c.at + 1, 24, 'surface-2');
+          rect(c.light, c.light + c.at, 'night', '暗期');
+          rect(c.light + c.at, c.light + c.at + 1, 'c2');
+          rect(c.light + c.at + 1, 24, 'night', '暗期');
         }
       });
       const names = (ans) => ans.map((i) => KATA[i]).join('と');
       const correct = names(ansIdx);
       return {
-        text: `図のア〜ウは、1日24時間の明期（うすい色）・暗期（濃い色）・光中断（黄）の条件である。限界暗期が ${critical} 時間の${TYPES[type].name}が花芽を形成するのはどの条件か。`,
+        text: `図のア〜ウは、1日24時間の明期（明るい黄色）・暗期（濃い色）・光中断（暗期の中の朱色の部分、1時間）の条件である。限界暗期が ${critical} 時間の${TYPES[type].name}が花芽を形成するのはどの条件か。`,
         chart: {
           x: { min: 0, max: 24, label: '明期の開始からの時間（時間）', step: 2 },
           y: { min: 0, max: 3, ticks: [{ v: 2.5, text: 'ア' }, { v: 1.5, text: 'イ' }, { v: 0.5, text: 'ウ' }] },
@@ -158,9 +158,10 @@ export const A17 = [
       // 何時間以上（以下）の明期で花芽を形成するか
       const lim = 24 - critical;
       return {
-        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、1日24時間のうち明期の長さだけを変えて育てる（光中断はしない）。花芽を形成するのは、明期がどのような長さのときか。`,
+        text: `限界暗期が ${critical} 時間の${TYPES[type].name}を、1日24時間のうち明期の長さだけを変えて育てる（光中断はしない）。花芽を形成する明期の長さの範囲を、過不足なく表したものはどれか。`,
         correct: type === 'short' ? `明期が ${lim} 時間より短いとき` : `明期が ${lim} 時間より長いとき`,
-        wrong: [type === 'short' ? `明期が ${lim} 時間より長いとき` : `明期が ${lim} 時間より短いとき`, `明期が ${critical} 時間より短いとき`, `明期が ${critical} 時間より長いとき`],
+        // 短日植物で「明期が限界暗期の値より短いとき」は、花芽を形成する範囲の一部なので誤答に使わない
+        wrong: [type === 'short' ? `明期が ${lim} 時間より長いとき` : `明期が ${lim} 時間より短いとき`, type === 'short' ? '明期の長さに関係なく花芽を形成する' : `明期が ${critical} 時間より短いとき`, `明期が ${critical} 時間より長いとき`],
         explanation: `暗期 ＝ 24 − 明期 なので、暗期が限界暗期 ${critical} 時間より${type === 'short' ? '長い' : '短い'}のは、明期が 24 − ${critical} ＝ ${lim} 時間より${type === 'short' ? '短い' : '長い'}ときである。花芽形成を決めるのは連続した暗期の長さなので、明期の長さに直すときは24時間から引いて考えなければならないからである。`,
       };
     },

@@ -65,7 +65,7 @@ export const B11 = [
         text: `晴れた日の正午に、森林の外の照度が ${open} キロルクス、林床の照度が ${fmt(floor, 1)} キロルクスであった。林床の相対照度は何%か。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `相対照度 ＝ 林床の照度 ÷ 林外の照度 × 100 ＝ ${fmt(floor, 1)} ÷ ${open} × 100 ＝ ${pct}% となる。天気や時刻で照度そのものは変わるので、林外に対する割合で比べると林床の明るさを比べやすいからである。`,
+        explanation: `相対照度 ＝ 林床の照度 ÷ 林外の照度 × 100 ＝ ${fmt(floor, 1)} ÷ ${open} × 100 ＝ ${pct}% となる。照度そのものは天気や時刻で変わるので、林外に対する割合（相対照度）で比べる。`,
       };
     },
   },
@@ -75,7 +75,8 @@ export const B11 = [
     level: 2,
     kind: 'graph',
     make(rng) {
-      const t = rng.pick([20, 100, 250, 450]);
+      // 森林ができている段階（陽樹林以降）だけを使う（遷移の初期は土壌がなく、明るくても木本は育たない）
+      const t = rng.pick([190, 200, 250, 300, 450]);
       const s = state(t);
       const grows = s.floorLight > 10;
       return {
@@ -92,7 +93,7 @@ export const B11 = [
         wrong: ['育つ（林床が十分に明るいから）', '育たない（林床が暗いから）', '育つ（林床が暗いほど陽樹はよく育つから）', '育たない（林床が明るすぎるから）'],
         explanation: grows
           ? `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より明るいので、陽樹の芽ばえは育つことができる。遷移の初期は植生が低く、林床まで光がよく届くからである。`
-          : `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より暗いので、陽樹の芽ばえは育たない。高い木が茂って光がさえぎられるので、補償点の高い陽樹の芽ばえは光合成で呼吸を補えないからである。`,
+          : `約${t}年では相対照度が約${fmt(s.floorLight, 0)}%と10%より暗いので、陽樹の芽ばえは育たない。高い木が茂って光がさえぎられるので、補償点の高い陽樹の芽ばえは光合成で呼吸を補えず、生育できないからである。`,
       };
     },
   },
@@ -148,10 +149,10 @@ export const B11 = [
       const sunIsA = rng.chance(0.5);
       const lab = sunIsA ? { sun: KATA[0], shade: KATA[1] } : { sun: KATA[1], shade: KATA[0] };
       return {
-        text: '図のア・イは、遷移が進むにつれて、森林の高木に占める陽樹と陰樹の割合がどう変わるかを表した模式図である。陰樹を表すのはどちらか。',
+        text: '図のア・イは、遷移が進むにつれて、森林の陽樹と陰樹の量（それぞれの最大を100とした相対値）がどう変わるかを表した模式図である。陰樹を表すのはどちらか。',
         chart: {
           x: { min: 0, max: 600, label: '遷移が始まってからの年数', step: 100 },
-          y: { min: 0, max: 110, label: '高木に占める割合（%）', step: 20 },
+          y: { min: 0, max: 110, label: '量（相対値）', step: 20 },
           series: [
             { points: sample((x) => state(x).sunTrees, 0, 600, 300), color: 'c2', dash: sunIsA ? 'solid' : 'dash', width: 3, label: lab.sun, labelAt: 220 },
             { points: sample((x) => state(x).shadeTrees, 0, 600, 300), color: 'c3', dash: sunIsA ? 'dash' : 'solid', width: 3, label: lab.shade, labelAt: 520 },

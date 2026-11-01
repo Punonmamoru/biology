@@ -770,11 +770,11 @@ section('A14 シナプスと興奮の統合');
 {
   const peak = (inp) => { let m = -999; for (let t = 0; t <= sy.T_END; t += 0.05) m = Math.max(m, sy.potential(t, inp)); return m; };
   const fires = (c) => sy.firstCrossing(sy.buildInputs(c)) != null;
-  check('EPSP 1回（＋8 mV）では閾値（−55 mV）に達しない', !fires({ nA: 1 }) && near(peak(sy.buildInputs({ nA: 1 })), -62, 0.01));
-  check('時間的加重：短い間隔（2ミリ秒）の2回で閾値に達し、長い間隔（20ミリ秒）では達しない', fires({ nA: 2, interval: 2 }) && !fires({ nA: 2, interval: 20 }));
+  check('EPSP 1回（＋10 mV）では閾値（−55 mV）に達しない', !fires({ nA: 1 }) && near(peak(sy.buildInputs({ nA: 1 })), -60, 0.01));
+  check('時間的加重：数ミリ秒の間隔（2〜5ミリ秒）の2回で閾値に達し、長い間隔（20ミリ秒）では達しない', [2, 3, 4, 5].every((x) => fires({ nA: 2, interval: x })) && !fires({ nA: 2, interval: 20 }));
   check('空間的加重：A と B の同時入力で閾値に達する', fires({ nA: 1, useB: true }));
   check('抑制性シナプス（IPSP）が加わると閾値に達しなくなる', !fires({ nA: 1, useB: true, useC: true }) && peak(sy.buildInputs({ nA: 1, useC: true })) < peak(sy.buildInputs({ nA: 1 })));
-  check('同時入力の単純な和：EPSP 8 mV × 2 − IPSP 5 mV → −59 mV', sy.summedPeak(2, 1) === -59);
+  check('同時入力の単純な和：EPSP 10 mV × 2 − IPSP 6 mV → −56 mV', sy.summedPeak(2, 1) === -56);
 }
 
 // ---------- A15 ----------

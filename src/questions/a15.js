@@ -18,7 +18,7 @@ export const A15 = [
         text: `2本鎖 DNA が ${init} 分子ある。PCR法で ${n} サイクルの反応を行うと、目的の DNA 領域は理論上何分子になるか（1サイクルで2倍になるものとする）。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `1サイクルごとに2倍になるので、${init} × 2^${n} ＝ ${ans.toLocaleString('ja-JP')} 分子となる。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型として新しい鎖が合成されるからである。`,
+        explanation: `1サイクルごとに2倍になるので、${init} × 2 の ${n} 乗 ＝ ${ans.toLocaleString('ja-JP')} 分子となる。1サイクルで2本鎖が1本ずつに分かれ、それぞれを鋳型として新しい鎖が合成されるからである。`,
       };
     },
   },
@@ -119,7 +119,7 @@ export const A15 = [
       const len = rng.pick([4000, 5000, 6000, 8000]);
       const a = rng.pick([500, 1000, 1500]);
       const b = a + rng.pick([1000, 1500, 2000, 2500]);
-      if (b >= len) return this.make(rng);
+      if (b >= len || b - a === len / 2) return this.make(rng); // 2本が同じ長さになる組合せは使わない
       const frs = fragments(len, [a, b]);
       const ask = rng.pick(['short', 'long']);
       const ans = ask === 'short' ? Math.min(...frs) : Math.max(...frs);
@@ -143,7 +143,7 @@ export const A15 = [
           text: 'DNA の特定の塩基配列を認識して切断する酵素を何というか。',
           correct: '制限酵素',
           wrong: ['DNAリガーゼ', 'DNAポリメラーゼ', 'RNAポリメラーゼ', '逆転写酵素'],
-          explanation: 'これは制限酵素である。なお、制限酵素は細菌がもつ酵素で、侵入したウイルスの DNA を切断して身を守るはたらきをもっているので、遺伝子組換えで DNA を切り出す道具として使われる。',
+          explanation: 'これは制限酵素である。なお、制限酵素はもともと細菌がもつ酵素で、侵入したウイルスの DNA を切断して身を守っている。特定の塩基配列だけで切断するので、遺伝子組換えで DNA を切り出す道具として使われる。',
         };
       }
       return {

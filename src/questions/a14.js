@@ -88,14 +88,15 @@ export const A14 = [
     kind: 'graph',
     make(rng) {
       const kind = rng.pick(['temporal', 'spatial']);
-      const inputs = kind === 'temporal' ? buildInputs({ nA: 2, interval: 2 }) : buildInputs({ nA: 1, useB: true });
+      // 図では閾値に達しない小さな EPSP（6 mV）で加重のようすだけを示す
+      const inputs = kind === 'temporal' ? [{ t: 5, amp: 6 }, { t: 8, amp: 6 }] : [{ t: 5, amp: 6 }, { t: 5, amp: 6 }];
       return {
-        text: `図は、シナプス後細胞の膜電位の変化を表している。${kind === 'temporal' ? '1つのシナプス前細胞から、短い間隔で2回続けて入力があった' : '2つのシナプス前細胞から、同時に1回ずつ入力があった'}ときの変化である（活動電位は描いていない）。このような EPSP の足し合わせを何というか。`,
+        text: `図は、シナプス後細胞の膜電位の変化を表している。${kind === 'temporal' ? '1つのシナプス前細胞から、短い間隔で2回続けて入力があった' : '2つのシナプス前細胞から、同時に1回ずつ入力があった'}ときの変化である（膜電位は閾値に達していない）。このような EPSP の足し合わせを何というか。`,
         chart: {
           x: { min: 0, max: 40, label: '時間（ミリ秒）', step: 10 },
           y: { min: -75, max: -50, label: '膜電位（mV）', step: 5 },
           series: [{ points: sample((t) => potential(t, inputs), 0, 40, 400), color: 'c1', width: 3 }],
-          hlines: [{ y: THRESHOLD, color: 'c2', dash: 'dash', label: '閾値', align: 'right' }],
+          hlines: [{ y: REST, color: 'muted', dash: 'dot', label: '静止電位', align: 'right' }],
           alt: 'EPSP の加重',
         },
         correct: kind === 'temporal' ? '時間的加重' : '空間的加重',
