@@ -1,18 +1,22 @@
 // A10 筋収縮
 // ① 刺激の頻度と収縮（カエルの腓腹筋を想定した模式）
-//   1回の刺激による収縮（単収縮）は約0.1秒：潜伏期 約0.01秒 → 収縮期 → 弛緩期。
+//   1回の刺激による収縮（単収縮）は約0.1秒：潜伏期 約0.01秒 → 収縮期 約0.04秒 → 弛緩期 約0.05秒。
 //   刺激の間隔が単収縮の時間より短いと、収縮が重なり合って大きくなる（不完全強縮 → 完全強縮）。
 //   重なり合いは「活性化の和 S」を張力に変換して表す：張力 ＝ T_MAX × (1 − e^(−S/C))（筋が出せる張力には上限がある）
 export const LATENT = 0.01; // 潜伏期［秒］
-export const TAU = 0.02; // 単収縮の形を決める時間［秒］（刺激後 約0.03秒でピーク、約0.1秒でほぼもとにもどる）
+export const T_CONTRACT = 0.04; // 収縮期［秒］
+export const T_RELAX = 0.05; // 弛緩期［秒］（単収縮は合計 約0.1秒）
 export const T_MAX = 1; // 張力の上限（相対値）
-export const C = 2.8; // 単収縮のピークが上限の約3割になるように決めた値
+export const C = 4; // 単収縮のピークが上限の2〜3割になるように決めた値
 
-// 1回の刺激による活性化（刺激後 t 秒）
+// 1回の刺激による活性化（刺激後 t 秒）：潜伏期のあと sin² の形で上がり、弛緩期に cos² の形で下がって 0.1 秒で0にもどる
 export function twitchActivation(t) {
-  const x = (t - LATENT) / TAU;
+  const x = t - LATENT;
   if (x <= 0) return 0;
-  return x * Math.exp(1 - x);
+  if (x < T_CONTRACT) return Math.pow(Math.sin((Math.PI / 2) * (x / T_CONTRACT)), 2);
+  const y = x - T_CONTRACT;
+  if (y < T_RELAX) return Math.pow(Math.cos((Math.PI / 2) * (y / T_RELAX)), 2);
+  return 0;
 }
 
 export function stimulusTimes(freq, duration) {
@@ -37,7 +41,8 @@ export function contractionType(freq, duration = 1) {
   const max = Math.max(...ts);
   const min = Math.min(...ts);
   if (min < SINGLE_PEAK * 0.05) return { type: 'single', max, min };
-  if ((max - min) / max < 0.08) return { type: 'complete', max, min };
+  // 図で見てぎざぎざがわからない程度（ゆれ1%未満）を完全強縮とする
+  if ((max - min) / max < 0.01) return { type: 'complete', max, min };
   return { type: 'incomplete', max, min };
 }
 export const TYPE_NAME = { single: '単収縮のくり返し', incomplete: '不完全強縮', complete: '完全強縮' };

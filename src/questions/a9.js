@@ -96,7 +96,7 @@ export const A9 = [
       const ferm = rng.pick([1 / 3, 0.5, 2 / 3, 0.25, 0.75]);
       const y = yeast(total, ferm);
       const ans = y.co2 / y.o2;
-      const d = distinctNumbers(ans, [y.o2 / y.co2, 1, 2 * y.fer / y.o2, (y.co2 + y.o2) / y.o2, ans * 2], '', 2);
+      const d = distinctNumbers(ans, [y.o2 / y.co2, 1, 2 * y.fer / y.o2, (y.co2 + y.o2) / y.o2, ans * 2], ' 倍', 2);
       return {
         text: `酵母がグルコース ${total} mol を消費し、そのうち ${fmt(y.aer, 2)} mol を呼吸に、${fmt(y.fer, 2)} mol をアルコール発酵に使った。このとき放出したCO₂の量は、吸収したO₂の量のおよそ何倍か。`,
         correct: d.correct,
@@ -181,7 +181,7 @@ export const A9 = [
         text: '激しい運動をしてO₂の供給が追いつかないとき、ヒトの筋肉で行われる、O₂を使わずにグルコースを分解してATPを得るはたらきを何というか。',
         correct: '解糖（乳酸発酵と同じ反応）',
         wrong: ['アルコール発酵', '光合成', 'クエン酸回路', '電子伝達系'],
-        explanation: 'これは解糖で、乳酸発酵と同じ反応でグルコースが乳酸に分解される。クエン酸回路と電子伝達系はO₂がないとはたらかないので、O₂が不足するとこの反応でATPを得るのである。',
+        explanation: 'これは解糖で、乳酸発酵と同じ反応でグルコースが乳酸に分解される。O₂がないと電子伝達系が進まず、その結果クエン酸回路も止まってしまうので、O₂が不足するとこの反応でATPを得るのである。',
       };
     },
   },

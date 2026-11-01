@@ -8,7 +8,7 @@ import { sample } from '../lib/series.js';
 
 // 区分ごとの塗り（区分名を図の中にも書くので、色だけに頼らない）
 const FILL = { resp: 'region-2', undig: 'region-4', growth: 'region-3', grazed: 'region', dead: 'surface-2' };
-const SHORT = { resp: '呼吸', undig: '不消化', growth: '成長', grazed: '被食', dead: '枯死・死滅' };
+const SHORT = { resp: '呼吸', undig: '不消化', growth: '成長', grazed: '被食', dead: '枯死・死亡' };
 
 export const dojo = {
   tasks: [
@@ -89,14 +89,14 @@ export const dojo = {
               h('tr', null, h('td', null, '呼吸量'), h('td', null, r1(b.P.resp)), h('td', null, r1(b.C1.resp)), h('td', null, r1(b.C2.resp))),
               h('tr', null, h('td', null, '純生産量／生産量'), h('td', null, r1(b.P.net)), h('td', null, r1(b.C1.prod)), h('td', null, r1(b.C2.prod))),
               h('tr', null, h('td', null, '被食量'), h('td', null, r1(b.P.grazed)), h('td', null, r1(b.C1.grazed)), h('td', null, '0')),
-              h('tr', null, h('td', null, '枯死量／死滅量'), h('td', null, r1(b.P.dead)), h('td', null, r1(b.C1.dead)), h('td', null, r1(b.C2.dead))),
+              h('tr', null, h('td', null, '枯死量／死亡量'), h('td', null, r1(b.P.dead)), h('td', null, r1(b.C1.dead)), h('td', null, r1(b.C2.dead))),
               h('tr', null, h('td', null, '成長量'), h('td', null, r1(b.P.growth)), h('td', null, r1(b.C1.growth)), h('td', null, r1(b.C2.growth))),
               h('tr', null, h('td', null, 'エネルギー効率'), h('td', null, '—'), h('td', null, `${fmt(e.c1, 1)}%`), h('td', null, `${fmt(e.c2, 1)}%`)),
             ),
           ),
         ),
       );
-      note.textContent = `生産者の総生産量を ${DEFAULT.gross}、枯死量を純生産量の${Math.round(DEFAULT.pDead * 100)}%、消費者の死滅量を生産量の${Math.round(DEFAULT.cDead * 100)}%、一次消費者の被食量を生産量の${Math.round(DEFAULT.cGrazed * 100)}%とした模式（数値は相対値）。生産者のエネルギー効率は入射した光エネルギーが必要なので、ここでは求めない。`;
+      note.textContent = `生産者の総生産量を ${DEFAULT.gross}、枯死量を純生産量の${Math.round(DEFAULT.pDead * 100)}%、消費者の死亡量（死滅量）を生産量の${Math.round(DEFAULT.cDead * 100)}%、一次消費者の被食量を生産量の${Math.round(DEFAULT.cGrazed * 100)}%とした模式（数値は相対値）。生産者のエネルギー効率は入射した光エネルギーが必要なので、ここでは求めない。`;
       exp.set([
         `生産者：純生産量 ＝ 総生産量 − 呼吸量 ＝ ${r1(b.P.gross)} − ${r1(b.P.resp)} ＝ ${r1(b.P.net)}。成長量 ＝ 純生産量 −（被食量 ＋ 枯死量）＝ ${r1(b.P.growth)}。生産者の被食量 ${r1(b.P.grazed)} が、一次消費者の摂食量になる。`,
         `一次消費者：同化量 ＝ 摂食量 − 不消化排出量 ＝ ${r1(b.C1.assim)}、生産量 ＝ 同化量 − 呼吸量 ＝ ${r1(b.C1.prod)}。エネルギー効率 ＝ ${r1(b.C1.assim)} ÷ ${r1(b.P.gross)} × 100 ＝ ${fmt(e.c1, 1)}%。`,

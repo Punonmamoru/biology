@@ -121,7 +121,7 @@ export const A13 = [
         chart: {
           x: { min: 0, max: 150, label: '林齢（年）', step: 25 },
           y: { min: 0, max: 120, label: '量（相対値）', step: 20 },
-          series: order.map((k, i) => ({ points: sample((t) => forest(t)[k], 0, 150, 300), color: styles[i][0], dash: styles[i][1], width: 3, label: KATA[i], labelAt: k === 'net' ? 130 : 145 })),
+          series: order.map((k, i) => ({ points: sample((t) => forest(t)[k], 0, 150, 300), color: styles[i][0], dash: styles[i][1], width: 3, label: KATA[i], labelAt: k === 'net' ? 100 : 70 })),
           alt: '林齢と物質生産の3本の曲線ア〜ウ',
         },
         correct: KATA[idx],
@@ -139,17 +139,18 @@ export const A13 = [
     kind: 'graph',
     make(rng) {
       const g = 1000;
-      const a1 = rng.pick([60, 80, 100, 120, 150]);
-      const a2 = rng.pick([6, 8, 10, 12, 15, 20]);
+      // 教科書の目安（エネルギー効率 おおむね5〜20%）に収まる組合せにする
+      const a1 = rng.pick([100, 120, 150, 200]);
+      const a2 = a1 * rng.pick([0.05, 0.1, 0.15, 0.2]);
       const ans = (a2 / a1) * 100;
       const d = distinctNumbers(ans, [(a2 / g) * 100, (a1 / g) * 100, ans * 2, ans / 2, (a1 / a2)], ' %', 1);
       return {
         text: '図は、ある生態系の各栄養段階の同化量（生産者は総生産量）を表している。二次消費者のエネルギー効率は何%か。',
         chart: {
           x: { min: 0, max: 1 },
-          y: { min: 0, max: 1100, label: '同化量（相対値）', step: 200 },
+          y: { min: 1, max: 3000, log: true, label: '同化量（相対値・対数目盛り）' },
           bars: { categories: ['生産者', '一次消費者', '二次消費者'], groups: [{ values: [g, a1, a2], color: 'c1', label: '同化量' }] },
-          texts: [{ x: 0.5, y: a1 + 120, text: String(a1) }, { x: 0.833, y: a2 + 120, text: String(a2) }, { x: 0.167, y: g + 50, text: String(g) }],
+          texts: [{ x: 0.167, y: g * 1.6, text: String(g) }, { x: 0.5, y: a1 * 1.6, text: String(a1) }, { x: 0.833, y: a2 * 1.6, text: String(a2) }],
           alt: `生産者 ${g}、一次消費者 ${a1}、二次消費者 ${a2}`,
         },
         correct: d.correct,

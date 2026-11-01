@@ -133,7 +133,7 @@ export const dojo = {
     top.append(wrap);
 
     const sF = slider({ label: '刺激の頻度', min: 0, max: FREQS.length - 1, step: 1, value: st.fi, format: (v) => `${FREQS[v]} 回/秒`, onInput: (v) => { st.fi = v; st.touched++; update(); } });
-    const sL = slider({ label: 'サルコメアの長さ', min: 1.2, max: 3.8, step: 0.05, value: st.L, format: (v) => `${fmt(v, 2)} μm`, onInput: (v) => { st.L = v; st.touched++; update(); } });
+    const sL = slider({ label: 'サルコメアの長さ', min: 1.6, max: 3.8, step: 0.05, value: st.L, format: (v) => `${fmt(v, 2)} μm`, onInput: (v) => { st.L = v; st.touched++; update(); } });
     const ctlF = h('div', null, sF.el);
     const ctlS = h('div', null, sL.el);
     const exp = explainBox();

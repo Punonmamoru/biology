@@ -79,7 +79,7 @@ export const dojo = {
     { id: 'same', text: '①で、同じ濃度でも、茎の成長は促進するのに根の成長は抑制する濃度を見つけよう。', short: '器官によって効果が違う' },
     { id: 'gravi', text: '②で、茎が上へ、根が下へ曲がる（茎は負、根は正の重力屈性）ようすを確かめよう。', short: '重力屈性' },
     { id: 'ratio', text: '②で、下側への濃度のかたよりを大きくすると、曲がり方が大きくなることを確かめよう（かたよりを2回以上変える）。', short: 'かたよりと曲がり方' },
-    { id: 'low', text: '②で、オーキシン濃度をとても低くすると、根も上へ曲がる（濃度によって曲がる向きが変わる）ことを確かめよう。', short: '濃度で向きが変わる' },
+    { id: 'strong', text: '②で上側の濃度を高くし、根の下側の成長が強く抑制される（根の下側の効果が負になる）ことを確かめよう。', short: '根の下側は抑制' },
   ],
   mount(root, ctx) {
     const st = { tab: 'curve', x: -7, xu: -7.5, ratio: 4, ratioMoves: 0, touched: 0 };
@@ -99,9 +99,9 @@ export const dojo = {
 
     const sX = slider({ label: 'オーキシン濃度', min: X_MIN, max: X_MAX, step: 0.25, value: st.x, format: (v) => `約 ${supText(v)} mol/L`, onInput: (v) => { st.x = v; st.touched++; update(); } });
     const ctlCurve = h('div', null, sX.el);
-    const sXu = slider({ label: '上側のオーキシン濃度', min: -12, max: -4, step: 0.25, value: st.xu, format: (v) => `約 ${supText(v)} mol/L`, onInput: (v) => { st.xu = v; st.touched++; update(); } });
+    const sXu = slider({ label: '上側のオーキシン濃度', min: -9, max: -6, step: 0.25, value: st.xu, format: (v) => `約 ${supText(v)} mol/L`, onInput: (v) => { st.xu = v; st.touched++; update(); } });
     const sR = slider({ label: '下側の濃度は上側の何倍か', min: 1, max: 10, step: 1, value: st.ratio, format: (v) => `${v} 倍`, onInput: (v) => { st.ratio = v; st.ratioMoves++; update(); } });
-    const ctlGravi = h('div', null, h('p', { class: 'small' }, '芽ばえを水平に置くと、オーキシンは重力の方向（下側）に多く移動する。茎と根で同じ濃度になるとした模式。'), sXu.el, sR.el);
+    const ctlGravi = h('div', null, h('p', { class: 'small' }, '芽ばえを水平に置くと、オーキシンは重力の方向（下側）に多く移動する。茎と根で同じ濃度になるとした模式で、濃度は実際の芽ばえで起こる範囲の目安に限っている。'), sXu.el, sR.el);
     const exp = explainBox();
     root.append(panel('操作', ctlCurve, ctlGravi), panel('いま何が起きているか', exp.el));
 
@@ -172,11 +172,11 @@ export const dojo = {
       drawSeedling(canvas, s, r);
       canvas.setAttribute('aria-label', `茎は${BEND[s.bend]}、根は${BEND[r.bend]}`);
       const lines = [];
-      lines.push(`茎：下側の効果 ${fmt(s.low, 2)}、上側 ${fmt(s.up, 2)}。${s.bend === 'up' ? '下側のほうがよく伸びるので、茎は上へ曲がる（負の重力屈性）。' : s.bend === 'down' ? '濃度が茎にとっても高すぎるので、下側の成長が上側より小さく、下へ曲がる。' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
-      lines.push(`根：下側の効果 ${fmt(r.low, 2)}、上側 ${fmt(r.up, 2)}。${r.bend === 'down' ? '根にとっては下側の濃度が高すぎて成長が抑制されるので、上側のほうがよく伸び、根は下へ曲がる（正の重力屈性）。' : r.bend === 'up' ? '濃度がとても低いので、根でも下側のほうがよく伸び、上へ曲がる（実際の芽ばえでは、根のオーキシン濃度は下へ曲がる範囲にある）。' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
+      lines.push(`茎：下側の効果 ${fmt(s.low, 2)}、上側 ${fmt(s.up, 2)}。${s.bend === 'up' ? '下側のほうがよく伸びるので、茎は上へ曲がる（負の重力屈性）。' : s.bend === 'down' ? '（この範囲では起こらない）' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
+      lines.push(`根：下側の効果 ${fmt(r.low, 2)}、上側 ${fmt(r.up, 2)}。${r.bend === 'down' ? '根にとっては下側の濃度が高すぎて成長が抑制されるので、上側のほうがよく伸び、根は下へ曲がる（正の重力屈性）。' : r.bend === 'up' ? '（この範囲では起こらない）' : '上側と下側の差がほとんどないので、ほとんど曲がらない。'}`);
       lines.push('根では、根冠の細胞が重力の方向を感じとり、オーキシンが下側に多く運ばれる。同じオーキシンのかたよりでも、器官によって最適濃度が違うので、茎と根で逆向きに曲がる。');
       exp.set(lines);
-      return { stemBend: s.bend, rootBend: r.bend };
+      return { stemBend: s.bend, rootBend: r.bend, rootLow: r.low };
     }
 
     function update() {
@@ -191,4 +191,4 @@ export const dojo = {
 dojo.tasks[0].check = (s) => s.tab === 'curve' && s.touched > 0 && s.rootNeg && s.stemPos;
 dojo.tasks[1].check = (s) => s.tab === 'gravi' && s.stemBend === 'up' && s.rootBend === 'down';
 dojo.tasks[2].check = (s) => s.tab === 'gravi' && s.ratioMoves >= 2;
-dojo.tasks[3].check = (s) => s.tab === 'gravi' && s.rootBend === 'up';
+dojo.tasks[3].check = (s) => s.tab === 'gravi' && s.rootLow < 0;

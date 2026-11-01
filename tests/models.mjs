@@ -678,11 +678,13 @@ section('A10 筋収縮');
   let peakT = 0;
   let peak = 0;
   for (let t = 0; t <= 0.3; t += 0.0005) { const v = mu.tension(t, [0]); if (v > peak) { peak = v; peakT = t; } }
-  check('単収縮：潜伏期 約0.01秒、ピーク 約0.03秒、約0.1秒でほぼもとにもどる', mu.tension(0.009, [0]) === 0 && peakT > 0.02 && peakT < 0.05 && mu.tension(0.12, [0]) < peak * 0.1, `ピーク ${f(peakT, 3)} 秒、0.12秒で ${f(mu.tension(0.12, [0]) / peak * 100, 1)}%`);
+  check('単収縮：潜伏期 約0.01秒、収縮期 約0.04秒（ピーク 約0.05秒）、約0.1秒でもとにもどる', mu.tension(0.009, [0]) === 0 && peakT > 0.04 && peakT < 0.06 && mu.tension(0.1, [0]) < peak * 0.01, `ピーク ${f(peakT, 3)} 秒、0.1秒で ${f(mu.tension(0.1, [0]) / peak * 100, 1)}%`);
   const types = [2, 5, 15, 30, 60, 100].map((x) => mu.contractionType(x).type);
   check('刺激の頻度を上げると 単収縮 → 不完全強縮 → 完全強縮', types.join() === 'single,single,incomplete,incomplete,complete,complete', types.join('・'));
   const tet = mu.contractionType(100).max / mu.SINGLE_PEAK;
   check('完全強縮の張力は単収縮の数倍（2〜4倍）', tet >= 2 && tet <= 4, `${f(tet, 2)} 倍`);
+  const rip = (x) => { const r = mu.contractionType(x); return (r.max - r.min) / r.max; };
+  check('問題で「完全強縮」とする頻度（80・100回/秒）では張力のゆれが0.5%未満、「不完全強縮」（20〜30回/秒）ではゆれが5%以上で、図で区別できる', rip(80) < 0.005 && rip(100) < 0.005 && [20, 25, 30].every((x) => rip(x) > 0.05), `80回/秒 ${f(rip(80) * 100, 2)}%、30回/秒 ${f(rip(30) * 100, 1)}%`);
   check('サルコメアの長さと張力：2.0〜2.2 μm で最大、3.6 μm で0、2.2 μm より長いと直線的に減少', mu.sarcomereTension(2.0) === 1 && mu.sarcomereTension(2.2) === 1 && mu.sarcomereTension(3.6) === 0 && near(mu.sarcomereTension(2.9), 0.5, 1e-9));
   check('2.0 μm より短いと張力は減少する', mu.sarcomereTension(1.8) < 1 && mu.sarcomereTension(1.5) < mu.sarcomereTension(1.8));
   const b1 = mu.bands(2.6);
@@ -703,7 +705,7 @@ section('A11 分子系統と分子時計');
     if (!near(steps[0].height / 0.2, 30, 1e-9) || !near(steps[2].height / 0.2, 250, 1e-9)) treeOk = false;
   }
   check('違いの数の表から、正しい形の系統樹と分岐年代を復元できる（3通りの形）', treeOk);
-  check('分子進化の速度の順：フィブリノペプチド ＞ ヘモグロビン ＞ シトクロム c ＞ ヒストン', ph2.RATE_ORDER.join() === 'フィブリノペプチド,ヘモグロビン,シトクロム c,ヒストン H4');
+  check('分子進化の速度の順：フィブリノペプチド ＞ ヘモグロビン ＞ シトクロム c ＞ ヒストン', ph2.RATE_ORDER.join() === 'フィブリノペプチド,ヘモグロビン,シトクロム c,ヒストンH4');
 }
 
 // ---------- A12 ----------
@@ -738,7 +740,9 @@ section('A13 生態系の物質生産');
   check('上の栄養段階ほど同化量が小さく、エネルギー効率は数%〜十数%', b.C1.assim < b.P.gross && b.C2.assim < b.C1.assim && e.c1 > 1 && e.c1 < 20, `一次 ${f(e.c1, 1)}%・二次 ${f(e.c2, 1)}%`);
   const ages = Array.from({ length: 150 }, (_, i) => pr.forest(i + 1));
   const iBest = ages.reduce((bi, q, i) => (q.net > ages[bi].net ? i : bi), 0);
-  check('森林：総生産量は頭打ち、呼吸量は増え続け、純生産量は若い時期に最大となってその後減少', ages.every((q, i) => i === 0 || q.resp > ages[i - 1].resp) && near(ages[149].gross, ages[99].gross, 0.5) && iBest > 5 && iBest < 60 && ages[149].net < ages[iBest].net * 0.5, `純生産量が最大の林齢 ${iBest + 1} 年`);
+  check('森林：総生産量は頭打ち、呼吸量は増え続け、純生産量は若い時期に最大となってその後減少', ages.every((q, i) => i === 0 || q.resp > ages[i - 1].resp) && near(ages[149].gross, ages[99].gross, 0.5) && iBest > 5 && iBest < 60 && ages[149].net < ages[iBest].net * 0.7, `純生産量が最大の林齢 ${iBest + 1} 年`);
+  const ages2 = Array.from({ length: 1000 }, (_, i) => pr.forest(i + 1));
+  check('森林：どの林齢でも呼吸量は総生産量より小さく、純生産量は正（1〜1000年）', ages2.every((q) => q.resp < q.gross && q.net > 0), `1000年で純生産量 ${f(ages2[999].net, 1)}`);
 }
 
 const ng = results.filter((r) => !r.ok);

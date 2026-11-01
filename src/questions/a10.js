@@ -11,7 +11,7 @@ export const A10 = [
     level: 1,
     kind: 'graph',
     make(rng) {
-      const f = rng.pick([3, 4, 15, 20, 25, 60, 80, 100]);
+      const f = rng.pick([3, 4, 5, 20, 25, 30, 80, 100]);
       const type = contractionType(f).type;
       const st = stimulusTimes(f, 0.6);
       const names = { single: '単収縮', incomplete: '不完全強縮', complete: '完全強縮' };

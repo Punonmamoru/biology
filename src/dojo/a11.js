@@ -50,7 +50,7 @@ export const dojo = {
     const note = h('p', { class: 'small muted' });
     top.append(leg, table, note);
 
-    const sRate = slider({ label: '置換の速さ（1つの系統で100万年あたりのアミノ酸の置換数）', min: 0.05, max: 0.5, step: 0.05, value: st.rate, format: (v) => fmt(v, 2), onInput: (v) => { st.rate = v; st.rateMoves++; update(); } });
+    const sRate = slider({ label: '置換の速さ（1つの系統で100万年あたりのアミノ酸の置換数）', min: 0.05, max: 0.3, step: 0.05, value: st.rate, format: (v) => fmt(v, 2), onInput: (v) => { st.rate = v; st.rateMoves++; update(); } });
     const sT = slider({ label: '2種が分岐した年代', min: 0, max: 500, step: 10, value: st.t, format: (v) => `${v} 百万年前`, onInput: (v) => { st.t = v; st.tMoves++; update(); } });
     const ctlClock = h('div', null, sT.el);
     const segP = segmented({ label: '最も近い2種', options: Object.keys(PAIRS).map((k) => ({ value: k, label: `${k[0]} と ${k[1]}` })), value: st.pair, onChange: (v) => { st.pair = v; st.pairMoves++; update(); } });
@@ -82,13 +82,13 @@ export const dojo = {
       const D = diffs(t, rate);
       const ref = 100;
       const Dref = diffs(ref, rate);
-      title.replaceChildren('分岐年代とアミノ酸の違いの数 ', modelNote('架空のタンパク質（アミノ酸300個）'));
+      title.replaceChildren('分岐年代とアミノ酸の違いの数 ', modelNote('架空のタンパク質（アミノ酸1000個）'));
       chart.draw({
         alt: `分岐 ${t} 百万年前で違い ${fmt(D, 0)} 個`,
         x: { min: 0, max: 500, label: '分岐した年代（百万年前）', step: 100 },
-        y: { min: 0, max: 520, label: 'アミノ酸の違いの数', step: 100 },
+        y: { min: 0, max: 320, label: 'アミノ酸の違いの数', step: 50 },
         series: [
-          { points: [[0, 0], [500, diffs(500, 0.5)]], color: 'muted', dash: 'dot', width: 1.5, label: '速さ 0.5', labelAt: 480 },
+          { points: [[0, 0], [500, diffs(500, 0.3)]], color: 'muted', dash: 'dot', width: 1.5, label: '速さ 0.3', labelAt: 480 },
           { points: [[0, 0], [500, diffs(500, rate)]], color: 'c1', width: 3 },
         ],
         vlines: [{ x: t, color: 'c2', dash: 'dot' }],
@@ -97,9 +97,9 @@ export const dojo = {
           { x: t, y: D, color: 'c2', label: `${fmt(D, 0)} 個` },
         ],
       });
-      leg.replaceChildren(legend([{ label: `いまの置換の速さ（${fmt(rate, 2)}）の直線`, color: 'c1' }, { label: '速さ 0.5（比較）', color: 'muted', dash: 'dot' }]));
+      leg.replaceChildren(legend([{ label: `いまの置換の速さ（${fmt(rate, 2)}）の直線`, color: 'c1' }, { label: '速さ 0.3（比較）', color: 'muted', dash: 'dot' }]));
       table.replaceChildren();
-      note.textContent = 'アミノ酸の数より違いの数が十分に小さい範囲を考えている。非常に古い分岐では、同じ場所で置換がくり返し起こるため、違いの数は直線より少なくなる。';
+      note.textContent = '違いの数がアミノ酸の数（1000個）に比べて小さい範囲（ここでは3割まで）を考えている。それより古い分岐では、同じ場所で置換がくり返し起こるため、違いの数は直線より少なくなる。';
       exp.set([
         `2種が分岐してから、それぞれの系統で置換が積み重なるので、違いの数 ＝ 2 × ${fmt(rate, 2)} × ${t} ＝ ${fmt(D, 0)} 個。違いの数は分岐してからの時間に比例する（分子時計）。`,
         `化石などで分岐年代がわかっている基準の組（${ref} 百万年前に分岐、違い ${fmt(Dref, 0)} 個）を使うと、違いが ${fmt(D, 0)} 個の組の分岐年代は ${ref} × ${fmt(D, 0)} ÷ ${fmt(Dref, 0)} ＝ ${fmt(t, 0)} 百万年前と推定できる。`,
@@ -129,7 +129,7 @@ export const dojo = {
           h('tbody', null, ...SPECIES.map((a) => h('tr', null, h('td', null, a), ...SPECIES.map((b) => h('td', null, a === b ? '—' : String(m[pairKey(a, b)])))))),
         ),
       );
-      note.textContent = '違いの数の表から、違いの最も小さい組を順にまとめて系統樹を作った（UPGMA法の考え方）。分岐の高さ ＝ 違いの数 ÷ 2 ÷ 置換の速さ。';
+      note.textContent = '違いの数の表から、違いの最も小さい組を順にまとめて系統樹を作った（発展：UPGMA法の考え方）。分岐の高さ ＝ 違いの数 ÷ 2 ÷ 置換の速さ。';
       const first = steps[0];
       const second = steps[1];
       exp.set([
