@@ -1077,6 +1077,8 @@ const STAGES = [
   { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '遺伝子とそのはたらき', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
+  { id: 'b12', code: 'B12', course: 'basic', title: 'ホルモンと負のフィードバック', unit: 'ヒトの体の調節', lead: 'TRH → TSH → チロキシン。甲状腺の除去やチロキシンの注射で、ホルモンの量はどう変わるか。' },
+  { id: 'b13', code: 'B13', course: 'basic', title: '炭素の循環', unit: '生物の多様性と生態系', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -1094,6 +1096,9 @@ const STAGES = [
   { id: 'a15', code: 'A15', course: 'advanced', title: 'PCRと電気泳動', unit: '遺伝情報の発現と発生', lead: 'PCR法で DNA を増やす計算と、電気泳動による DNA 断片の長さの推定。' },
   { id: 'a16', code: 'A16', course: 'advanced', title: '動物の行動', unit: '生物の環境応答', lead: 'ミツバチの8の字ダンスの角度と太陽コンパス。生得的行動と学習。' },
   { id: 'a17', code: 'A17', course: 'advanced', title: '光周性と花芽形成', unit: '生物の環境応答', lead: '連続した暗期と限界暗期。短日植物・長日植物と光中断。' },
+  { id: 'a18', code: 'A18', course: 'advanced', title: '視覚', unit: '生物の環境応答', lead: '暗順応の曲線、錐体と桿体の分布、盲斑の大きさの計算。' },
+  { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
+  { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
 ];
 
 function stageById(id) {
@@ -3724,6 +3729,292 @@ dojo.tasks[0].check = (s) => s.mode === 'primary' && s.touched > 0 && s.stage ==
 dojo.tasks[1].check = (s) => s.mode === 'primary' && s.stage === 'sun' && !s.sunOk;
 dojo.tasks[2].check = (s) => s.stage === 'climax';
 dojo.tasks[3].check = (s) => s.mode === 'secondary' && (s.stage === 'sun' || s.stage === 'mixed' || s.stage === 'climax');
+return { dojo };
+})();
+
+// ---- models/thyroid.js ----
+__m["models/thyroid.js"] = (function () {
+// B12 ホルモンと負のフィードバック（チロキシンの分泌調節）
+// 視床下部 → 甲状腺刺激ホルモン放出ホルモン（TRH）→ 脳下垂体前葉 → 甲状腺刺激ホルモン（TSH）→ 甲状腺 → チロキシン
+// チロキシンが多くなると、視床下部と脳下垂体前葉のはたらきがおさえられる（負のフィードバック）。
+// 値は正常な状態を 1（＝100%）とした相対値。時間の単位は「日」（模式）。
+//   抑制の強さ inh(T) ＝ 2 ／ (1 ＋ T²)（T ＝ 1 で 1）
+//   TRH：  dH/dt ＝ (inh(T) − H) ／ τH
+//   TSH：  dS/dt ＝ (pit × H × inh(T) − S) ／ τS        pit：脳下垂体前葉（除去で0）
+//   チロキシン：dT/dt ＝ (thy × S ＋ 注射 − T) ／ τT     thy：甲状腺がチロキシンをつくる能力（除去で0）
+const TAU = { H: 1, S: 1.5, T: 4 };
+const T_EVENT = 5;
+const T_END = 40;
+
+const CASES = {
+  normal: { name: '正常', thy: 1, pit: 1, inj: 0 },
+  thyroidectomy: { name: '甲状腺を除去', thy: 0, pit: 1, inj: 0 },
+  injection: { name: 'チロキシンを注射し続ける', thy: 1, pit: 1, inj: 2 },
+  pituitary: { name: '脳下垂体（前葉）を除去', thy: 1, pit: 0, inj: 0 },
+  iodine: { name: '材料のヨウ素が不足', thy: 0.3, pit: 1, inj: 0 },
+};
+
+function inh(T) {
+  return 2 / (1 + T * T);
+}
+
+// 時刻 T_EVENT に処置を行ったときの変化
+function simulate(caseId, dt = 0.01, every = 10) {
+  const c = CASES[caseId];
+  let H = 1;
+  let S = 1;
+  let T = 1;
+  const out = [];
+  const steps = Math.round(T_END / dt);
+  for (let i = 0; i <= steps; i++) {
+    const t = i * dt;
+    if (i % every === 0) out.push({ t, H, S, T });
+    const after = t >= T_EVENT;
+    const thy = after ? c.thy : 1;
+    const pit = after ? c.pit : 1;
+    const inj = after ? c.inj : 0;
+    const k = inh(T);
+    H += ((k - H) / TAU.H) * dt;
+    S += ((pit * H * k - S) / TAU.S) * dt;
+    T += ((thy * S + inj - T) / TAU.T) * dt;
+  }
+  return out;
+}
+
+function steady(caseId) {
+  const run = simulate(caseId);
+  return run[run.length - 1];
+}
+return { TAU, T_EVENT, T_END, CASES, inh, simulate, steady };
+})();
+
+// ---- dojo/b12.js ----
+__m["dojo/b12.js"] = (function () {
+// B12 ホルモンと負のフィードバック の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { CASES, simulate, T_EVENT, T_END } = __m["models/thyroid.js"];
+
+const pct = (v) => `${fmt(v * 100, 0)}%`;
+
+const dojo = {
+  tasks: [
+    { id: 'thy', text: '甲状腺を除去すると、チロキシンが減り、TRH と TSH が増えることを確かめよう。', short: '甲状腺の除去' },
+    { id: 'inj', text: 'チロキシンを注射し続けると、TRH と TSH が減ることを確かめよう。', short: 'チロキシンの注射' },
+    { id: 'pit', text: '脳下垂体を除去すると、TSH がなくなり、チロキシンも減ることを確かめよう。', short: '脳下垂体の除去' },
+    { id: 'iod', text: 'ヨウ素が不足すると、TSH が正常より多くなることを確かめよう。', short: 'ヨウ素の不足' },
+  ],
+  mount(root, ctx) {
+    const st = { c: 'normal' };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'ホルモンの量の変化のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    const table = h('div');
+    top.append(leg, table, h('p', { class: 'small muted' }, `各ホルモンの量は、正常な状態を100%とした相対値。${T_EVENT}日目に処置を行う模式。`));
+
+    const segC = segmented({ label: '処置', options: Object.entries(CASES).map(([value, c]) => ({ value, label: c.name })), value: st.c, onChange: (v) => { st.c = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segC.el, h('p', { class: 'small' }, '視床下部 →（TRH）→ 脳下垂体前葉 →（TSH）→ 甲状腺 →（チロキシン）。チロキシンは視床下部と脳下垂体前葉にはたらいて、TRH と TSH の分泌をおさえる。')), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const run = simulate(st.c);
+      const end = run[run.length - 1];
+      title.replaceChildren(`${CASES[st.c].name}のときのホルモンの量 `, modelNote());
+      const yMax = Math.max(2.2, ...run.map((q) => Math.max(q.H, q.S, q.T))) * 100 * 1.08;
+      chart.draw({
+        alt: `処置後：TRH ${pct(end.H)}、TSH ${pct(end.S)}、チロキシン ${pct(end.T)}`,
+        x: { min: 0, max: T_END, label: '日数', step: 5 },
+        y: { min: 0, max: yMax, label: '量（正常＝100%）', step: yMax > 300 ? 100 : 50 },
+        series: [
+          { points: run.map((q) => [q.t, q.H * 100]), color: 'c4', dash: 'dot', width: 3, label: 'TRH', labelAt: 30 },
+          { points: run.map((q) => [q.t, q.S * 100]), color: 'c2', dash: 'dash', width: 3, label: 'TSH', labelAt: 34 },
+          { points: run.map((q) => [q.t, q.T * 100]), color: 'c1', width: 3, label: 'チロキシン', labelAt: 22 },
+        ],
+        hlines: [{ y: 100, color: 'muted', dash: 'dot', width: 1 }],
+        vlines: st.c === 'normal' ? [] : [{ x: T_EVENT, color: 'fg', dash: 'dot', label: '処置' }],
+      });
+      leg.replaceChildren(legend([{ label: 'TRH（視床下部）', color: 'c4', dash: 'dot' }, { label: 'TSH（脳下垂体前葉）', color: 'c2', dash: 'dash' }, { label: 'チロキシン（甲状腺）', color: 'c1' }]));
+      table.replaceChildren(h('p', { class: 'small' }, `${T_END}日目：TRH ${pct(end.H)}、TSH ${pct(end.S)}、チロキシン ${pct(end.T)}`));
+      const L = {
+        normal: ['チロキシンが多くなると TRH と TSH の分泌がおさえられ、少なくなると分泌が促される。結果が原因にもどってはたらきをおさえるこのしくみを負のフィードバックといい、チロキシンの量はほぼ一定に保たれる。'],
+        thyroidectomy: ['甲状腺がないのでチロキシンがつくられず、減っていく。チロキシンによる抑制がなくなるので、視床下部からの TRH と脳下垂体前葉からの TSH の分泌が増える（負のフィードバックがはたらかない）。'],
+        injection: ['注射でチロキシンが多くなるので、負のフィードバックによって TRH と TSH の分泌がおさえられる。TSH が減るので、甲状腺自身がつくるチロキシンは少なくなる。'],
+        pituitary: ['脳下垂体前葉がないので TSH が分泌されず、甲状腺はチロキシンをつくれなくなる。チロキシンが減るので、視床下部からの TRH の分泌は増える。'],
+        iodine: ['チロキシンの材料のヨウ素が不足すると、甲状腺がチロキシンを十分につくれない。チロキシンが少ないので TRH と TSH の分泌が増え、甲状腺は TSH によって強く刺激され続ける。'],
+      }[st.c];
+      exp.set([...L, 'チロキシンは代謝（化学反応）を促進するホルモンで、体温の維持や成長にもかかわる。']);
+      ctx.update({ ...st, end });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.c === 'thyroidectomy';
+dojo.tasks[1].check = (s) => s.c === 'injection';
+dojo.tasks[2].check = (s) => s.c === 'pituitary';
+dojo.tasks[3].check = (s) => s.c === 'iodine' && s.end.S > 1;
+return { dojo };
+})();
+
+// ---- models/carbon.js ----
+__m["models/carbon.js"] = (function () {
+const { monotoneCubic } = __m["lib/interp.js"];
+// B13 炭素の循環（模式）
+// 単位：炭素の量［億トン/年］の目安を丸めた模式的な値。大気中の CO₂ の増減を、出入りの差として考える。
+//   大気から出ていく：生産者の光合成（総生産量）、海洋への溶け込み
+//   大気へ入る：生産者の呼吸、消費者の呼吸、分解者の呼吸（分解）、化石燃料の燃焼、森林の伐採・焼却
+const BASE = {
+  photo: 1200, // 陸上の生産者の光合成
+  respP: 600, // 生産者の呼吸
+  respC: 50, // 消費者の呼吸
+  decomp: 520, // 分解者の呼吸（遺体・排出物の分解）
+  fossil: 100, // 化石燃料の燃焼
+  landUse: 10, // 森林の伐採・焼却
+  ocean: 30, // 海洋が吸収する正味の量
+};
+
+// 大気中の炭素の増加量［億トン/年］（大気中の炭素 約21億トンが CO₂濃度 1 ppm にあたる）
+const PPM_PER = 21;
+function atmosphereChange(f) {
+  const inflow = f.respP + f.respC + f.decomp + f.fossil + f.landUse;
+  const outflow = f.photo + f.ocean;
+  return { inflow, outflow, change: inflow - outflow };
+}
+
+// 大気中の CO₂ 濃度（ppm）の季節変動（北半球の観測点の模式）
+//   長期的に増加（約 2.4 ppm/年）しながら、夏に植物の光合成がさかんになると減り、冬に増える。
+//   最大は5月ごろ、最小は9〜10月ごろ。振れ幅は約6 ppm。
+const TREND = 2.4;
+// 1年の中の変動（ppm）：5月中ごろに最大、9月下旬〜10月に最小になる非対称な形（目安の点を単調3次補間でつなぐ）
+const SEASON = monotoneCubic([[0, 1.2], [0.37, 3], [0.74, -3], [0.9, -1], [1, 1.2]]);
+function co2(year) {
+  const f = year - Math.floor(year);
+  return 412 + TREND * (year - 2020) + SEASON(f);
+}
+return { BASE, PPM_PER, atmosphereChange, TREND, co2 };
+})();
+
+// ---- dojo/b13.js ----
+__m["dojo/b13.js"] = (function () {
+// B13 炭素の循環 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, legendFromSpec } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { BASE, atmosphereChange, PPM_PER, co2 } = __m["models/carbon.js"];
+const { sample } = __m["lib/series.js"];
+
+const NAMES = { photo: '光合成', ocean: '海洋への吸収', respP: '生産者の呼吸', respC: '消費者の呼吸', decomp: '分解者の呼吸', fossil: '化石燃料の燃焼', landUse: '森林の伐採・焼却' };
+
+const dojo = {
+  tasks: [
+    { id: 'zero', text: '①で化石燃料の燃焼を減らし、大気中の炭素がほとんど増えない（増加量±5以内）条件を見つけよう。', short: '増えない条件' },
+    { id: 'forest', text: '①で森林を減らす（光合成を小さくする）と、大気中の炭素の増加量が大きくなることを確かめよう。', short: '森林が減ると' },
+    { id: 'season', text: '②で、大気中の CO₂ 濃度が1年のうちで最も低くなる季節を確かめよう（時期を変える）。', short: '季節変動' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'flow', fossil: BASE.fossil, forest: 100, year: 2020.4, touched: 0, forestMoves: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'flow', label: '①炭素の出入り' }, { value: 'curve', label: '②大気中の CO₂ 濃度' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '炭素の循環のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const sF = slider({ label: '化石燃料の燃焼', min: 0, max: 200, step: 5, value: st.fossil, format: (v) => `${v}（億トン/年）`, onInput: (v) => { st.fossil = v; st.touched++; update(); } });
+    const sP = slider({ label: '陸上の森林などの量（いまを100%とする）', min: 60, max: 110, step: 5, value: st.forest, format: (v) => `${v}%`, onInput: (v) => { st.forest = v; st.forestMoves++; update(); } });
+    const ctlFlow = h('div', null, sF.el, sP.el);
+    const sY = slider({ label: '時期', min: 2020, max: 2023, step: 1 / 12, value: st.year, format: (v) => `${Math.floor(v + 1e-6)}年${Math.floor(((v + 1e-6) % 1) * 12) + 1}月`, onInput: (v) => { st.year = v; st.touched++; update(); } });
+    const ctlCurve = h('div', null, sY.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlFlow, ctlCurve), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlFlow.hidden = st.tab !== 'flow';
+      ctlCurve.hidden = st.tab !== 'curve';
+      update();
+    }
+
+    function flows() {
+      const k = st.forest / 100;
+      // 森林が減ると、光合成・生産者の呼吸・消費者の呼吸・分解が同じ割合で減るとする（模式）
+      return { ...BASE, photo: BASE.photo * k, respP: BASE.respP * k, respC: BASE.respC * k, decomp: BASE.decomp * k, fossil: st.fossil, landUse: st.forest < 100 ? BASE.landUse + (100 - st.forest) * 2 : BASE.landUse };
+    }
+
+    function drawFlow() {
+      const f = flows();
+      const a = atmosphereChange(f);
+      title.replaceChildren('大気中の炭素の出入り ', modelNote('単位：億トン/年（目安を丸めた模式）'));
+      const outKeys = ['photo', 'ocean'];
+      const inKeys = ['respP', 'respC', 'decomp', 'fossil', 'landUse'];
+      const spec = {
+        alt: `大気へ入る ${fmt(a.inflow, 0)}、大気から出る ${fmt(a.outflow, 0)}、差 ${fmt(a.change, 0)}`,
+        x: { min: 0, max: 1 },
+        y: { min: 0, max: 1500, label: '炭素の量（億トン/年）', step: 300 },
+        bars: {
+          categories: ['大気から出る', '大気へ入る'],
+          groups: [
+            { values: [f.photo, f.respP], color: 'c3', label: '光合成 ／ 生産者の呼吸' },
+            { values: [f.ocean, f.respC + f.decomp], color: 'c1', label: '海洋への吸収 ／ 消費者・分解者の呼吸' },
+            { values: [0, f.fossil + f.landUse], color: 'c2', label: '化石燃料の燃焼・森林の伐採' },
+          ],
+        },
+      };
+      chart.draw(spec);
+      leg.replaceChildren(legendFromSpec(spec));
+      note.textContent = `大気から出る：${outKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。大気へ入る：${inKeys.map((k) => `${NAMES[k]} ${fmt(f[k], 0)}`).join('、')}。`;
+      exp.set([
+        `大気中の炭素の増加量 ＝ 入る量 − 出る量 ＝ ${fmt(a.inflow, 0)} − ${fmt(a.outflow, 0)} ＝ ${fmt(a.change, 0)} 億トン/年（CO₂濃度にして 約${fmt(a.change / PPM_PER, 1)} ppm/年）。`,
+        '炭素は、大気中の CO₂ → 光合成で生産者の有機物 → 食物連鎖で消費者へ → 遺体・排出物は分解者へと移り、それぞれの呼吸で CO₂ として大気にもどる。このように炭素は生態系の中を循環している。',
+        '化石燃料は、昔の生物の遺体の炭素が長い間地中にたくわえられたものである。これを燃やすと大気中の CO₂ が増え、温室効果が強まって地球温暖化の原因になる。森林を減らすと、光合成で大気から取り込まれる CO₂ も減る。',
+      ]);
+      return { change: a.change };
+    }
+
+    function drawCurve() {
+      const y = st.year;
+      title.replaceChildren('大気中の CO₂ 濃度の変化 ', modelNote('北半球の観測地点の模式'));
+      chart.draw({
+        alt: `${fmt(y, 2)} 年：約 ${fmt(co2(y), 1)} ppm`,
+        x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
+        y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
+        series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
+        vlines: [{ x: y, color: 'c2', dash: 'dot' }],
+        markers: [{ x: y, y: co2(y), color: 'c2', label: `${fmt(co2(y), 1)} ppm` }],
+      });
+      leg.replaceChildren(legend([{ label: '大気中の CO₂ 濃度（ppm ＝ 100万分の1）', color: 'c1' }]));
+      note.textContent = '濃度の値と振れ幅は目安（実際の観測値は地点や年によって異なる）。';
+      const m = Math.floor(((y + 1e-6) % 1) * 12) + 1;
+      exp.set([
+        `${m}月：約 ${fmt(co2(y), 1)} ppm。大気中の CO₂ 濃度は、1年の中で上がり下がりをくり返しながら、長期的には毎年 約2〜3 ppm ずつ増えている。`,
+        '北半球では、春から夏に植物の光合成がさかんになって CO₂ が吸収されるので濃度が下がり、秋から冬は光合成が少なく呼吸や分解が上回るので濃度が上がる。そのため、濃度は5月ごろ最も高く、9〜10月ごろ最も低い。',
+      ]);
+      return { month: m };
+    }
+
+    function update() {
+      const r = st.tab === 'flow' ? drawFlow() : drawCurve();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'flow' && s.touched > 0 && Math.abs(s.change) <= 5;
+dojo.tasks[1].check = (s) => s.tab === 'flow' && s.forestMoves > 0 && s.forest < 100;
+dojo.tasks[2].check = (s) => s.tab === 'curve' && s.touched > 0 && (s.month === 9 || s.month === 10);
 return { dojo };
 })();
 
@@ -7595,6 +7886,457 @@ dojo.tasks[3].check = (s) => s.br != null && !s.noBreakLong && s.res.long;
 return { dojo };
 })();
 
+// ---- models/vision.js ----
+__m["models/vision.js"] = (function () {
+// A18 視覚
+// ① 暗順応：明るい所から暗い所に入ると、しだいに弱い光も感じられるようになる。
+//   感じとれる最小の光の強さ（閾値、対数）の変化：はじめは錐体の感度が上がり（数分で頭打ち）、
+//   約7〜10分後からは桿体の感度が錐体を上回り、30分ほどでさらに大きく下がる（屈曲点がある曲線）。
+//   閾値（log、相対値）＝ min(錐体, 桿体)
+function coneLog(t) {
+  return 2 + 2 * Math.exp(-t / 2);
+}
+function rodLog(t) {
+  return -1.5 + 11 * Math.exp(-t / 7);
+}
+function thresholdLog(t) {
+  return Math.min(coneLog(t), rodLog(t));
+}
+// 錐体と桿体の曲線が交わる時刻（屈曲点）
+function breakTime() {
+  let lo = 0;
+  let hi = 40;
+  for (let i = 0; i < 60; i++) {
+    const m = (lo + hi) / 2;
+    if (rodLog(m) > coneLog(m)) lo = m;
+    else hi = m;
+  }
+  return (lo + hi) / 2;
+}
+
+// ② 網膜の視細胞の分布（模式、千個/mm²）。角度は黄斑（中心窩）からの角度、正が鼻側。
+//   錐体：黄斑に集中。桿体：黄斑にはほとんどなく、周辺に多い。盲斑（視神経乳頭）：鼻側 約15〜18° に視細胞がない。
+const BLIND = [13, 18.5];
+function cones(a) {
+  if (a >= BLIND[0] && a <= BLIND[1]) return 0;
+  return 5 + 145 * Math.exp(-Math.abs(a) / 1.5);
+}
+function rods(a) {
+  if (a >= BLIND[0] && a <= BLIND[1]) return 0;
+  const x = Math.abs(a);
+  return 160 * (1 - Math.exp(-x / 4)) * Math.exp(-Math.max(0, x - 20) / 40);
+}
+
+// ③ 盲斑の大きさ（相似の三角形）：網膜上の大きさ ＝ 紙の上で見えなくなる範囲 × 眼の節点から網膜までの距離 ÷ 眼から紙までの距離
+const EYE_DEPTH = 1.7; // cm（節点から網膜まで、目安）
+function retinaSize(onPaper, distance, depth = EYE_DEPTH) {
+  return (onPaper * depth) / distance;
+}
+return { coneLog, rodLog, thresholdLog, breakTime, BLIND, cones, rods, EYE_DEPTH, retinaSize };
+})();
+
+// ---- dojo/a18.js ----
+__m["dojo/a18.js"] = (function () {
+// A18 視覚 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { coneLog, rodLog, thresholdLog, breakTime, cones, rods, BLIND, retinaSize, EYE_DEPTH } = __m["models/vision.js"];
+const { sample } = __m["lib/series.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'break', text: '①で、暗順応の曲線が折れ曲がる時刻（錐体から桿体に切りかわるところ）を見つけよう。', short: '屈曲点' },
+    { id: 'dark30', text: '①で、暗所に30分いると、はじめより何けたも弱い光を感じられるようになることを確かめよう。', short: '30分の暗順応' },
+    { id: 'fovea', text: '②で、黄斑（中心窩、0°）には錐体が多く、桿体がほとんどないことを確かめよう。', short: '黄斑' },
+    { id: 'blind', text: '②で、盲斑の位置に合わせて、視細胞がない（光を受容できない）ことを確かめよう。', short: '盲斑' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'dark', t: 0, angle: 0, dist: 30, width: 2, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'dark', label: '①暗順応' }, { value: 'retina', label: '②視細胞の分布と盲斑' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'グラフ', aspect: 0.66 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const sT = slider({ label: '暗い所に入ってからの時間', min: 0, max: 40, step: 0.5, value: st.t, format: (v) => `${fmt(v, 1)} 分`, onInput: (v) => { st.t = v; st.touched++; update(); } });
+    const ctlDark = h('div', null, sT.el);
+    const sA = slider({ label: '黄斑からの角度（＋が鼻側）', min: -60, max: 60, step: 0.5, value: st.angle, format: (v) => `${v > 0 ? '鼻側 ' : v < 0 ? '耳側 ' : ''}${Math.abs(v)}°`, onInput: (v) => { st.angle = v; st.touched++; update(); } });
+    const sD = slider({ label: '盲斑の計算：眼から紙までの距離', min: 20, max: 50, step: 1, value: st.dist, format: (v) => `${v} cm`, onInput: (v) => { st.dist = v; update(); } });
+    const sW = slider({ label: '盲斑の計算：紙の上で見えなくなった範囲の幅', min: 1, max: 4, step: 0.1, value: st.width, format: (v) => `${fmt(v, 1)} cm`, onInput: (v) => { st.width = v; update(); } });
+    const calc = h('div', { class: 'explain', 'aria-live': 'polite' });
+    const ctlRetina = h('div', null, sA.el, h('h3', { style: { marginTop: '12px' } }, '盲斑の大きさを求める'), sD.el, sW.el, calc);
+    const exp = explainBox();
+    root.append(panel('操作', ctlDark, ctlRetina), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlDark.hidden = st.tab !== 'dark';
+      ctlRetina.hidden = st.tab !== 'retina';
+      update();
+    }
+
+    function drawDark() {
+      const t = st.t;
+      const bt = breakTime();
+      const v = thresholdLog(t);
+      title.replaceChildren('暗順応の曲線 ', modelNote());
+      chart.draw({
+        alt: `${fmt(t, 1)} 分：閾値 10^${fmt(v, 1)}`,
+        x: { min: 0, max: 40, label: '暗い所に入ってからの時間（分）', step: 5 },
+        y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数・相対値）', ticks: [-2, -1, 0, 1, 2, 3, 4, 5].map((k) => ({ v: k, text: `10${k < 0 ? '⁻' : ''}${'⁰¹²³⁴⁵'[Math.abs(k)]}` })) },
+        series: [
+          { points: sample((x) => Math.min(coneLog(x), 5.2), 0, 40, 300), color: 'c2', dash: 'dot', width: 1.5, label: '錐体', labelAt: 30 },
+          { points: sample((x) => Math.min(rodLog(x), 5.2), 0, 40, 300), color: 'c1', dash: 'dot', width: 1.5, label: '桿体', labelAt: 34 },
+          { points: sample(thresholdLog, 0, 40, 400), color: 'fg', width: 3.5 },
+        ],
+        vlines: [{ x: t, color: 'c4', dash: 'dot' }],
+        markers: [{ x: bt, y: thresholdLog(bt), color: 'c4', shape: 'diamond', label: '屈曲点' }, { x: t, y: v, color: 'c4' }],
+      });
+      leg.replaceChildren(legend([{ label: '感じとれる最小の光の強さ（閾値）', color: 'fg' }, { label: '錐体だけの場合', color: 'c2', dash: 'dot' }, { label: '桿体だけの場合', color: 'c1', dash: 'dot' }]));
+      note.textContent = '縦軸は下ほど弱い光でも感じとれる（感度が高い）。値は模式。';
+      const lines = [];
+      lines.push(`暗い所に入ってから ${fmt(t, 1)} 分：感じとれる最小の光の強さは、はじめの 約 10^${fmt(thresholdLog(0) - v, 1)} 分の1（10 の ${fmt(thresholdLog(0) - v, 1)} 乗分の1）。`);
+      lines.push(t < bt
+        ? `はじめの数分は、錐体の感度が上がることで暗さに慣れていく。約${fmt(bt, 0)}分で錐体の感度は頭打ちになる。`
+        : `約${fmt(bt, 0)}分を過ぎると、桿体の感度が錐体を上回り、曲線が折れ曲がる（屈曲点）。桿体では光を受容する物質ロドプシンが暗所で再合成されて蓄積するので、感度がさらに大きく上がる。`);
+      lines.push('明るい所では桿体のロドプシンが分解されて少なくなっているので、暗所に入ってすぐは桿体ははたらかない。このように、暗い所でしだいに感度が上がることを暗順応という。');
+      exp.set(lines);
+      return { dark: thresholdLog(0) - v, afterBreak: t >= bt && t <= bt + 3 };
+    }
+
+    function drawRetina() {
+      const a = st.angle;
+      const c = cones(a);
+      const r = rods(a);
+      title.replaceChildren('網膜の視細胞の分布 ', modelNote('ヒトの右眼の模式'));
+      chart.draw({
+        alt: `${a}°：錐体 ${fmt(c, 0)}、桿体 ${fmt(r, 0)}`,
+        x: { min: -60, max: 60, label: '網膜上の、黄斑（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
+        y: { min: 0, max: 180, label: '視細胞の密度（千個/mm²）', step: 40 },
+        regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: '盲斑' }],
+        series: [
+          { points: sample(cones, -60, 60, 960), color: 'c2', width: 3, label: '錐体', labelAt: 4 },
+          { points: sample(rods, -60, 60, 960), color: 'c1', dash: 'dash', width: 3, label: '桿体', labelAt: -30 },
+        ],
+        vlines: [{ x: a, color: 'fg', dash: 'dot' }],
+        markers: [{ x: a, y: c, color: 'c2', shape: 'square' }, { x: a, y: r, color: 'c1' }],
+      });
+      leg.replaceChildren(legend([{ label: '錐体（色を識別し、明るい所ではたらく）', color: 'c2' }, { label: '桿体（弱い光を感じとるが、色は区別しない）', color: 'c1', dash: 'dash' }]));
+      note.textContent = '密度の値は目安。盲斑は視神経が束になって眼球から出ていく部分で、視細胞がない。';
+      const inBlind = a >= BLIND[0] && a <= BLIND[1];
+      const rs = retinaSize(st.width, st.dist);
+      calc.replaceChildren(
+        h('p', null, `網膜上の盲斑の直径 ＝ 紙の上で見えなくなった幅 × 眼の節点から網膜までの距離 ÷ 眼から紙までの距離 ＝ ${fmt(st.width, 1)} × ${EYE_DEPTH} ÷ ${st.dist} ≒ ${fmt(rs * 10, 2)} mm`),
+        h('p', { class: 'small muted' }, `眼の中で光の道すじが交わる点（節点）から網膜までを約 ${EYE_DEPTH} cm とした。紙の上の像と網膜上の像は、節点をはさんで相似の三角形になる。`),
+      );
+      exp.set([
+        inBlind
+          ? `${a}° は盲斑の位置で、錐体も桿体もない。ここに結んだ像は見えない。視神経の繊維や血管が眼球から出ていく部分だからである。`
+          : `${a > 0 ? '鼻側' : a < 0 ? '耳側' : ''}${Math.abs(a)}°：錐体 約${fmt(c, 0)}、桿体 約${fmt(r, 0)}（千個/mm²）。`,
+        '黄斑（中心窩）には錐体が集中していて桿体はほとんどないので、視野の中心では色や形をくわしく見分けられる。周辺部には桿体が多いので、暗い所では少し視線をずらしたほうが弱い光を感じやすい。',
+      ]);
+      return { inBlind, fovea: Math.abs(a) < 0.6 };
+    }
+
+    function update() {
+      const res = st.tab === 'dark' ? drawDark() : drawRetina();
+      ctx.update({ ...st, ...res });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'dark' && s.afterBreak;
+dojo.tasks[1].check = (s) => s.tab === 'dark' && s.t >= 30 && s.dark > 4;
+dojo.tasks[2].check = (s) => s.tab === 'retina' && s.touched > 0 && s.fovea;
+dojo.tasks[3].check = (s) => s.tab === 'retina' && s.inBlind;
+return { dojo };
+})();
+
+// ---- models/morphogen.js ----
+__m["models/morphogen.js"] = (function () {
+// A19 発生と位置情報（ショウジョウバエの前後軸）
+// 未受精卵の前端にビコイド遺伝子の mRNA が局在し（母性効果遺伝子）、受精後に翻訳されたビコイドタンパク質が
+// 拡散して、前端で高く後端で低い濃度勾配ができる。各細胞（核）はビコイドの濃度を位置情報として受け取り、
+// 濃度が閾値以上の領域でハンチバック遺伝子などが発現して、頭部・胸部などの前方の構造がつくられる。
+// 位置 x は前端を0、後端を1とした卵の長さに対する割合。
+const LAMBDA = 0.2; // 濃度が 1/e になる距離（卵の長さに対する割合）
+const B0 = 1; // 正常な母親のときの前端の濃度（相対値）
+const THRESH = 0.15; // ハンチバック遺伝子が発現する閾値（相対値）
+
+function bicoid(x, amount = 1) {
+  return B0 * amount * Math.exp(-x / LAMBDA);
+}
+
+// 閾値以上になる範囲の後端（境界の位置）。amount が 0 なら境界なし
+function boundary(amount = 1, thresh = THRESH) {
+  if (amount <= 0) return 0;
+  const x = LAMBDA * Math.log((B0 * amount) / thresh);
+  return Math.max(0, Math.min(1, x));
+}
+
+// 濃度が半分になる距離
+function halfDistance() {
+  return LAMBDA * Math.log(2);
+}
+return { LAMBDA, B0, THRESH, bicoid, boundary, halfDistance };
+})();
+
+// ---- dojo/a19.js ----
+__m["dojo/a19.js"] = (function () {
+// A19 発生と位置情報 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { bicoid, boundary, THRESH, halfDistance } = __m["models/morphogen.js"];
+const { sample } = __m["lib/series.js"];
+
+const AMOUNTS = [
+  { value: 0, label: '欠損' },
+  { value: 0.5, label: '半分' },
+  { value: 1, label: '正常' },
+  { value: 2, label: '2倍' },
+];
+
+const dojo = {
+  tasks: [
+    { id: 'normal', text: '正常な母親の卵で、ビコイドの濃度が閾値以上になる範囲（頭部・胸部になる範囲）を確かめよう。', short: '正常な卵' },
+    { id: 'none', text: 'ビコイド遺伝子が欠損した母親の卵では、頭部・胸部がつくられないことを確かめよう。', short: 'ビコイドの欠損' },
+    { id: 'double', text: 'ビコイドを2倍にすると、頭部・胸部になる範囲が後方へ広がることを確かめよう。', short: '2倍にすると' },
+  ],
+  mount(root, ctx) {
+    const st = { amount: 1, touched: 0 };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, 'ビコイドタンパク質の濃度勾配 ', modelNote('ショウジョウバエの卵の模式')));
+    const chart = createChart(top, { label: 'ビコイドの濃度勾配のグラフ', aspect: 0.6 });
+    const leg = h('div');
+    top.append(leg);
+    const chart2 = createChart(top, { label: '卵の模式図', aspect: 0.22 });
+    top.append(h('p', { class: 'small muted' }, '横軸は前端を0、後端を1とした卵の長さに対する位置。濃度が閾値以上の範囲でハンチバック遺伝子などが発現し、頭部・胸部の構造がつくられるとした模式。'));
+
+    const segA = segmented({ label: '卵をつくった母親のビコイド遺伝子', options: AMOUNTS, value: st.amount, onChange: (v) => { st.amount = v; st.touched++; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segA.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const a = st.amount;
+      const b = boundary(a);
+      chart.draw({
+        alt: `頭部・胸部になる範囲：前端から ${fmt(b, 2)} まで`,
+        x: { min: 0, max: 1, label: '卵の前端からの位置（前 0 ← → 1 後）', step: 0.2, digits: 1 },
+        y: { min: 0, max: 2.2, label: 'ビコイドの濃度（相対値）', step: 0.5, digits: 1 },
+        regions: b > 0 ? [{ x0: 0, x1: b, fill: 'region-3', label: '頭部・胸部' }] : [],
+        series: [
+          ...(a !== 1 ? [{ points: sample((x) => bicoid(x, 1), 0, 1, 200), color: 'muted', dash: 'dot', width: 1.5 }] : []),
+          { points: sample((x) => bicoid(x, a), 0, 1, 300), color: 'c1', width: 3 },
+        ],
+        hlines: [{ y: THRESH, color: 'c2', dash: 'dash', label: '閾値', align: 'right' }],
+        markers: b > 0 ? [{ x: b, y: THRESH, color: 'c2', label: `${fmt(b, 2)}` }] : [],
+      });
+      leg.replaceChildren(legend([{ label: 'ビコイドの濃度', color: 'c1' }, ...(a !== 1 ? [{ label: '正常な母親の卵（比較）', color: 'muted', dash: 'dot' }] : []), { label: 'ハンチバック遺伝子が発現する閾値', color: 'c2', dash: 'dash' }]));
+      const polys = [];
+      const seg = (x0, x1, fill, label) => polys.push({ points: [[x0, 0.2], [x1, 0.2], [x1, 0.8], [x0, 0.8]], fill, stroke: 'fg', label, at: [(x0 + x1) / 2, 0.5] });
+      if (b > 0) seg(0, b, 'region-3', b > 0.18 ? '頭部・胸部' : '');
+      seg(b, 1, 'region-4', '腹部など');
+      chart2.draw({ alt: '卵の模式図', x: { min: 0, max: 1, ticks: [{ v: 0, text: '前' }, { v: 1, text: '後' }], grid: false }, y: { min: 0, max: 1, ticks: [] }, polygons: polys });
+      const lines = [];
+      lines.push('ビコイド遺伝子は母親の遺伝子で、その mRNA は卵形成のときに未受精卵の前端に局在する（母性効果遺伝子）。受精後に翻訳されたビコイドタンパク質が後方へ拡散するので、前端で高く後方ほど低い濃度勾配ができる。');
+      if (a === 0) lines.push('母親のビコイド遺伝子が欠損していると、卵にビコイドがなく、どの位置でも閾値に達しない。そのため頭部と胸部がつくられない（胚の遺伝子型に関係なく、母親の遺伝子型で決まる）。');
+      else lines.push(`濃度が閾値以上の範囲（前端から ${fmt(b, 2)} まで）で前方の構造をつくる遺伝子が発現する。各細胞はビコイドの濃度を、自分の位置を知るための情報（位置情報）として受け取っている。`);
+      if (a === 2) lines.push(`ビコイドが2倍になると、閾値に達する位置が 約${fmt(halfDistance(), 2)}（濃度が半分になる距離）だけ後方へずれ、頭部・胸部になる範囲が広がる。`);
+      if (a === 0.5) lines.push(`ビコイドが半分になると、閾値に達する位置が 約${fmt(halfDistance(), 2)} だけ前方へずれる。`);
+      lines.push('後端にはナノス遺伝子の mRNA が局在し、後方（腹部）の構造の形成にかかわる。このように、物質の濃度勾配によって体の前後などの軸が決まっていく。');
+      exp.set(lines);
+      ctx.update({ ...st, b });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.touched > 0 && s.amount === 1;
+dojo.tasks[1].check = (s) => s.amount === 0;
+dojo.tasks[2].check = (s) => s.amount === 2;
+return { dojo };
+})();
+
+// ---- models/meiosis.js ----
+__m["models/meiosis.js"] = (function () {
+// A20 減数分裂と遺伝的多様性
+// 細胞1個あたりの DNA 量（相対値。G1期の体細胞＝2）
+//   G1期 2 → S期で 4 に → 第一分裂（相同染色体が分かれる）の終わりに 2 → 第二分裂（染色分体が分かれる）の終わりに 1
+// 染色体数：2n → 第一分裂のあと n → 第二分裂のあとも n
+const PHASES = [
+  { id: 'G1', name: '間期（G1期）', len: 8 },
+  { id: 'S', name: '間期（S期）', len: 6 },
+  { id: 'G2', name: '間期（G2期）', len: 3 },
+  { id: 'M1', name: '第一分裂', len: 4 },
+  { id: 'M2', name: '第二分裂', len: 3 },
+];
+const TOTAL = PHASES.reduce((a, p) => a + p.len, 0);
+
+function phaseAt(t) {
+  let acc = 0;
+  for (const p of PHASES) {
+    if (t < acc + p.len) return { ...p, from: acc, frac: (t - acc) / p.len };
+    acc += p.len;
+  }
+  const last = PHASES[PHASES.length - 1];
+  return { ...last, from: TOTAL - last.len, frac: 1 };
+}
+
+function dnaAt(t) {
+  const p = phaseAt(t);
+  if (p.id === 'G1') return 2;
+  if (p.id === 'S') return 2 + 2 * p.frac;
+  if (p.id === 'G2') return 4;
+  if (p.id === 'M1') return p.frac < 0.95 ? 4 : 2;
+  return t >= TOTAL || p.frac >= 0.95 ? 1 : 2;
+}
+
+// 染色体数（2n を基準に、n の何倍か）
+function chromosomeSetsAt(t) {
+  const p = phaseAt(t);
+  if (p.id === 'M1') return p.frac < 0.95 ? 2 : 1;
+  if (p.id === 'M2') return 1;
+  return 2;
+}
+
+// 乗換えがないとき、1個体がつくる配偶子の染色体の組合せ ＝ 2ⁿ。受精による子の組合せ ＝ 2ⁿ × 2ⁿ
+function gameteTypes(n) {
+  return Math.pow(2, n);
+}
+function zygoteTypes(n) {
+  return Math.pow(2, n) * Math.pow(2, n);
+}
+return { PHASES, TOTAL, phaseAt, dnaAt, chromosomeSetsAt, gameteTypes, zygoteTypes };
+})();
+
+// ---- dojo/a20.js ----
+__m["dojo/a20.js"] = (function () {
+// A20 減数分裂と遺伝的多様性 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { PHASES, TOTAL, phaseAt, dnaAt, chromosomeSetsAt, gameteTypes, zygoteTypes } = __m["models/meiosis.js"];
+const { sample } = __m["lib/series.js"];
+
+const big = (n) => (n < 1e6 ? n.toLocaleString('ja-JP') : `約 ${fmt(n / Math.pow(10, Math.floor(Math.log10(n))), 1)} × 10${String(Math.floor(Math.log10(n))).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}`);
+
+const dojo = {
+  tasks: [
+    { id: 'm1', text: '①で、第一分裂の終わりに DNA 量が4から2に、染色体数が 2n から n になることを確かめよう。', short: '第一分裂' },
+    { id: 'm2', text: '①で、第二分裂の終わりに DNA 量が2から1になる（染色体数は n のまま）ことを確かめよう。', short: '第二分裂' },
+    { id: 'human', text: '②で n ＝ 23（ヒト）にして、1人がつくる配偶子の染色体の組合せが約840万通りになることを確かめよう。', short: 'ヒトの配偶子' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'dna', t: 2, n: 3, touched: 0 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'dna', label: '①DNA量と染色体数' }, { value: 'comb', label: '②配偶子の組合せ' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'グラフ', aspect: 0.62 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const sT = slider({ label: '時間（間期のはじめから）', min: 0, max: TOTAL, step: 0.1, value: st.t, format: (v) => phaseAt(v).name, onInput: (v) => { st.t = v; st.touched++; update(); } });
+    const ctlDna = h('div', null, sT.el);
+    const sN = slider({ label: '相同染色体の組の数 n', min: 1, max: 23, step: 1, value: st.n, format: (v) => `n ＝ ${v}（2n ＝ ${2 * v}）`, onInput: (v) => { st.n = v; st.touched++; update(); } });
+    const ctlComb = h('div', null, sN.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlDna, ctlComb), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlDna.hidden = st.tab !== 'dna';
+      ctlComb.hidden = st.tab !== 'comb';
+      update();
+    }
+
+    function drawDna() {
+      const t = st.t;
+      const p = phaseAt(t);
+      const dna = dnaAt(Math.min(t, TOTAL));
+      const sets = chromosomeSetsAt(Math.min(t, TOTAL));
+      title.replaceChildren('減数分裂での細胞1個あたりの DNA 量 ', modelNote());
+      const regions = [];
+      let acc = 0;
+      for (const ph of PHASES) {
+        if (ph.id === 'M1' || ph.id === 'M2') regions.push({ x0: acc, x1: acc + ph.len, fill: ph.id === 'M1' ? 'region' : 'region-4', label: ph.id === 'M1' ? '第一分裂' : '第二分裂' });
+        acc += ph.len;
+      }
+      chart.draw({
+        alt: `${p.name}：DNA量 ${fmt(dna, 2)}、染色体数 ${sets === 2 ? '2n' : 'n'}`,
+        x: { min: 0, max: TOTAL, label: '時間（相対値）', step: 4 },
+        y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
+        regions,
+        series: [{ points: sample((x) => dnaAt(x), 0, TOTAL - 1e-6, 800), color: 'c1', width: 3 }],
+        vlines: [{ x: t, color: 'c2', dash: 'dot' }],
+        markers: [{ x: t, y: dna, color: 'c2', label: `${fmt(dna, 1)}` }],
+      });
+      leg.replaceChildren(legend([{ label: '細胞1個あたりの DNA 量（体細胞の G1期＝2）', color: 'c1' }]));
+      note.textContent = '各時期の長さは模式。第一分裂の前の間期に DNA が複製される（第一分裂と第二分裂の間には複製は起こらない）。';
+      const lines = [`いま：${p.name}。DNA 量 ${fmt(dna, 1)}、染色体数 ${sets === 2 ? '2n' : 'n'}。`];
+      if (p.id === 'S') lines.push('S期で DNA が複製され、DNA 量が2から4に増える。');
+      if (p.id === 'M1') lines.push('第一分裂の前期に相同染色体どうしが対合して二価染色体ができ、このとき乗換えが起こることがある。後期に相同染色体が分かれて両極へ移動するので、終わりには染色体数が半分（n）、DNA 量が2になる。');
+      if (p.id === 'M2') lines.push('第二分裂では、DNA の複製が起こらないまま、各染色体の染色分体が分かれる。そのため染色体数は n のままで、DNA 量は2から1になる。1個の母細胞から4個の娘細胞ができる。');
+      lines.push('体細胞分裂では DNA 量が 2 → 4 → 2 と、もとにもどるが、減数分裂では 2 → 4 → 2 → 1 と半分になる。配偶子の染色体数が n なので、受精すると 2n にもどる。');
+      exp.set(lines);
+      return { p: p.id, dna, sets };
+    }
+
+    function drawComb() {
+      const n = st.n;
+      const g = gameteTypes(n);
+      const z = zygoteTypes(n);
+      title.replaceChildren('相同染色体の組の数と配偶子の組合せ ', modelNote('乗換えを考えない場合'));
+      const pts = [];
+      for (let k = 1; k <= 23; k++) pts.push([k, gameteTypes(k)]);
+      chart.draw({
+        alt: `n ＝ ${n}：配偶子 ${g} 通り`,
+        x: { min: 1, max: 23, label: '相同染色体の組の数 n', step: 2 },
+        y: { min: 1, max: 1e7, log: true, label: '配偶子の染色体の組合せ（通り・対数目盛り）', ticks: [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((v) => ({ v, text: v < 1e4 ? String(v) : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
+        series: [{ points: pts, color: 'c1', width: 3 }],
+        markers: [{ x: n, y: g, color: 'c2', label: big(g) }],
+      });
+      leg.replaceChildren(legend([{ label: '1個体がつくる配偶子の染色体の組合せ（2ⁿ 通り）', color: 'c1' }]));
+      note.textContent = '';
+      exp.set([
+        `相同染色体の組が ${n} 組あると、第一分裂でそれぞれの組の2本のうちどちらが同じ極に行くかは独立に決まるので、配偶子の染色体の組合せは 2^${n} ＝ ${big(g)} 通りになる。`,
+        `受精では、両親の配偶子が無作為に組み合わさるので、子の染色体の組合せは ${big(g)} × ${big(g)} ＝ ${big(z)} 通りになる。`,
+        '実際には、第一分裂の前期に相同染色体の間で乗換えが起こり、遺伝子の組合せがさらに多様になる。このような減数分裂と受精のしくみが、有性生殖で生じる子の遺伝的多様性を生み出している。',
+      ]);
+      return { g };
+    }
+
+    function update() {
+      const r = st.tab === 'dna' ? drawDna() : drawComb();
+      ctx.update({ ...st, ...r });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'dna' && s.p === 'M1' && s.dna === 2 && s.sets === 1;
+dojo.tasks[1].check = (s) => s.tab === 'dna' && s.t >= TOTAL - 0.1 && s.dna === 1;
+dojo.tasks[2].check = (s) => s.tab === 'comb' && s.n === 23;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -7609,6 +8351,8 @@ const { dojo: b8 } = __m["dojo/b8.js"];
 const { dojo: b9 } = __m["dojo/b9.js"];
 const { dojo: b10 } = __m["dojo/b10.js"];
 const { dojo: b11 } = __m["dojo/b11.js"];
+const { dojo: b12 } = __m["dojo/b12.js"];
+const { dojo: b13 } = __m["dojo/b13.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
@@ -7626,8 +8370,11 @@ const { dojo: a14 } = __m["dojo/a14.js"];
 const { dojo: a15 } = __m["dojo/a15.js"];
 const { dojo: a16 } = __m["dojo/a16.js"];
 const { dojo: a17 } = __m["dojo/a17.js"];
+const { dojo: a18 } = __m["dojo/a18.js"];
+const { dojo: a19 } = __m["dojo/a19.js"];
+const { dojo: a20 } = __m["dojo/a20.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20 };
 return { DOJOS };
 })();
 
@@ -10397,6 +11144,308 @@ const B11 = [
   },
 ];
 return { B11 };
+})();
+
+// ---- questions/b12.js ----
+__m["questions/b12.js"] = (function () {
+// B12 ホルモンと負のフィードバック の問題
+const { KATA, assignmentQuestion, distinctNumbers } = __m["questions/common.js"];
+const { simulate, T_END } = __m["models/thyroid.js"];
+const { fmt } = __m["lib/format.js"];
+
+const UP = '増加する';
+const DOWN = '減少する';
+const choice = (h, s, t) => `TRH：${h}　TSH：${s}　チロキシン：${t}`;
+const ALL = [];
+for (const a of [UP, DOWN]) for (const b of [UP, DOWN]) for (const c of [UP, DOWN]) ALL.push(choice(a, b, c));
+
+const B12 = [
+  {
+    id: 'b12-manip',
+    stage: 'b12',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const k = rng.pick(['thyroidectomy', 'injection', 'pituitary']);
+      const Q = {
+        thyroidectomy: { text: 'ある動物の甲状腺を除去した。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる）。', ans: choice(UP, UP, DOWN), ex: '甲状腺がないのでチロキシンが減る。チロキシンによる負のフィードバックがはたらかなくなるので、視床下部からの TRH と脳下垂体前葉からの TSH の分泌が増える。' },
+        injection: { text: 'ある動物にチロキシンを注射し続けた。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる）。', ans: choice(DOWN, DOWN, UP), ex: '注射でチロキシンが多くなるので、負のフィードバックによって視床下部と脳下垂体前葉のはたらきがおさえられる。そのため TRH と TSH の分泌が減る。' },
+        pituitary: { text: 'ある動物の脳下垂体（前葉）を除去した。しばらくたったあとの、血液中の TRH・TSH・チロキシンの量の変化として正しいものはどれか（正常なときと比べる。TSH は除去後に検出されなくなった）。', ans: choice(UP, DOWN, DOWN), ex: '脳下垂体前葉がないので TSH が分泌されず、甲状腺が刺激されないのでチロキシンが減る。チロキシンが減ると負のフィードバックによる抑制が弱まるので、視床下部からの TRH の分泌は増える。' },
+      }[k];
+      return { text: Q.text, correct: Q.ans, wrong: ALL, explanation: Q.ex };
+    },
+  },
+  {
+    id: 'b12-feedback',
+    stage: 'b12',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '血液中のチロキシンが多くなると、視床下部と脳下垂体前葉からのホルモンの分泌がおさえられ、チロキシンの分泌が減る。このように、結果が原因にもどってはたらきをおさえるしくみを何というか。',
+        correct: '負のフィードバック',
+        wrong: ['正のフィードバック', '拮抗作用', '神経分泌', '恒常性の破綻'],
+        explanation: 'これは負のフィードバックである。結果（チロキシンの量）が原因（TRH・TSH の分泌）をおさえる向きにはたらくので、チロキシンの量がほぼ一定の範囲に保たれる。',
+      };
+    },
+  },
+  {
+    id: 'b12-path',
+    stage: 'b12',
+    level: 1,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['ア', 'イ', 'ウ'], ['視床下部', '脳下垂体前葉', '甲状腺']);
+      return {
+        text: 'チロキシンの分泌の調節について、次のア〜ウにあてはまる器官の組合せとして正しいものはどれか。　（ア）から放出ホルモン（TRH）が分泌される → （イ）から甲状腺刺激ホルモン（TSH）が分泌される → （ウ）からチロキシンが分泌される。',
+        correct: q.correct,
+        wrong: q.wrong,
+        explanation: 'アは視床下部、イは脳下垂体前葉、ウは甲状腺である。視床下部の神経分泌細胞がつくる放出ホルモンが脳下垂体前葉にはたらき、そこから分泌された刺激ホルモンが甲状腺にはたらくので、段階的に調節される。',
+      };
+    },
+  },
+  {
+    id: 'b12-graph',
+    stage: 'b12',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const k = rng.pick(['thyroidectomy', 'injection']);
+      const run = simulate(k);
+      const order = rng.shuffle(['S', 'T']);
+      const lab = { [order[0]]: KATA[0], [order[1]]: KATA[1] };
+      return {
+        text: `図のア・イは、ある動物に${k === 'thyroidectomy' ? '甲状腺を除去する' : 'チロキシンを注射し続ける'}処置を5日目に行ったときの、血液中の TSH とチロキシンの量（正常＝100%）の変化を表している。TSH を表すのはどちらか。`,
+        chart: {
+          x: { min: 0, max: T_END, label: '日数', step: 10 },
+          y: { min: 0, max: k === 'thyroidectomy' ? 450 : 250, label: '量（正常＝100%）', step: 50 },
+          series: order.map((key, i) => ({ points: run.map((q) => [q.t, q[key] * 100]), color: i ? 'c2' : 'c1', dash: i ? 'dash' : 'solid', width: 3, label: KATA[i], labelAt: 30 })),
+          alt: 'ホルモンの量の変化ア・イ',
+        },
+        correct: lab.S,
+        wrong: [KATA[0], KATA[1], 'どちらともいえない', 'ア・イの両方'],
+        explanation: k === 'thyroidectomy'
+          ? `甲状腺を除去するとチロキシンが減り、負のフィードバックによる抑制がなくなって TSH が増えるので、増加している${lab.S}が TSH である。チロキシンは甲状腺でしかつくられないからである。`
+          : `チロキシンを注射すると、負のフィードバックによって TSH の分泌がおさえられるので、減少している${lab.S}が TSH である。チロキシンは注射によって増えるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b12-goiter',
+    stage: 'b12',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '食物中のヨウ素が不足すると、甲状腺が大きくはれることがある。この理由として最も適当なものはどれか。',
+        correct: 'チロキシンが不足して負のフィードバックがはたらかず、TSH が多く分泌されて甲状腺が刺激され続けるから',
+        wrong: ['チロキシンが多くなりすぎて、甲状腺が刺激され続けるから', 'TSH の分泌が止まり、甲状腺がはたらかなくなるから', 'ヨウ素が甲状腺にたまりすぎるから'],
+        explanation: 'ヨウ素はチロキシンの材料なので、不足するとチロキシンを十分につくれない。チロキシンが少ないと負のフィードバックによる抑制が弱まり、TSH が多く分泌されて甲状腺が刺激され続けるので、甲状腺が大きくなる。',
+      };
+    },
+  },
+  {
+    id: 'b12-target',
+    stage: 'b12',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ホルモンが、特定の器官（標的器官）にだけはたらく理由として最も適当なものはどれか。',
+        correct: '標的器官の細胞（標的細胞）に、そのホルモンと特異的に結合する受容体があるから',
+        wrong: ['ホルモンは神経を通って標的器官にだけ運ばれるから', 'ホルモンは標的器官の中でだけつくられるから', '血液は標的器官にだけ流れているから'],
+        explanation: 'ホルモンは血液によって全身に運ばれるが、そのホルモンと結合する受容体をもつ標的細胞にだけ作用する。受容体とホルモンは特異的に結合するので、特定の器官にだけはたらくのである。',
+      };
+    },
+  },
+  {
+    id: 'b12-level-calc',
+    stage: 'b12',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const k = rng.pick(['thyroidectomy', 'pituitary', 'iodine']);
+      const run = simulate(k);
+      const end = run[run.length - 1];
+      const key = k === 'pituitary' ? 'H' : 'S';
+      const name = key === 'H' ? 'TRH' : 'TSH';
+      const v = Math.round(end[key] * 100);
+      const before = 100;
+      const ans = v / before;
+      const d = distinctNumbers(ans, [before / v, (v - before) / before, ans * 2, ans / 2, v - before], ' 倍', 1);
+      const label = { thyroidectomy: '甲状腺を除去した', pituitary: '脳下垂体前葉を除去した', iodine: '材料のヨウ素が不足した' }[k];
+      return {
+        text: `ある動物で${label}ところ、しばらくして血液中の ${name} の量が、正常なときの ${before} から ${v}（相対値）になった。${name} の量は正常なときの何倍になったか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${v} ÷ ${before} ＝ ${fmt(ans, 1)} 倍である。チロキシンが減って負のフィードバックによる抑制が弱まったので、${name} の分泌が増えたからである。`,
+      };
+    },
+  },
+  {
+    id: 'b12-function',
+    stage: 'b12',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'チロキシンのはたらきとして最も適当なものはどれか。',
+        correct: '多くの細胞で代謝（化学反応）を促進する',
+        wrong: ['血糖値を下げる', '腎臓での水の再吸収を促進する', '血液中のカルシウムイオン濃度を下げる'],
+        explanation: 'チロキシンは甲状腺から分泌され、全身の多くの細胞で代謝を促進するので、体温の維持や成長にかかわる。血糖値を下げるのはインスリン、水の再吸収を促進するのはバソプレシンである。',
+      };
+    },
+  },
+];
+return { B12 };
+})();
+
+// ---- questions/b13.js ----
+__m["questions/b13.js"] = (function () {
+// B13 炭素の循環 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers } = __m["questions/common.js"];
+const { co2, PPM_PER } = __m["models/carbon.js"];
+const { sample } = __m["lib/series.js"];
+
+const B13 = [
+  {
+    id: 'b13-balance',
+    stage: 'b13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const photo = rng.pick([1000, 1100, 1200]);
+      const resp = rng.pick([550, 600]);
+      const decomp = rng.pick([450, 500, 520]);
+      const fossil = rng.pick([80, 100, 120]);
+      const ocean = rng.pick([20, 30]);
+      const ans = resp + decomp + fossil - photo - ocean;
+      if (ans <= 0) return this.make(rng);
+      const d = distinctNumbers(ans, [resp + decomp + fossil + photo + ocean, fossil, resp + decomp - photo + ocean + fossil, fossil - ocean, ans + 2 * ocean], ' 億トン', 0);
+      return {
+        text: `ある時期の地球全体の炭素の出入り（億トン/年）を、陸上の生産者の光合成 ${photo}、生物の呼吸（生産者・消費者）${resp}、分解者の呼吸 ${decomp}、化石燃料の燃焼 ${fossil}、海洋への吸収 ${ocean} とする。大気中の炭素は1年に何億トン増えるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `大気へ入る量は ${resp} ＋ ${decomp} ＋ ${fossil} ＝ ${resp + decomp + fossil}、大気から出る量は ${photo} ＋ ${ocean} ＝ ${photo + ocean} なので、差は ${ans} 億トンである。呼吸・分解・燃焼で CO₂ が大気にもどり、光合成と海洋への溶け込みで大気から取り除かれるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-ppm',
+    stage: 'b13',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const inc = rng.pick([42, 50, 63, 84]);
+      const ans = inc / PPM_PER;
+      const d = distinctNumbers(ans, [inc * PPM_PER / 100, PPM_PER / inc, ans * 2, ans / 2, inc / 10], ' ppm', 1);
+      return {
+        text: `大気中の炭素が ${PPM_PER} 億トン増えると、大気中の CO₂ 濃度は約 1 ppm 上がる。大気中の炭素が1年に ${inc} 億トン増えると、CO₂ 濃度は1年に約何 ppm 上がるか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${inc} ÷ ${PPM_PER} ＝ ${fmt(ans, 1)} ppm である。CO₂ 濃度の上がり方は大気中の炭素の増加量に比例するから、1 ppm にあたる量で割ればよい。`,
+      };
+    },
+  },
+  {
+    id: 'b13-season',
+    stage: 'b13',
+    level: 2,
+    kind: 'graph',
+    make() {
+      return {
+        text: '図は、北半球のある観測地点での大気中の CO₂ 濃度の変化（模式）である。毎年、夏から秋にかけて濃度が下がる理由として最も適当なものはどれか。',
+        chart: {
+          x: { min: 2020, max: 2023, label: '年', ticks: [2020, 2021, 2022, 2023].map((v) => ({ v, text: String(v) })) },
+          y: { min: 404, max: 424, label: 'CO₂ 濃度（ppm）', step: 4 },
+          series: [{ points: sample(co2, 2020, 2023, 600), color: 'c1', width: 3 }],
+          alt: 'CO₂濃度の季節変動',
+        },
+        correct: '植物の光合成がさかんになり、大気中の CO₂ が多く吸収されるから',
+        wrong: ['化石燃料の燃焼がさかんになるから', '植物の呼吸がさかんになり、CO₂ が多く放出されるから', '海水の温度が上がり、海洋が CO₂ を多く放出するから'],
+        explanation: '北半球の陸地では、春から夏に植物がさかんに光合成を行うので、大気中の CO₂ が吸収されて濃度が下がる。冬は光合成が少なく、呼吸や分解で放出される CO₂ のほうが多いので、濃度が上がるからである。',
+      };
+    },
+  },
+  {
+    id: 'b13-flow',
+    stage: 'b13',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '炭素の循環で、大気中の CO₂ を生物の体内（有機物）に取り込むはたらきはどれか。',
+        correct: '生産者の光合成',
+        wrong: ['生産者の呼吸', '分解者による遺体の分解', '化石燃料の燃焼', '消費者の呼吸'],
+        explanation: '大気中の CO₂ は、生産者の光合成によって有機物に取り込まれる。有機物の炭素は食物連鎖で消費者に移り、呼吸や分解で再び CO₂ として大気にもどるので、炭素は生態系の中を循環する。',
+      };
+    },
+  },
+  {
+    id: 'b13-fossil',
+    stage: 'b13',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '大気中の CO₂ 濃度が長期的に増え続けている主な原因として最も適当なものはどれか。',
+        correct: '化石燃料の大量消費や森林の減少',
+        wrong: ['植物の光合成の増加', '海洋による CO₂ の吸収', '分解者の減少'],
+        explanation: '化石燃料には、昔の生物の遺体の炭素が長い間たくわえられている。それを大量に燃やすと CO₂ が大気に放出され、森林が減ると光合成による吸収も減るので、大気中の CO₂ 濃度が増え続けている。',
+      };
+    },
+  },
+  {
+    id: 'b13-greenhouse',
+    stage: 'b13',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '大気中の CO₂ 濃度の増加が地球温暖化の原因になる理由として最も適当なものはどれか。',
+        correct: 'CO₂ は地表から放出される熱（赤外線）を吸収し、その一部を地表にもどすから',
+        wrong: ['CO₂ が太陽の光をさえぎるから', 'CO₂ がオゾン層を破壊するから', 'CO₂ が燃えて熱を出すから'],
+        explanation: 'CO₂ などの温室効果ガスは、地表から宇宙へ出ていく熱（赤外線）を吸収し、その一部を地表にもどす。温室効果ガスが増えるとこのはたらき（温室効果）が強まるので、地表付近の気温が上がる。',
+      };
+    },
+  },
+  {
+    id: 'b13-decomposer',
+    stage: 'b13',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '生態系で、生物の遺体や排出物に含まれる有機物を分解して、CO₂ などの無機物にもどすはたらきをする生物を何というか。',
+        correct: '分解者',
+        wrong: ['生産者', '一次消費者', '二次消費者'],
+        explanation: 'これは分解者で、菌類や細菌などが含まれる。分解者が有機物を無機物にもどすので、炭素などの物質は生態系の中を循環できる。',
+      };
+    },
+  },
+  {
+    id: 'b13-trend-calc',
+    stage: 'b13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const y1 = rng.pick([2000, 2005, 2010]);
+      const span = rng.pick([10, 15, 20]);
+      const c1 = rng.pick([370, 380, 390]);
+      const rate = rng.pick([2, 2.2, 2.4, 2.5]);
+      const c2 = c1 + rate * span;
+      const d = distinctNumbers(rate, [(c2 - c1) / 10, c2 - c1, rate * 2, rate / 2, (c2 - c1) / (span * 2)], ' ppm', 1);
+      return {
+        text: `ある観測地点の大気中の CO₂ 濃度（年平均）は、${y1}年に ${c1} ppm、${y1 + span}年に ${fmt(c2, 1)} ppm であった。この間、CO₂ 濃度は1年あたり平均何 ppm 増加したか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `(${fmt(c2, 1)} − ${c1}) ÷ ${span} ＝ ${fmt(rate, 1)} ppm である。季節による上下の変動を打ち消すために年平均どうしを比べ、増加量を年数で割るからである。`,
+      };
+    },
+  },
+];
+return { B13 };
 })();
 
 // ---- questions/a1.js ----
@@ -13872,6 +14921,468 @@ const A17 = [
 return { A17 };
 })();
 
+// ---- questions/a18.js ----
+__m["questions/a18.js"] = (function () {
+// A18 視覚 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers, assignmentQuestion } = __m["questions/common.js"];
+const { thresholdLog, cones, rods, retinaSize, EYE_DEPTH, BLIND } = __m["models/vision.js"];
+const { sample } = __m["lib/series.js"];
+
+const A18 = [
+  {
+    id: 'a18-dark-curve',
+    stage: 'a18',
+    level: 2,
+    kind: 'graph',
+    make() {
+      return {
+        text: '図は、明るい所から暗い所に入ったときの、感じとれる最小の光の強さの時間変化（暗順応曲線）を表している。約8分のところで曲線が折れ曲がる理由として最も適当なものはどれか。',
+        chart: {
+          x: { min: 0, max: 40, label: '暗い所に入ってからの時間（分）', step: 10 },
+          y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数）', ticks: [] },
+          series: [{ points: sample(thresholdLog, 0, 40, 400), color: 'c1', width: 3 }],
+          alt: '暗順応曲線',
+        },
+        correct: 'はじめは錐体の感度の上昇によるが、その後は感度の高い桿体のはたらきに切りかわるから',
+        wrong: ['はじめは桿体の感度の上昇によるが、その後は錐体のはたらきに切りかわるから', '約8分で瞳孔が完全に閉じるから', '約8分で網膜の視細胞の数が増えるから'],
+        explanation: 'はじめの数分は錐体の感度が上がるが、すぐに頭打ちになる。桿体はロドプシンが暗所で再合成されるにつれて感度が上がり、約8分で錐体を上回るので、曲線が折れ曲がってさらに下がる。',
+      };
+    },
+  },
+  {
+    id: 'a18-cells',
+    stage: 'a18',
+    level: 1,
+    kind: 'term',
+    make() {
+      const q = assignmentQuestion(['色の識別', '弱い光の受容', '黄斑に多い'], ['錐体', '桿体', '錐体']);
+      return {
+        text: '視細胞の特徴について、次の組合せとして正しいものはどれか。',
+        correct: q.correct,
+        wrong: [...q.wrong, '色の識別：桿体　弱い光の受容：錐体　黄斑に多い：桿体', '色の識別：錐体　弱い光の受容：桿体　黄斑に多い：桿体', '色の識別：桿体　弱い光の受容：錐体　黄斑に多い：錐体'],
+        explanation: '錐体は色を識別し、明るい所ではたらき、黄斑に集中している。桿体はロドプシンを含み、弱い光でも反応するが色は区別しないので、暗い所での視覚にはたらく。',
+      };
+    },
+  },
+  {
+    id: 'a18-distribution',
+    stage: 'a18',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const coneIsA = rng.chance(0.5);
+      const lab = coneIsA ? { c: KATA[0], r: KATA[1] } : { c: KATA[1], r: KATA[0] };
+      return {
+        text: '図のア・イは、ヒトの網膜での錐体と桿体の分布（網膜上の黄斑からの角度と密度）を表している。錐体を表すのはどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: -60, max: 60, label: '網膜上の黄斑からの角度（°）', step: 20 },
+          y: { min: 0, max: 180, label: '密度（千個/mm²）', step: 40 },
+          regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: 'X' }],
+          series: [
+            { points: sample(cones, -60, 60, 960), color: 'c2', dash: coneIsA ? 'solid' : 'dash', width: 3, label: lab.c, labelAt: 4 },
+            { points: sample(rods, -60, 60, 960), color: 'c1', dash: coneIsA ? 'dash' : 'solid', width: 3, label: lab.r, labelAt: -30 },
+          ],
+          alt: '視細胞の分布ア・イ',
+        },
+        correct: `${lab.c}：黄斑（0°）に集中して分布しているから`,
+        wrong: [`${lab.r}：黄斑（0°）にはほとんどなく、周辺に多いから`, `${lab.r}：黄斑（0°）に集中して分布しているから`, `${lab.c}：黄斑（0°）にはほとんどなく、周辺に多いから`],
+        explanation: `錐体は黄斑に集中しているので${lab.c}である。図の X の部分は、視神経が束になって眼球から出ていく盲斑で、視細胞がないから、錐体も桿体も0になっている。`,
+      };
+    },
+  },
+  {
+    id: 'a18-blind-calc',
+    stage: 'a18',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const dist = rng.pick([20, 25, 30, 34, 40]);
+      const width = rng.pick([1.5, 2, 2.5, 3]);
+      const ans = retinaSize(width, dist) * 10; // mm
+      const d = distinctNumbers(ans, [ans * 10, ans / 10, (width * dist) / EYE_DEPTH, width * EYE_DEPTH, (dist * EYE_DEPTH) / width], ' mm', 2);
+      return {
+        text: `片目で紙の上の目印を見つめ、眼から紙までの距離を ${dist} cm にしたところ、紙の上の幅 ${width} cm の範囲が見えなくなった。眼の中で光の道すじが交わる点から網膜までの距離を ${EYE_DEPTH} cm とすると、網膜上の盲斑の直径は何 mm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `紙の上の範囲と網膜上の盲斑は、光の道すじが交わる点をはさんで相似の三角形になるので、${width} × ${EYE_DEPTH} ÷ ${dist} ＝ ${fmt(ans / 10, 3)} cm ＝ ${fmt(ans, 2)} mm となる。見えなくなる範囲は、網膜上の盲斑に像が結ばれる範囲だからである。`,
+      };
+    },
+  },
+  {
+    id: 'a18-blind-why',
+    stage: 'a18',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '盲斑に像が結ばれても、ものが見えない理由として正しいものはどれか。',
+        correct: '視神経が束になって眼球から出ていく部分で、視細胞がないから',
+        wrong: ['錐体だけがあり、桿体がないから', '黄斑の中心にあり、光が強すぎるから', '水晶体の光が届かない位置にあるから'],
+        explanation: '盲斑は、視細胞からの情報を伝える視神経の繊維が集まって眼球の外に出ていく部分である。ここには錐体も桿体もないので、光を受容できず、像が結ばれても見えない。',
+      };
+    },
+  },
+  {
+    id: 'a18-dark-calc',
+    stage: 'a18',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const k = rng.pick([2, 3, 4]);
+      const ans = Math.pow(10, k);
+      const d = distinctNumbers(ans, [k, k * 10, ans / 10, ans * 10, 2 * k], ' 分の1', 0);
+      return {
+        text: `暗順応曲線で、縦軸（感じとれる最小の光の強さ）は対数目盛りで、1目盛りが10倍を表す。暗い所に入った直後と30分後で、縦軸の値が ${k} 目盛り下がっていた。30分後には、直後の何分の1の強さの光まで感じとれるようになったか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1目盛りで10倍なので、${k} 目盛りでは 10^${k} ＝ ${ans.toLocaleString('ja-JP')} 倍になる。感じとれる最小の光の強さが ${ans.toLocaleString('ja-JP')} 分の1になったので、それだけ弱い光まで感じとれるようになったからである。`,
+      };
+    },
+  },
+  {
+    id: 'a18-rhodopsin',
+    stage: 'a18',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '明るい所から暗い所に入ると、しばらくして弱い光も見えるようになる。このとき桿体で起こっていることとして最も適当なものはどれか。',
+        correct: '明所で分解されていたロドプシンが再合成されて増え、感度が上がる',
+        wrong: ['ロドプシンが分解されて増え、感度が上がる', '桿体が錐体に変化する', '瞳孔が小さくなり、光が多く入る'],
+        explanation: '桿体の視物質ロドプシンは光を受けると分解され、明るい所では少なくなっている。暗い所ではロドプシンが再合成されて蓄積するので、桿体の感度がしだいに上がる（暗順応）。',
+      };
+    },
+  },
+  {
+    id: 'a18-pathway',
+    stage: 'a18',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '眼に入った光が網膜に達するまでに通る順として正しいものはどれか。',
+        correct: '角膜 → 瞳孔 → 水晶体 → ガラス体 → 網膜',
+        wrong: ['角膜 → 水晶体 → 瞳孔 → ガラス体 → 網膜', '瞳孔 → 角膜 → 水晶体 → ガラス体 → 網膜', '角膜 → 瞳孔 → ガラス体 → 水晶体 → 網膜'],
+        explanation: '光は角膜を通り、虹彩に囲まれた瞳孔を通って水晶体で屈折し、ガラス体を通って網膜に像を結ぶ。水晶体の厚さを変えてピントを合わせるので、遠近にかかわらず網膜上に像ができる。',
+      };
+    },
+  },
+];
+return { A18 };
+})();
+
+// ---- questions/a19.js ----
+__m["questions/a19.js"] = (function () {
+// A19 発生と位置情報 の問題
+const { fmt } = __m["lib/format.js"];
+const { distinctNumbers } = __m["questions/common.js"];
+const { bicoid, THRESH } = __m["models/morphogen.js"];
+const { sample } = __m["lib/series.js"];
+
+const A19 = [
+  {
+    id: 'a19-maternal',
+    stage: 'a19',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ショウジョウバエのビコイド遺伝子のように、母親の遺伝子型によって子の形質（体の前後軸など）が決まる遺伝子を何というか。',
+        correct: '母性効果遺伝子',
+        wrong: ['ホメオティック遺伝子', 'ギャップ遺伝子', 'ペア・ルール遺伝子', '調節遺伝子'],
+        explanation: 'これは母性効果遺伝子である。母親の体内で卵がつくられるときに、その mRNA が卵に蓄えられるので、子の遺伝子型ではなく母親の遺伝子型によって子の形質が決まる。',
+      };
+    },
+  },
+  {
+    id: 'a19-deficient',
+    stage: 'a19',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ビコイド遺伝子が欠損した母親（ビコイド遺伝子をもたない）が産んだ卵について正しいものはどれか（父親は正常とする）。',
+        correct: '受精卵の遺伝子型に関係なく、頭部と胸部が形成されない',
+        wrong: ['父親からビコイド遺伝子を受けついだ胚は、頭部と胸部が正常に形成される', '頭部と胸部が2つずつ形成される', '腹部が形成されず、頭部と胸部だけになる'],
+        explanation: 'ビコイドの mRNA は母親の体内で卵に蓄えられるので、母親が欠損していると卵にビコイドがない。受精後に胚自身の遺伝子が発現しはじめるより前に前後軸が決まるので、父親から遺伝子を受けついでも頭部と胸部は形成されない。',
+      };
+    },
+  },
+  {
+    id: 'a19-gradient',
+    stage: 'a19',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const x = rng.pick([0.1, 0.2, 0.3, 0.5, 0.7]);
+      const above = bicoid(x) >= THRESH;
+      return {
+        text: `図は、ショウジョウバエの受精卵のビコイドタンパク質の濃度（前端を0、後端を1とした位置）と、前方の構造をつくる遺伝子が発現する閾値を表した模式図である。位置 ${x} の細胞について正しいものはどれか。`,
+        chart: {
+          x: { min: 0, max: 1, label: '卵の前端からの位置', step: 0.2, digits: 1 },
+          y: { min: 0, max: 1.1, label: 'ビコイドの濃度（相対値）', step: 0.2, digits: 1 },
+          series: [{ points: sample((v) => bicoid(v), 0, 1, 200), color: 'c1', width: 3 }],
+          hlines: [{ y: THRESH, color: 'c2', dash: 'dash', label: '閾値', align: 'right' }],
+          vlines: [{ x, color: 'fg', dash: 'dot', label: `${x}` }],
+          alt: 'ビコイドの濃度勾配',
+        },
+        correct: above ? '濃度が閾値以上なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する' : '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子は発現しない',
+        wrong: ['濃度が閾値以上なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する', '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子は発現しない', '濃度が閾値未満なので、前方（頭部・胸部）の構造をつくる遺伝子が発現する', 'ビコイドの濃度は、遺伝子の発現に関係しない'],
+        explanation: `位置 ${x} では濃度が約 ${fmt(bicoid(x), 2)} で、閾値 ${THRESH} ${above ? '以上' : 'より低い'}。各細胞はビコイドの濃度を位置情報として受け取り、濃度が閾値以上の前方の細胞でだけ前方の構造をつくる遺伝子が発現するからである。`,
+      };
+    },
+  },
+  {
+    id: 'a19-half-calc',
+    stage: 'a19',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const h = rng.pick([10, 12, 15]); // 濃度が半分になる距離（%）
+      const k = rng.pick([2, 3, 4]);
+      const ans = h * k;
+      const d = distinctNumbers(ans, [h * Math.pow(2, k), h + k, h * (k + 1), h * k / 2, 100 - ans], ' %', 0);
+      return {
+        text: `あるタンパク質の濃度は卵の前端で最も高く、後方へ卵の長さの ${h}% 進むごとに半分になる。前端の濃度の 1/${Math.pow(2, k)} になるのは、前端から卵の長さの何%の位置か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1/${Math.pow(2, k)} ＝ (1/2)^${k} なので、半分になる距離 ${h}% を ${k} 回進んだ位置、つまり ${h} × ${k} ＝ ${ans}% である。濃度が一定の距離ごとに一定の割合で減る（指数関数的に減少する）からである。`,
+      };
+    },
+  },
+  {
+    id: 'a19-shift-calc',
+    stage: 'a19',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const h = rng.pick([10, 12, 15]);
+      const b = rng.pick([30, 35, 40]);
+      const fold = rng.pick([2, 4]);
+      const ans = b + h * Math.log2(fold);
+      const d = distinctNumbers(ans, [b * fold, b - h * Math.log2(fold), b + h, b + h * fold, b / fold, b + h * fold * 2, b + 2 * h * Math.log2(fold)], ' %', 0);
+      return {
+        text: `ビコイドの濃度が卵の長さの ${h}% ごとに半分になるとする。正常な卵では、頭部・胸部になる範囲の境界は前端から ${b}% の位置にある。母親のビコイド遺伝子をふやして、卵の中のビコイドの量を ${fold} 倍にすると、境界は前端から何%の位置になると考えられるか（閾値は変わらないものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `濃度が ${fold} 倍になると、閾値の濃度になる位置は、濃度がさらに ${fold} 分の1になるまで、つまり ${h}% を ${fmt(Math.log2(fold), 0)} 回分だけ後方へずれる。そのため境界は ${b} ＋ ${h} × ${fmt(Math.log2(fold), 0)} ＝ ${ans}% の位置になる。`,
+      };
+    },
+  },
+  {
+    id: 'a19-organizer',
+    stage: 'a19',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'イモリの初期原腸胚の原口背唇部を、別の胚の腹側に移植すると、移植片を中心にもう1つの胚（二次胚）ができた。原口背唇部のように、まわりの細胞にはたらきかけて分化を引き起こす部分を何というか。',
+        correct: '形成体（オーガナイザー）',
+        wrong: ['予定運命図', '母性因子', '神経堤', '体節'],
+        explanation: 'これは形成体（オーガナイザー）で、シュペーマンらが移植実験で明らかにした。形成体が接している外胚葉にはたらきかけて神経管を誘導するので、移植された胚の腹側にも神経管などがつくられる。',
+      };
+    },
+  },
+  {
+    id: 'a19-induction',
+    stage: 'a19',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '発生の過程で、ある胚の領域が、隣接する別の領域にはたらきかけて、その分化の方向を決めるはたらきを何というか。',
+        correct: '誘導',
+        wrong: ['分裂', '分化全能性', '細胞死（アポトーシス）', '再生'],
+        explanation: 'これは誘導である。誘導された組織がさらに次の誘導を行うことがあり、眼の形成では眼胞が表皮から水晶体を誘導し、水晶体が表皮から角膜を誘導するので、誘導の連鎖によって複雑な器官がつくられる。',
+      };
+    },
+  },
+  {
+    id: 'a19-homeotic',
+    stage: 'a19',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ショウジョウバエで、体節ごとにどのような器官をつくるかを決めている遺伝子に突然変異が起こると、触角が生えるべき位置に脚が生えることがある。このような遺伝子を何というか。',
+        correct: 'ホメオティック遺伝子',
+        wrong: ['母性効果遺伝子', 'ギャップ遺伝子', 'ペア・ルール遺伝子'],
+        explanation: 'これはホメオティック遺伝子で、各体節の性質（どの器官をつくるか）を決めている。突然変異が起こると別の体節の性質がつくられるので、触角の位置に脚が生えるような変化（ホメオティック突然変異）が起こる。',
+      };
+    },
+  },
+];
+return { A19 };
+})();
+
+// ---- questions/a20.js ----
+__m["questions/a20.js"] = (function () {
+// A20 減数分裂と遺伝的多様性 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { dnaAt, TOTAL, PHASES, gameteTypes } = __m["models/meiosis.js"];
+const { sample } = __m["lib/series.js"];
+
+const A20 = [
+  {
+    id: 'a20-dna-graph',
+    stage: 'a20',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      let acc = 0;
+      const at = {};
+      for (const p of PHASES) { at[p.id] = [acc, acc + p.len]; acc += p.len; }
+      const pts = { S: (at.S[0] + at.S[1]) / 2, M1end: at.M1[1], M2end: TOTAL };
+      const labels = { S: KATA[0], M1end: KATA[1], M2end: KATA[2] };
+      return {
+        text: '図は、減数分裂での細胞1個あたりの DNA 量の変化を表している。ア〜ウのうち、相同染色体が分かれて別々の細胞に入り、染色体数が半分（n）になるところはどれか。',
+        chart: {
+          x: { min: 0, max: TOTAL, label: '時間', ticks: [] },
+          y: { min: 0, max: 5, label: 'DNA量（相対値）', step: 1 },
+          series: [{ points: sample((x) => dnaAt(x), 0, TOTAL - 1e-6, 600), color: 'c1', width: 3 }],
+          texts: Object.keys(pts).map((k) => ({ x: pts[k] - (k === 'M2end' ? 0.8 : 0), y: dnaAt(Math.min(pts[k] - 0.01, TOTAL - 0.01)) + 0.5, text: labels[k], color: 'c2' })),
+          alt: '減数分裂の DNA 量ア〜ウ',
+        },
+        correct: `${labels.M1end}（第一分裂の終わり）`,
+        wrong: [`${labels.S}（DNA の複製）`, `${labels.M2end}（第二分裂の終わり）`, 'ア〜ウのどれでもない'],
+        explanation: `相同染色体が分かれるのは第一分裂で、その終わりの${labels.M1end}で DNA 量が4から2になり、染色体数が n になる。第二分裂（${labels.M2end}）では染色分体が分かれるので、DNA 量は半分になるが染色体数は n のままだからである。`,
+      };
+    },
+  },
+  {
+    id: 'a20-gametes',
+    stage: 'a20',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const n = rng.pick([2, 3, 4, 5, 6, 8, 10]);
+      const ans = gameteTypes(n);
+      const d = distinctNumbers(ans, [2 * n, n * n, gameteTypes(n - 1), gameteTypes(n + 1), ans * ans], ' 通り', 0);
+      return {
+        text: `体細胞の染色体数が 2n ＝ ${2 * n} の生物がある。乗換えが起こらないとすると、1個体がつくる配偶子の染色体の組合せは何通りか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `相同染色体は ${n} 組あり、第一分裂でそれぞれの組のどちらが配偶子に入るかは独立に決まるので、2^${n} ＝ ${ans} 通りとなる。各組で2通りずつの選び方があり、それを ${n} 組分かけ合わせるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a20-zygotes',
+    stage: 'a20',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const n = rng.pick([2, 3, 4, 5]);
+      const g = gameteTypes(n);
+      const ans = g * g;
+      const d = distinctNumbers(ans, [g, 2 * g, g + g, Math.pow(2, 2 * n + 1), n * n * 4], ' 通り', 0);
+      return {
+        text: `2n ＝ ${2 * n} の生物で、両親の配偶子が受精して子ができる。乗換えが起こらないとすると、子の染色体の組合せは何通り考えられるか（両親はそれぞれ異なる染色体の組をもつものとする）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `1個体の配偶子は 2^${n} ＝ ${g} 通りで、父親と母親の配偶子が無作為に組み合わさるので、${g} × ${g} ＝ ${ans} 通りとなる。受精で両親の配偶子が組み合わさることも、子の遺伝的多様性を大きくするからである。`,
+      };
+    },
+  },
+  {
+    id: 'a20-dna-amount',
+    stage: 'a20',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const base = rng.pick([2, 4, 6, 8]); // 精子の DNA 量（相対値）
+      const ask = rng.pick(['G1', 'G2', 'M1end']);
+      const ans = { G1: base * 2, G2: base * 4, M1end: base * 2 }[ask];
+      const name = { G1: '一次精母細胞（DNA 複製前の G1 期）', G2: '一次精母細胞（DNA 複製後の G2 期）', M1end: '二次精母細胞（第一分裂のあと）' }[ask];
+      const d = distinctNumbers(ans, [base, base * 2, base * 4, base * 8, base / 2], '', 0);
+      return {
+        text: `ある動物の精子の核の DNA 量を ${base}（相対値）とする。${name}の核の DNA 量はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `精子の DNA 量（${base}）は G1 期の体細胞の半分なので、G1 期は ${base * 2}、複製後の G2 期は ${base * 4}、第一分裂のあとの二次精母細胞は ${base * 2}、第二分裂のあとの精細胞・精子は ${base} となる。したがって答えは ${ans} で、減数分裂では DNA の複製は1回だけなのに分裂が2回続くから、DNA 量が半分になる。`,
+      };
+    },
+  },
+  {
+    id: 'a20-bivalent',
+    stage: 'a20',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const n = rng.pick([4, 6, 8, 12, 23]);
+      const ask = rng.pick(['bivalent', 'gamete']);
+      const ans = n;
+      const d = distinctNumbers(ans, [2 * n, 4 * n, n / 2, n + 1], ask === 'bivalent' ? ' 個' : ' 本', 0);
+      return {
+        text: ask === 'bivalent'
+          ? `体細胞の染色体数が ${2 * n} 本の生物で、減数分裂の第一分裂前期に見られる二価染色体はいくつか。`
+          : `体細胞の染色体数が ${2 * n} 本の生物で、減数分裂によってできた配偶子の染色体数は何本か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'bivalent'
+          ? `相同染色体どうしが対合して1つの二価染色体になるので、${2 * n} ÷ 2 ＝ ${n} 個である。二価染色体の数は相同染色体の組の数（n）に等しいからである。`
+          : `減数分裂では相同染色体が別々の細胞に分かれるので、配偶子の染色体数は ${2 * n} ÷ 2 ＝ ${n} 本（n）である。受精によって ${2 * n} 本（2n）にもどるから、世代をこえて染色体数が保たれる。`,
+      };
+    },
+  },
+  {
+    id: 'a20-crossover',
+    stage: 'a20',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '減数分裂で、配偶子の遺伝子の組合せを多様にするしくみとして正しいものはどれか。',
+        correct: '第一分裂で相同染色体が独立に分配されることと、相同染色体の間で乗換えが起こること',
+        wrong: ['第二分裂の前に DNA がもう一度複製されること', '第一分裂で染色分体が分かれること', '体細胞分裂と同じように、もとと同じ染色体の組がつくられること'],
+        explanation: '第一分裂では相同染色体の組ごとに、どちらがどの細胞に入るかが独立に決まる。さらに第一分裂前期に乗換えが起こって遺伝子の組合せが変わるので、配偶子の遺伝子の組合せは非常に多様になる。',
+      };
+    },
+  },
+  {
+    id: 'a20-compare',
+    stage: 'a20',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '体細胞分裂と減数分裂の違いとして正しいものはどれか。',
+        correct: '減数分裂では2回の分裂が続いて起こり、娘細胞の染色体数はもとの半分になる',
+        wrong: ['体細胞分裂では、娘細胞の染色体数はもとの半分になる', '減数分裂では、分裂のたびに DNA が複製される', '体細胞分裂でも、二価染色体ができて乗換えが起こる'],
+        explanation: '体細胞分裂は1回の分裂で、もとと同じ染色体数（2n）の娘細胞が2個できる。減数分裂は DNA の複製のあとに2回の分裂が続くので、染色体数が半分（n）の娘細胞が4個できる。',
+      };
+    },
+  },
+  {
+    id: 'a20-human',
+    stage: 'a20',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const ask = rng.pick(['gamete', 'zygote']);
+      const g = gameteTypes(23);
+      const ans = ask === 'gamete' ? g : g * g;
+      const fmtBig = (x) => `約 ${fmt(x / Math.pow(10, Math.floor(Math.log10(x))), 1)} × 10^${Math.floor(Math.log10(x))}`;
+      const correct = `${fmtBig(ans)} 通り`;
+      const wrong = [fmtBig(g * 2), fmtBig(46), fmtBig(g * g * 2), fmtBig(g), fmtBig(g * g), fmtBig(Math.pow(2, 46) * 2)].map((x) => `${x} 通り`);
+      return {
+        text: ask === 'gamete'
+          ? 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、1人がつくる配偶子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。'
+          : 'ヒトの体細胞の染色体数は 2n ＝ 46 である。乗換えを考えないとき、同じ両親から生まれる子の染色体の組合せはおよそ何通りか（2¹⁰ ≒ 1000 として考えてよい）。',
+        correct,
+        wrong,
+        explanation: ask === 'gamete'
+          ? `相同染色体は23組なので、2^23 ＝ ${g.toLocaleString('ja-JP')}、つまり ${correct} である。各組で2通りずつの選び方があるので、23組分をかけ合わせればよいからである。`
+          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも遺伝的に同じ子はほぼ生まれない。`,
+      };
+    },
+  },
+];
+return { A20 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
@@ -13886,6 +15397,8 @@ const { B8 } = __m["questions/b8.js"];
 const { B9 } = __m["questions/b9.js"];
 const { B10 } = __m["questions/b10.js"];
 const { B11 } = __m["questions/b11.js"];
+const { B12 } = __m["questions/b12.js"];
+const { B13 } = __m["questions/b13.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
@@ -13903,9 +15416,12 @@ const { A14 } = __m["questions/a14.js"];
 const { A15 } = __m["questions/a15.js"];
 const { A16 } = __m["questions/a16.js"];
 const { A17 } = __m["questions/a17.js"];
+const { A18 } = __m["questions/a18.js"];
+const { A19 } = __m["questions/a19.js"];
+const { A20 } = __m["questions/a20.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
