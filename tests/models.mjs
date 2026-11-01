@@ -28,6 +28,11 @@ import * as sy from '../src/models/synapse.js';
 import * as bt from '../src/models/biotech.js';
 import * as bh from '../src/models/behavior.js';
 import * as pp from '../src/models/photoperiod.js';
+import * as th from '../src/models/thyroid.js';
+import * as cb from '../src/models/carbon.js';
+import * as vi from '../src/models/vision.js';
+import * as mg from '../src/models/morphogen.js';
+import * as me from '../src/models/meiosis.js';
 import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
 
 const results = [];
@@ -810,6 +815,69 @@ section('A17 光周性と花芽形成');
   check('光中断：暗期14時間を6時間後に1時間中断 → 6時間と7時間に分かれ、最長7時間', dp.periods.join() === '6,7' && dp.longest === 7);
   check('光中断で、短日植物は花芽を形成しなくなり、長日植物は形成するようになる', !pp.flowers('short', dp.longest, cr) && pp.flowers('long', dp.longest, cr));
   check('中性植物は日長に関係なく花芽を形成する', [4, 10, 20].every((d) => pp.flowers('neutral', d, cr)));
+}
+
+// ---------- B12 ----------
+section('B12 ホルモンと負のフィードバック');
+{
+  const s = (c) => th.steady(c);
+  const n = s('normal');
+  check('正常：TRH・TSH・チロキシンは一定（正常値 100%）に保たれる', near(n.H, 1, 1e-6) && near(n.S, 1, 1e-6) && near(n.T, 1, 1e-6));
+  const a = s('thyroidectomy');
+  check('甲状腺の除去：チロキシン減少、TRH・TSH 増加', a.T < 0.1 && a.H > 1.5 && a.S > 1.5);
+  const b = s('injection');
+  check('チロキシンの注射：TRH・TSH 減少、チロキシン増加', b.T > 1.5 && b.H < 0.6 && b.S < 0.6);
+  const c = s('pituitary');
+  check('脳下垂体の除去：TSH なし、チロキシン減少、TRH 増加', c.S < 0.01 && c.T < 0.1 && c.H > 1.5);
+  const d = s('iodine');
+  check('ヨウ素不足：チロキシン減少、TSH 増加（甲状腺が刺激され続ける）', d.T < 1 && d.S > 1);
+}
+
+// ---------- B13 ----------
+section('B13 炭素の循環');
+{
+  const a = cb.atmosphereChange(cb.BASE);
+  check('大気中の炭素は ＋50億トン/年（約2.4 ppm/年）', a.change === 50 && near(a.change / cb.PPM_PER, cb.TREND, 0.05));
+  check('化石燃料の燃焼を0にすると、大気中の炭素は減る', cb.atmosphereChange({ ...cb.BASE, fossil: 0 }).change < 0);
+  const months = Array.from({ length: 12 }, (_, m) => cb.co2(2021 + (m + 0.5) / 12) - cb.TREND * ((m + 0.5) / 12));
+  const iMax = months.indexOf(Math.max(...months));
+  const iMin = months.indexOf(Math.min(...months));
+  check('季節変動：5月ごろ最大、9〜10月ごろ最小、振れ幅 約6 ppm', iMax === 4 && (iMin === 8 || iMin === 9) && near(Math.max(...months) - Math.min(...months), 6, 1), `最大 ${iMax + 1}月、最小 ${iMin + 1}月`);
+  check('長期的に増加（2020年→2023年で約7 ppm）', near(cb.co2(2023.37) - cb.co2(2020.37), 7.2, 0.1));
+}
+
+// ---------- A18 ----------
+section('A18 視覚');
+{
+  const bt = vi.breakTime();
+  check('暗順応曲線の屈曲点は約7〜10分', bt > 7 && bt < 10, `${f(bt, 1)} 分`);
+  let mono = true;
+  for (let t = 0.1; t <= 40; t += 0.1) if (vi.thresholdLog(t) > vi.thresholdLog(t - 0.1) + 1e-9) mono = false;
+  check('閾値は時間とともに下がり続け、30分で約5けた下がる', mono && vi.thresholdLog(0) - vi.thresholdLog(30) > 4.5, `${f(vi.thresholdLog(0) - vi.thresholdLog(30), 1)} けた`);
+  check('黄斑（0°）は錐体が最大で桿体はほとんどない、周辺は桿体が多い', vi.cones(0) > 100 && vi.rods(0) < 1 && vi.rods(20) > vi.cones(20) * 10);
+  check('盲斑（鼻側 約15°）には錐体も桿体もない', vi.cones(15) === 0 && vi.rods(15) === 0);
+  check('盲斑の大きさ：2 cm × 1.7 ÷ 34 cm ＝ 0.1 cm', near(vi.retinaSize(2, 34), 0.1, 1e-12));
+}
+
+// ---------- A19 ----------
+section('A19 発生と位置情報');
+{
+  let mono = true;
+  for (let x = 0.01; x <= 1; x += 0.01) if (mg.bicoid(x) >= mg.bicoid(x - 0.01)) mono = false;
+  check('ビコイドの濃度は前端で最大、後方ほど低い（単調減少）', mono);
+  check('ビコイドがないと、頭部・胸部になる範囲がない', mg.boundary(0) === 0);
+  check('ビコイドを2倍にすると、境界が「濃度が半分になる距離」だけ後方へずれる（半分なら前方へ）', near(mg.boundary(2) - mg.boundary(1), mg.halfDistance(), 1e-9) && near(mg.boundary(1) - mg.boundary(0.5), mg.halfDistance(), 1e-9));
+}
+
+// ---------- A20 ----------
+section('A20 減数分裂と遺伝的多様性');
+{
+  const at = {};
+  let acc = 0;
+  for (const p of me.PHASES) { at[p.id] = acc + p.len / 2; acc += p.len; }
+  check('DNA 量：G1 2 → G2 4 → 第一分裂のあと 2 → 第二分裂のあと 1', me.dnaAt(at.G1) === 2 && me.dnaAt(at.G2) === 4 && me.dnaAt(acc - me.PHASES[4].len - 0.01) === 2 && me.dnaAt(acc) === 1);
+  check('染色体数：第一分裂の終わりに 2n → n、第二分裂では n のまま', me.chromosomeSetsAt(at.G2) === 2 && me.chromosomeSetsAt(acc - me.PHASES[4].len - 0.01) === 1 && me.chromosomeSetsAt(acc) === 1);
+  check('配偶子の組合せ 2ⁿ（ヒト n＝23 で 8,388,608 通り）、受精で 2ⁿ × 2ⁿ', me.gameteTypes(23) === 8388608 && me.zygoteTypes(3) === 64);
 }
 
 const ng = results.filter((r) => !r.ok);

@@ -33,7 +33,7 @@ export const dojo = {
     function update() {
       const run = simulate(st.c);
       const end = run[run.length - 1];
-      title.replaceChildren(`${CASES[st.c].name}のときのホルモンの量 `, modelNote());
+      title.replaceChildren(`処置「${CASES[st.c].name}」のときのホルモンの量 `, modelNote());
       const yMax = Math.max(2.2, ...run.map((q) => Math.max(q.H, q.S, q.T))) * 100 * 1.08;
       chart.draw({
         alt: `処置後：TRH ${pct(end.H)}、TSH ${pct(end.S)}、チロキシン ${pct(end.T)}`,

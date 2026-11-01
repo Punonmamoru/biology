@@ -49,7 +49,7 @@ export const dojo = {
       const regions = [];
       let acc = 0;
       for (const ph of PHASES) {
-        if (ph.id === 'M1' || ph.id === 'M2') regions.push({ x0: acc, x1: acc + ph.len, fill: ph.id === 'M1' ? 'region' : 'region-4', label: ph.id === 'M1' ? '第一分裂' : '第二分裂' });
+        if (ph.id === 'M1' || ph.id === 'M2') regions.push({ x0: acc, x1: acc + ph.len, fill: ph.id === 'M1' ? 'region' : 'region-4', label: ph.id === 'M1' ? '第一' : '第二' });
         acc += ph.len;
       }
       chart.draw({
@@ -62,7 +62,7 @@ export const dojo = {
         markers: [{ x: t, y: dna, color: 'c2', label: `${fmt(dna, 1)}` }],
       });
       leg.replaceChildren(legend([{ label: '細胞1個あたりの DNA 量（体細胞の G1期＝2）', color: 'c1' }]));
-      note.textContent = '各時期の長さは模式。第一分裂の前の間期に DNA が複製される（第一分裂と第二分裂の間には複製は起こらない）。';
+      note.textContent = '塗った範囲は第一分裂・第二分裂。各時期の長さは模式。第一分裂の前の間期に DNA が複製される（第一分裂と第二分裂の間には複製は起こらない）。';
       const lines = [`いま：${p.name}。DNA 量 ${fmt(dna, 1)}、染色体数 ${sets === 2 ? '2n' : 'n'}。`];
       if (p.id === 'S') lines.push('S期で DNA が複製され、DNA 量が2から4に増える。');
       if (p.id === 'M1') lines.push('第一分裂の前期に相同染色体どうしが対合して二価染色体ができ、このとき乗換えが起こることがある。後期に相同染色体が分かれて両極へ移動するので、終わりには染色体数が半分（n）、DNA 量が2になる。');
