@@ -67,6 +67,18 @@ COMPLEXY / VECTORY / CALCULY / SEQUENCY に続くシリーズ第5作。
 | ファイル配布 | `index.html` を Google ドライブ／Classroom／Teams／USB で配り、端末に保存してブラウザで開く | PC・Chromebook・Android |
 | 校内サーバー | 校内の Web サーバーに `index.html` を置く | すべて |
 
+### GitHub Pages での公開手順（3分）
+
+1. GitHub でこのリポジトリを開き、上のタブの **Settings** を押す。
+2. 左のメニューの **Pages** を押す。
+3. 「Build and deployment」の **Source** を「Deploy from a branch」にし、**Branch** を `main`、フォルダを `/ (root)` にして **Save** を押す。
+4. 1〜2分後に同じ画面の上部に URL が表示される（このリポジトリでは `https://punonmamoru.github.io/biology/`）。これを Classroom 等で配布する。
+
+- `main` に変更がマージされるたびに、公開中のページも自動で新しくなる（生徒は再読み込みするだけ）。
+- リポジトリには Jekyll の処理を止める `.nojekyll` を置いてあるので、`index.html` がそのまま配信される。
+- 特定のステージを直接開く URL も配れる（例：`https://punonmamoru.github.io/biology/#/dojo/b4` で B4 の図解道場、`#/rush/b4` で B4 の4択ラッシュ）。
+- 授業で使う前の確認項目は `CHECKLIST.md`（教員確認チェックリスト）にまとめてある。
+
 - iPhone・iPad は「ファイル」アプリのプレビューではスクリプトが動かないことがあるので、Web 公開した URL を Safari で開くのが確実。ホーム画面に追加すると、アプリのように使える。
 - 学習記録はブラウザごと・URL ごとに別々に保存される。ファイルの置き場所や URL を変えたときは、引き継ぎコードで移す。
 - プライベートブラウズなど記録を保存できない環境でも動作する（画面を閉じると記録は消えるので、設定画面にその旨を表示する）。
@@ -93,8 +105,10 @@ tests/              検証スクリプト
 node build.mjs            # index.html を作り直す（src を変更したら必ず実行してコミット）
 node tests/validate.mjs   # 全問題ジェネレーター×5,000回・用語・オフライン・コントラスト・引き継ぎの検証
 node tests/models.mjs     # 各モデルの「保証する形」の数値検証
-node tests/smoke.mjs      # 画面のスモークテスト（Playwright がある環境のみ。なければスキップ）
+node tests/smoke.mjs      # 画面のスモークテスト（端末のエミュレーションを含む。Playwright がある環境のみ。なければスキップ）
 ```
+
+GitHub に push・pull request すると、`.github/workflows/test.yml` が自動でビルドの一致・`validate.mjs`・`models.mjs` を実行する（結果は pull request の「Checks」に表示される）。
 
 ### 問題を追加するとき
 

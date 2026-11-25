@@ -1,0 +1,24 @@
+# 自動検証：push と pull request のたびに、ビルドと検証スクリプトを実行する
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: index.html がソースと一致しているか（ビルド日付の行は除く）
+        run: |
+          node build.mjs
+          git diff -I '__BUILD__' --exit-code -- index.html
+      - name: 問題ジェネレーター・用語・オフライン・コントラスト・引き継ぎの検証
+        run: node tests/validate.mjs
+      - name: モデルの形の検証
+        run: node tests/models.mjs
