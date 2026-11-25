@@ -1084,6 +1084,10 @@ const STAGES = [
   { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'b12', code: 'B12', course: 'basic', title: 'ホルモンと負のフィードバック', unit: 'ヒトの体の調節', lead: 'TRH → TSH → チロキシン。甲状腺の除去やチロキシンの注射で、ホルモンの量はどう変わるか。' },
+  { id: 'b13', code: 'B13', course: 'basic', title: '細胞の大きさとミクロメーター', unit: '生物の特徴', lead: '接眼ミクロメーター1目盛りの長さを対物ミクロメーターで求め、細胞の大きさを測る。' },
+  { id: 'b14', code: 'B14', course: 'basic', title: '酵素のはたらき（カタラーゼ）', unit: '生物の特徴', lead: '肝臓片で過酸化水素を分解。酵素は反応の前後で変化せず、くり返しはたらく。' },
+  { id: 'b15', code: 'B15', course: 'basic', title: '心臓の拍動と自律神経', unit: 'ヒトの体の調節', lead: '運動すると交感神経がはたらき、心拍数と心拍出量（1回拍出量×心拍数）が増える。' },
+  { id: 'b16', code: 'B16', course: 'basic', title: '生物濃縮', unit: '生物の多様性と生態系', lead: '分解されにくい物質は、食物連鎖を通して上位の生物ほど高い濃度でたまる。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
   { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
@@ -3870,6 +3874,736 @@ dojo.tasks[0].check = (s) => s.c === 'thyroidectomy';
 dojo.tasks[1].check = (s) => s.c === 'injection';
 dojo.tasks[2].check = (s) => s.c === 'pituitary';
 dojo.tasks[3].check = (s) => s.c === 'iodine' && s.end.S > 1;
+return { dojo };
+})();
+
+// ---- models/micrometer.js ----
+__m["models/micrometer.js"] = (function () {
+// B13 細胞の大きさとミクロメーター
+// 対物ミクロメーター：1 mm を100等分した目盛り（1目盛り＝10 μm）。スライドガラスにあり、試料と同じく拡大される。
+// 接眼ミクロメーター：接眼レンズの中にある目盛り。拡大されないので、1目盛りが表す長さは対物レンズの倍率に反比例する。
+//   接眼ミクロメーター1目盛りの長さ ＝ 10 μm × 対物ミクロメーターの目盛り数 ÷ 接眼ミクロメーターの目盛り数（両者が重なる2点の間で数える）
+const OBJ_DIV = 10; // μm
+const LENSES = [4, 10, 40]; // 対物レンズの倍率
+// このアプリの顕微鏡では、対物10倍のとき接眼1目盛りが 14 μm（接眼5目盛り＝対物7目盛り）。倍率に反比例する。
+const EYE_K = 140;
+
+function eyeUnit(mag) {
+  return EYE_K / mag;
+}
+
+// 重なる2点の間の目盛り数から接眼1目盛りの長さを求める
+function calibrate(eyeCount, objCount) {
+  return (OBJ_DIV * objCount) / eyeCount;
+}
+
+// 最初に重なる（最小の）目盛り数の組。接眼 e 目盛り ＝ 対物 o 目盛り
+function coincidence(mag) {
+  const u = eyeUnit(mag);
+  for (let e = 1; e <= 100; e++) {
+    const o = (e * u) / OBJ_DIV;
+    if (Math.abs(o - Math.round(o)) < 1e-9 && Math.round(o) >= 1) return { eye: e, obj: Math.round(o) };
+  }
+  return null;
+}
+
+function measure(divs, unit) {
+  return divs * unit;
+}
+
+// 観察する試料（長さの目安。教科書に出てくる大きさの概数）
+const SPECIMENS = [
+  { id: 'paramecium', name: 'ゾウリムシ', length: 210, width: 55, shape: 'slipper' },
+  { id: 'cheek', name: 'ヒトの口腔上皮細胞', length: 63, width: 49, shape: 'polygon' },
+  { id: 'rbc', name: 'ヒトの赤血球', length: 7.7, width: 7.7, shape: 'disc' },
+  { id: 'ecoli', name: '大腸菌', length: 2.8, width: 0.9, shape: 'rod' },
+];
+
+// 原形質流動などの速さ（μm/秒）
+function speed(divs, unit, seconds) {
+  return (divs * unit) / seconds;
+}
+
+// 光学顕微鏡で見分けられる最小の間隔（分解能）の目安
+const RESOLUTION = { eye: 100, light: 0.2, electron: 0.0002 }; // μm（肉眼 約0.1 mm、光学顕微鏡 約0.2 μm、電子顕微鏡 約0.2 nm）
+return { OBJ_DIV, LENSES, EYE_K, eyeUnit, calibrate, coincidence, measure, SPECIMENS, speed, RESOLUTION };
+})();
+
+// ---- dojo/b13.js ----
+__m["dojo/b13.js"] = (function () {
+// B13 細胞の大きさとミクロメーター の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { LENSES, eyeUnit, coincidence, calibrate, SPECIMENS, OBJ_DIV, RESOLUTION } = __m["models/micrometer.js"];
+
+const N_EYE = 40; // 視野に見える接眼ミクロメーターの目盛り数
+
+// 顕微鏡の視野の模式図
+function drawField(canvas, st) {
+  const W = Math.max(280, Math.min(460, canvas.parentElement ? canvas.parentElement.clientWidth : 340));
+  const H = W;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const bg = tokenColor('surface');
+  const field = tokenColor('surface-2');
+  const c1 = tokenColor('c1');
+  const c3 = tokenColor('c3');
+  const muted = tokenColor('muted');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = W * 0.47;
+  g.save();
+  g.beginPath();
+  g.arc(cx, cy, R, 0, Math.PI * 2);
+  g.fillStyle = field;
+  g.fill();
+  g.clip();
+
+  const x0 = cx - R * 0.82; // 接眼ミクロメーターの0の位置
+  const pxEye = (R * 1.64) / N_EYE; // 接眼1目盛りの幅（px）
+  const unit = eyeUnit(st.mag); // 接眼1目盛りが表す長さ（μm）
+  const pxPerUm = pxEye / unit;
+  const yEye = cy - 6;
+
+  if (st.view === 'obj') {
+    // 対物ミクロメーター（試料と同じく拡大される）：10 μm ごとの線
+    const yObj = cy + 6;
+    const start = x0 + st.shift * pxEye;
+    g.strokeStyle = c1;
+    g.fillStyle = c1;
+    g.lineWidth = 1.6;
+    g.font = `bold 12px ${getComputedStyle(document.body).fontFamily}`;
+    g.textAlign = 'center';
+    for (let k = -40; k <= 120; k++) {
+      const x = start + k * OBJ_DIV * pxPerUm;
+      if (x < cx - R || x > cx + R) continue;
+      const long = k % 10 === 0 ? 34 : k % 5 === 0 ? 24 : 16;
+      g.beginPath();
+      g.moveTo(x, yObj);
+      g.lineTo(x, yObj + long);
+      g.stroke();
+      if (k % 10 === 0 && k >= 0) g.fillText(String(k), x, yObj + long + 13);
+    }
+    g.beginPath();
+    g.moveTo(cx - R, yObj);
+    g.lineTo(cx + R, yObj);
+    g.stroke();
+  } else {
+    // 試料（模式）
+    const sp = SPECIMENS.find((s) => s.id === st.view);
+    const L = sp.length * pxPerUm;
+    const Wd = Math.max(2, sp.width * pxPerUm);
+    const sx = x0 + st.shift * pxEye;
+    const sy = cy + 10 + Wd / 2;
+    g.fillStyle = c3 + '55';
+    g.strokeStyle = c3;
+    g.lineWidth = 2;
+    g.beginPath();
+    if (sp.shape === 'disc') {
+      g.arc(sx + L / 2, sy, L / 2, 0, Math.PI * 2);
+    } else if (sp.shape === 'polygon') {
+      const pts = [[0, 0.3], [0.25, 0], [0.75, 0.05], [1, 0.4], [0.8, 1], [0.2, 0.95]];
+      pts.forEach(([a, b], i) => (i ? g.lineTo(sx + a * L, sy - Wd / 2 + b * Wd) : g.moveTo(sx + a * L, sy - Wd / 2 + b * Wd)));
+      g.closePath();
+    } else {
+      g.ellipse(sx + L / 2, sy, L / 2, Wd / 2, 0, 0, Math.PI * 2);
+    }
+    g.fill();
+    g.stroke();
+  }
+
+  // 接眼ミクロメーター（拡大されない）
+  g.strokeStyle = fg;
+  g.fillStyle = fg;
+  g.lineWidth = 1.4;
+  g.font = `bold 12px ${getComputedStyle(document.body).fontFamily}`;
+  g.textAlign = 'center';
+  g.beginPath();
+  g.moveTo(x0, yEye);
+  g.lineTo(x0 + N_EYE * pxEye, yEye);
+  g.stroke();
+  for (let i = 0; i <= N_EYE; i++) {
+    const x = x0 + i * pxEye;
+    const long = i % 10 === 0 ? 30 : i % 5 === 0 ? 20 : 12;
+    g.beginPath();
+    g.moveTo(x, yEye);
+    g.lineTo(x, yEye - long);
+    g.stroke();
+    if (i % 10 === 0) g.fillText(String(i), x, yEye - long - 5);
+  }
+  g.restore();
+  g.strokeStyle = muted;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.arc(cx, cy, R, 0, Math.PI * 2);
+  g.stroke();
+}
+
+const dojo = {
+  tasks: [
+    { id: 'cal10', text: '対物10倍で、接眼ミクロメーターと対物ミクロメーターの目盛りが重なる2点を見つけ、接眼1目盛りの長さを計算しよう。', short: '10倍で接眼1目盛りを求める' },
+    { id: 'cal40', text: '対物40倍に変えて、接眼1目盛りの長さを求め直そう（10倍のときの何分の1になるか）。', short: '40倍で求め直す' },
+    { id: 'para', text: 'ゾウリムシの長さを測ろう（試料が視野に収まる倍率で、その倍率で求めた1目盛りの長さを使う）。', short: 'ゾウリムシを測る' },
+    { id: 'rbc', text: 'ヒトの赤血球を、目盛りで大きさが読み取れる倍率で観察しよう。', short: '赤血球を観察' },
+  ],
+  mount(root, ctx) {
+    const st = { mag: 10, view: 'obj', shift: 0, calUnit: null, calMag: null, measured: null };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '顕微鏡の視野 ', modelNote()));
+    const canvas = h('canvas', { role: 'img', 'aria-label': '顕微鏡の視野の模式図' });
+    const wrap = h('div', { class: 'cell-view', style: { justifyContent: 'center' } }, canvas);
+    top.append(wrap, h('p', { class: 'small muted' }, '黒い目盛りが接眼ミクロメーター（接眼レンズの中にあり、拡大されない）。青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく拡大される）。'));
+
+    const segMag = segmented({ label: '対物レンズの倍率', options: LENSES.map((m) => ({ value: m, label: `${m}倍` })), value: st.mag, onChange: (v) => { st.mag = v; update(); } });
+    const segView = segmented({ label: '見るもの', options: [{ value: 'obj', label: '対物ミクロメーター' }, ...SPECIMENS.map((s) => ({ value: s.id, label: s.name }))], value: st.view, onChange: (v) => { st.view = v; update(); } });
+    const sShift = slider({ label: 'ステージを動かす（左右）', min: -5, max: 5, step: 0.1, value: st.shift, format: (v) => `${fmt(v, 1)} 目盛り分`, onInput: (v) => { st.shift = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segMag.el, segView.el, sShift.el), panel('いま何が起きているか', exp.el));
+
+    // 計算ツール
+    const inE = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, value: '' });
+    const inO = h('input', { type: 'number', inputmode: 'numeric', min: 1, step: 1, value: '' });
+    const calOut = h('div', { 'aria-live': 'polite' });
+    const inM = h('input', { type: 'number', inputmode: 'decimal', min: 0, step: 'any', value: '' });
+    const measOut = h('div', { 'aria-live': 'polite' });
+    root.append(panel('計算ツール：接眼ミクロメーター1目盛りの長さ・試料の長さ',
+      h('p', { class: 'small' }, h('b', null, '接眼1目盛りの長さ ＝ 10 μm × 対物ミクロメーターの目盛り数 ÷ 接眼ミクロメーターの目盛り数'), '（両方の目盛りが重なる2点の間で数える）'),
+      h('div', { class: 'calc-grid' }, h('label', null, '接眼ミクロメーターの目盛り数', inE), h('label', null, '対物ミクロメーターの目盛り数', inO)),
+      h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => cal() }, '1目盛りの長さを計算')),
+      calOut,
+      h('p', { class: 'small', style: { marginTop: '12px' } }, h('b', null, '試料の長さ ＝ 接眼ミクロメーターの目盛り数 × 接眼1目盛りの長さ')),
+      h('div', { class: 'calc-grid' }, h('label', null, '試料が占める接眼の目盛り数', inM)),
+      h('div', { class: 'row', style: { marginTop: '8px' } }, h('button', { type: 'button', class: 'btn primary', onclick: () => meas() }, '長さを計算')),
+      measOut,
+    ));
+
+    function cal() {
+      const e = Number(inE.value);
+      const o = Number(inO.value);
+      if (!(e > 0 && o > 0)) {
+        calOut.replaceChildren(h('p', { class: 'small' }, '目盛り数を入力してください。'));
+        return;
+      }
+      const u = calibrate(e, o);
+      st.calUnit = u;
+      st.calMag = st.mag;
+      const ok = Math.abs(u - eyeUnit(st.mag)) / eyeUnit(st.mag) < 0.03;
+      calOut.replaceChildren(h('p', null, `10 × ${o} ÷ ${e} ＝ `, h('b', null, `${fmt(u, 2)} μm`), `（対物${st.mag}倍）`),
+        h('p', { class: 'small' }, ok ? '視野の目盛りと合っている。この倍率では、この値を使って長さを測る。' : '視野の目盛りとずれている。両方の目盛りがぴったり重なる2点を探して、その間の目盛り数を数え直そう。'));
+      update();
+    }
+    function meas() {
+      const d = Number(inM.value);
+      if (!(d > 0) || st.calUnit == null) {
+        measOut.replaceChildren(h('p', { class: 'small' }, st.calUnit == null ? '先に、接眼1目盛りの長さを求めよう。' : '目盛り数を入力してください。'));
+        return;
+      }
+      const L = d * st.calUnit;
+      st.measured = { L, mag: st.mag, view: st.view, calMag: st.calMag };
+      const warn = st.calMag !== st.mag ? `注意：1目盛りの長さは対物${st.calMag}倍で求めた値。いまは${st.mag}倍なので、求め直す必要がある。` : '';
+      measOut.replaceChildren(h('p', null, `${fmt(d, 1)} × ${fmt(st.calUnit, 2)} ＝ `, h('b', null, `${fmt(L, 1)} μm`)), warn ? h('p', { class: 'small' }, warn) : null);
+      update();
+    }
+
+    const redraw = () => drawField(canvas, st);
+    keepRedrawn(canvas, redraw);
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastW = 0;
+      new ResizeObserver(() => { if (wrap.clientWidth && wrap.clientWidth !== lastW) { lastW = wrap.clientWidth; redraw(); } }).observe(wrap);
+    }
+
+    function update() {
+      redraw();
+      const u = eyeUnit(st.mag);
+      const co = coincidence(st.mag);
+      canvas.setAttribute('aria-label', `対物${st.mag}倍の視野。${st.view === 'obj' ? '対物ミクロメーター' : SPECIMENS.find((s) => s.id === st.view).name}`);
+      const lines = [];
+      if (st.view === 'obj') {
+        lines.push(`対物${st.mag}倍では、接眼ミクロメーター ${co.eye} 目盛りと対物ミクロメーター ${co.obj} 目盛りが重なる（ステージを動かして0の線をそろえると見やすい）。`);
+        lines.push('対物ミクロメーターは試料と同じく拡大されるが、接眼ミクロメーターは接眼レンズの中にあって拡大されない。そのため、接眼1目盛りが表す長さは、対物レンズの倍率を変えるたびに求め直す必要がある。');
+        lines.push('長さを測るときは、対物ミクロメーターを外して試料のプレパラートをのせ、接眼ミクロメーターの目盛りで読む。');
+      } else {
+        const sp = SPECIMENS.find((s) => s.id === st.view);
+        const divs = sp.length / u;
+        if (divs > N_EYE) lines.push(`${sp.name}は、この倍率では視野の目盛り（${N_EYE}目盛り）に収まらない。倍率を下げて測ろう。`);
+        else if (divs < 2) lines.push(`${sp.name}は、この倍率では接眼の目盛り${divs < 1 ? '1つ分にも満たず' : '2つ分ほどしかなく'}、長さを正確に読み取れない。倍率を上げて測ろう。`);
+        else lines.push(`${sp.name}が占める接眼の目盛りを数え、1目盛りの長さをかければ長さがわかる（目盛りの0に端をそろえると読みやすい）。`);
+        if (sp.id === 'ecoli') lines.push(`大腸菌は長さ約${sp.length} μm と小さく、光学顕微鏡の高倍率でようやく形がわかる。光学顕微鏡で見分けられる最小の間隔（分解能）は約${RESOLUTION.light} μm、肉眼では約0.1 mm である。`);
+        if (sp.id === 'rbc') lines.push('ヒトの赤血球は直径 約7〜8 μm。核をもたない円盤状の細胞である。');
+        if (sp.id === 'paramecium') lines.push('ゾウリムシは1個の細胞からなる単細胞生物で、長さは約0.2 mm（200 μm）ある。');
+      }
+      lines.push('1 mm ＝ 1000 μm、1 μm ＝ 1000 nm。');
+      exp.set(lines);
+      const m = st.measured;
+      ctx.update({ ...st, unitTrue: u, measOk: m && m.view === st.view && m.calMag === m.mag ? Math.abs(m.L - SPECIMENS.find((s) => s.id === m.view)?.length) : null });
+    }
+    update();
+    return null;
+  },
+};
+
+const sp = (id) => SPECIMENS.find((s) => s.id === id);
+dojo.tasks[0].check = (s) => s.calMag === 10 && s.calUnit != null && Math.abs(s.calUnit - eyeUnit(10)) < 0.3;
+dojo.tasks[1].check = (s) => s.calMag === 40 && s.calUnit != null && Math.abs(s.calUnit - eyeUnit(40)) < 0.1;
+dojo.tasks[2].check = (s) => s.measured && s.measured.view === 'paramecium' && s.measured.calMag === s.measured.mag && Math.abs(s.measured.L - sp('paramecium').length) / sp('paramecium').length < 0.1;
+dojo.tasks[3].check = (s) => s.view === 'rbc' && s.mag === 40;
+return { dojo };
+})();
+
+// ---- models/catalase.js ----
+__m["models/catalase.js"] = (function () {
+// B14 酵素のはたらき（カタラーゼ）
+// 過酸化水素の分解 2H₂O₂ → 2H₂O ＋ O₂ を、肝臓片（カタラーゼ）や酸化マンガン(IV)（無機触媒）が促進する。
+// 残っている過酸化水素の量 S について dS/dt ＝ −k·E·S（触媒が多いほど速い）。触媒は反応の前後で変化しないので E は減らない。
+// 発生する酸素の体積は分解した過酸化水素の量に比例する（3%過酸化水素水 1 mL あたり 約10 mL。25℃・1気圧の目安）。
+const O2_PER_ML = 10;
+const T_ADD = 6; // 追加の操作をする時刻（分）
+const T_END = 12;
+
+const CATALYSTS = {
+  liver: { name: '肝臓片', k: 1.2, note: '肝臓の細胞に含まれる酵素カタラーゼが過酸化水素を分解する' },
+  mno2: { name: '酸化マンガン(IV)', k: 0.9, note: '酸化マンガン(IV)は無機触媒で、カタラーゼと同じ反応を促進する' },
+  boiled: { name: '煮沸した肝臓片', k: 0, note: 'カタラーゼはタンパク質でできているので、煮沸すると変性してはたらきを失う' },
+  sand: { name: '石英砂', k: 0, note: '石英砂は触媒としてはたらかないので、肝臓片を加えたときの泡が肝臓片の固形物によるものではないことを確かめる対照になる' },
+  none: { name: '何も入れない', k: 0.002, note: '過酸化水素は触媒がないとごくゆっくりとしか分解しない' },
+};
+
+// 6分後の追加操作：none / h2o2（過酸化水素水を追加）/ cat（同じ触媒を追加）
+// 返り値：[{ t, o2, s }]（o2：発生した酸素の累計 mL、s：残っている過酸化水素水 mL相当）
+function simulate({ cat = 'liver', h2o2 = 2, amount = 1, add = 'none', addH2o2 = 2, dt = 0.02 } = {}) {
+  const c = CATALYSTS[cat];
+  let E = amount;
+  let S = h2o2;
+  let o2 = 0;
+  const out = [];
+  const every = Math.round(0.1 / dt);
+  let i = 0;
+  let added = false;
+  for (let t = 0; t <= T_END + 1e-9; t += dt, i++) {
+    if (!added && t >= T_ADD - 1e-9) {
+      added = true;
+      if (add === 'h2o2') S += addH2o2;
+      if (add === 'cat') E += amount;
+    }
+    if (i % every === 0) out.push({ t: Math.round(t * 100) / 100, o2, s: S });
+    const d = S * (1 - Math.exp(-c.k * E * dt));
+    S -= d;
+    o2 += d * O2_PER_ML;
+  }
+  return out;
+}
+
+// 反応が終わるまでに発生する酸素の総量（mL）
+function totalO2(h2o2) {
+  return h2o2 * O2_PER_ML;
+}
+
+// はじめの1分間に発生した酸素の量（mL/分）
+function initialRate(run) {
+  const p = run.find((r) => r.t >= 1 - 1e-9);
+  return p ? p.o2 : 0;
+}
+return { O2_PER_ML, T_ADD, T_END, CATALYSTS, simulate, totalO2, initialRate };
+})();
+
+// ---- dojo/b14.js ----
+__m["dojo/b14.js"] = (function () {
+// B14 酵素のはたらき（カタラーゼ）の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { CATALYSTS, simulate, totalO2, initialRate, T_ADD, T_END, O2_PER_ML } = __m["models/catalase.js"];
+
+const ADD = { none: '何もしない', h2o2: '過酸化水素水を追加', cat: '同じものをもう一度加える' };
+
+const dojo = {
+  tasks: [
+    { id: 'boiled', text: '「煮沸した肝臓片」を入れて、酸素がほとんど発生しないことを確かめよう。', short: '煮沸すると反応しない' },
+    { id: 'addSub', text: '「肝臓片」で泡が出なくなったあと（6分後）に過酸化水素水を追加すると、再び酸素が発生することを確かめよう。', short: '酵素は何度もはたらく' },
+    { id: 'addCat', text: '「肝臓片」で泡が出なくなったあとに肝臓片を追加しても、酸素が発生しないことを確かめよう。', short: '基質がなくなると止まる' },
+    { id: 'double', text: '過酸化水素水の量を2倍にして、発生する酸素の総量が2倍になることを確かめよう。', short: '基質の量と酸素の量' },
+  ],
+  mount(root, ctx) {
+    const st = { cat: 'liver', h2o2: 2, amount: 1, add: 'none' };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '発生した酸素の量の変化 ', modelNote()));
+    const chart = createChart(top, { label: '発生した酸素の量のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    top.append(leg, h('p', { class: 'small muted' }, `3%過酸化水素水 1 mL がすべて分解すると、酸素が約${O2_PER_ML} mL 発生するとした（25℃の目安）。${T_ADD}分後に追加の操作をする。比較のため、追加の操作をしない場合を灰色で示す。`));
+
+    const segCat = segmented({ label: '試験管に入れるもの', options: Object.entries(CATALYSTS).map(([value, c]) => ({ value, label: c.name })), value: st.cat, onChange: (v) => { st.cat = v; update(); } });
+    const sH = slider({ label: '3%過酸化水素水の量', min: 1, max: 4, step: 0.5, value: st.h2o2, format: (v) => fmt(v, 1) + ' mL', onInput: (v) => { st.h2o2 = v; update(); } });
+    const sA = slider({ label: '入れるものの量（肝臓片などの量）', min: 0.5, max: 2, step: 0.5, value: st.amount, format: (v) => fmt(v, 1) + ' 倍', onInput: (v) => { st.amount = v; update(); } });
+    const segAdd = segmented({ label: `${T_ADD}分後の操作`, options: Object.entries(ADD).map(([value, label]) => ({ value, label })), value: st.add, onChange: (v) => { st.add = v; update(); } });
+    const readout = h('div', { class: 'small', 'aria-live': 'polite' });
+    const exp = explainBox();
+    root.append(panel('操作', segCat.el, sH.el, sA.el, segAdd.el, readout), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const run = simulate(st);
+      const base = st.add === 'none' ? null : simulate({ ...st, add: 'none' });
+      const end = run[run.length - 1];
+      const atAdd = run.find((r) => r.t >= T_ADD - 1e-9);
+      const r1 = initialRate(run);
+      const yMax = Math.max(20, Math.ceil((end.o2 * 1.15) / 10) * 10);
+      const c = CATALYSTS[st.cat];
+      const series = [
+        base ? { points: base.map((r) => [r.t, r.o2]), color: 'muted', dash: 'long', width: 2, legendLabel: '追加の操作をしない場合' } : null,
+        { points: run.map((r) => [r.t, r.o2]), color: 'c1', width: 3, legendLabel: `${c.name}（${ADD[st.add]}）` },
+      ].filter(Boolean);
+      chart.draw({
+        alt: `${c.name}：発生した酸素 ${fmt(end.o2, 1)} mL`,
+        x: { min: 0, max: T_END, label: '時間（分）', step: 2 },
+        y: { min: 0, max: yMax, label: '発生した酸素の量（mL）', step: yMax > 40 ? 10 : 5 },
+        series,
+        vlines: st.add === 'none' ? [] : [{ x: T_ADD, color: 'fg', dash: 'dot', label: ADD[st.add] }],
+        hlines: [{ y: totalO2(st.h2o2), color: 'c2', dash: 'dot', width: 1, label: `はじめの過酸化水素がすべて分解したときの量 ${fmt(totalO2(st.h2o2), 0)} mL`, align: 'right' }],
+      });
+      leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
+      readout.replaceChildren(
+        h('div', null, `はじめの1分間：${fmt(r1, 1)} mL（反応の速さ）`),
+        h('div', null, `${T_ADD}分までの合計：${fmt(atAdd.o2, 1)} mL／${T_END}分までの合計：${fmt(end.o2, 1)} mL`),
+      );
+
+      const lines = [`${c.note}。`];
+      if (c.k >= 0.5) {
+        lines.push('過酸化水素（H₂O₂）は、触媒のはたらきで水と酸素に分解される（2H₂O₂ → 2H₂O ＋ O₂）。はじめは過酸化水素が多いので速く分解が進み、過酸化水素が減るにつれて遅くなって、やがて止まる。');
+        if (st.add === 'h2o2') lines.push('泡が止まったあとに過酸化水素水を加えると、再び酸素が発生する。触媒（酵素）は反応の前後で変化せず、くり返しはたらくからである。泡が止まったのは、基質（過酸化水素）がなくなったためだとわかる。');
+        else if (st.add === 'cat') lines.push(`泡が止まったあとに${c.name}を加えても、酸素は発生しない。基質（過酸化水素）がすべて分解されてなくなっているからである。`);
+        else lines.push(`発生する酸素の総量は過酸化水素水の量で決まる（いま ${fmt(totalO2(st.h2o2), 0)} mL）。${c.name}の量を増やすと反応は速くなるが、総量は変わらない。`);
+      } else if (st.cat === 'boiled') {
+        lines.push('酵素は温度が高すぎるとはたらきを失い、温度を下げても元にもどらない。酸化マンガン(IV)のような無機触媒は、加熱してもはたらきを失わない。');
+      } else if (st.cat === 'none') {
+        lines.push('触媒がないと、過酸化水素はごくゆっくりとしか分解しない。触媒は、反応を起こりやすくして速く進ませる物質である。');
+      }
+      lines.push('酵素は、細胞内でつくられるタンパク質を主成分とする触媒（生体触媒）で、特定の物質（基質）にだけはたらく（基質特異性）。カタラーゼは、代謝の過程でできる有害な過酸化水素を分解する。');
+      exp.set(lines);
+      ctx.update({ ...st, end: end.o2, atAdd: atAdd.o2, total: totalO2(st.h2o2) });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.cat === 'boiled' && s.end < 0.1;
+dojo.tasks[1].check = (s) => s.cat === 'liver' && s.add === 'h2o2' && s.end > s.atAdd * 1.5;
+dojo.tasks[2].check = (s) => s.cat === 'liver' && s.add === 'cat' && s.end - s.atAdd < 0.2;
+dojo.tasks[3].check = (s) => (s.cat === 'liver' || s.cat === 'mno2') && s.add === 'none' && s.h2o2 >= 4 && s.end > 39;
+return { dojo };
+})();
+
+// ---- models/heart.js ----
+__m["models/heart.js"] = (function () {
+// B15 心臓の拍動と自律神経
+// 運動の強さ x（0〜1）のとき、交感神経のはたらきが強まり副交感神経のはたらきが弱まって、
+// 心拍数と1回拍出量が増える。運動をやめると、副交感神経のはたらきで心拍数はしだいに安静時にもどる。
+// 心拍出量（1分間に心臓が送り出す血液の量）＝ 1回拍出量 × 心拍数
+const REST = { hr: 70, sv: 70 }; // 安静時の心拍数（回/分）と1回拍出量（mL）
+const MAX = { hr: 180, sv: 100 };
+const BLOOD_L = 5; // 成人の血液の量の目安（L、体重の約13分の1）
+const TAU_ON = 0.5; // 運動を始めたときに心拍数が上がる速さ（分）
+const TAU_OFF = 1.5; // 運動をやめたときに心拍数がもどる速さ（分）
+
+function target(x) {
+  return { hr: REST.hr + (MAX.hr - REST.hr) * x, sv: REST.sv + (MAX.sv - REST.sv) * Math.min(1, x * 1.6) };
+}
+
+function cardiacOutput(hr, sv) {
+  return (hr * sv) / 1000; // L/分
+}
+
+// 運動を t0 分から t1 分まで強さ x で行ったときの経過。dt＝0.05分
+function simulate({ x = 0.5, t0 = 2, t1 = 8, tEnd = 16, dt = 0.05 } = {}) {
+  let hr = REST.hr;
+  let sv = REST.sv;
+  const out = [];
+  for (let t = 0; t <= tEnd + 1e-9; t += dt) {
+    const ex = t >= t0 && t < t1;
+    const g = ex ? target(x) : REST;
+    const tau = ex ? TAU_ON : TAU_OFF;
+    out.push({ t: Math.round(t * 100) / 100, hr, sv, co: cardiacOutput(hr, sv), ex });
+    hr += (g.hr - hr) * (1 - Math.exp(-dt / tau));
+    sv += (g.sv - sv) * (1 - Math.exp(-dt / tau));
+  }
+  return out;
+}
+
+// 交感神経・副交感神経のはたらき（教科書の表）
+const AUTONOMIC = [
+  { organ: '心臓の拍動', s: '促進（速くなる）', p: '抑制（遅くなる）' },
+  { organ: '瞳孔', s: '拡大', p: '縮小' },
+  { organ: '気管支', s: '拡張', p: '収縮' },
+  { organ: '胃・腸のぜん動', s: '抑制', p: '促進' },
+  { organ: '体表の血管', s: '収縮', p: '—（分布しない）' },
+  { organ: '立毛筋', s: '収縮（鳥はだ）', p: '—（分布しない）' },
+  { organ: '汗腺（発汗）', s: '促進', p: '—（分布しない）' },
+  { organ: 'ぼうこう（排尿）', s: '抑制', p: '促進' },
+];
+
+// レーヴィの実験の模式：心臓Aの迷走神経（副交感神経）を t0 から刺激すると、
+// Aの拍動がすぐに遅くなり、Aを通った液を受ける心臓Bも少し遅れて遅くなる
+function loewi({ t0 = 10, t1 = 20, tEnd = 40, delay = 3 } = {}) {
+  const f = (t, s0, s1) => {
+    if (t < s0) return 1;
+    if (t < s1) return 1 - 0.55 * (1 - Math.exp(-(t - s0) / 1.2));
+    const atEnd = 1 - 0.55 * (1 - Math.exp(-(s1 - s0) / 1.2));
+    return 1 - (1 - atEnd) * Math.exp(-(t - s1) / 4);
+  };
+  const out = [];
+  for (let t = 0; t <= tEnd + 1e-9; t += 0.2) out.push({ t: Math.round(t * 10) / 10, a: f(t, t0, t1), b: f(t, t0 + delay, t1 + delay) });
+  return out;
+}
+return { REST, MAX, BLOOD_L, TAU_ON, TAU_OFF, target, cardiacOutput, simulate, AUTONOMIC, loewi };
+})();
+
+// ---- dojo/b15.js ----
+__m["dojo/b15.js"] = (function () {
+// B15 心臓の拍動と自律神経 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { simulate, cardiacOutput, REST, BLOOD_L, AUTONOMIC, loewi } = __m["models/heart.js"];
+
+const T0 = 2;
+const T1 = 8;
+const TEND = 16;
+
+const dojo = {
+  tasks: [
+    { id: 'co', text: '「運動」で、時刻スライダーを運動を始める前（0〜2分）に合わせ、安静時の心拍出量（1回拍出量×心拍数）を確かめよう。', short: '安静時の心拍出量' },
+    { id: 'hard', text: '運動の強さを最大にして、心拍出量が安静時の3倍以上になる時刻を探そう。', short: '激しい運動' },
+    { id: 'table', text: '「自律神経のはたらき」で、交感神経と副交感神経の両方を表示し、はたらきが反対になる器官を確かめよう。', short: '拮抗的にはたらく' },
+    { id: 'loewi', text: '「レーヴィの実験」で、心臓Bの拍動が心臓Aより遅れて遅くなることを確かめよう。', short: '神経伝達物質の発見' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'ex', x: 0.5, cursor: 5, side: 's', seenBoth: false };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '心拍数と心拍出量のグラフ', aspect: 0.66 });
+    const leg = h('div');
+    const tableBox = h('div', { class: 'table-scroll' });
+    top.append(leg, tableBox);
+
+    const segTab = segmented({ label: '表示', options: [{ value: 'ex', label: '運動' }, { value: 'table', label: '自律神経のはたらき' }, { value: 'loewi', label: 'レーヴィの実験' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const sX = slider({ label: '運動の強さ', min: 0, max: 1, step: 0.05, value: st.x, format: (v) => (v === 0 ? '運動しない' : `${fmt(v * 100, 0)}%（最大を100%）`), onInput: (v) => { st.x = v; update(); } });
+    const sC = slider({ label: '時刻（値を読む）', min: 0, max: TEND, step: 0.1, value: st.cursor, format: (v) => `${fmt(v, 1)} 分`, onInput: (v) => { st.cursor = v; update(); } });
+    const segSide = segmented({ label: '表に示す神経', options: [{ value: 's', label: '交感神経' }, { value: 'p', label: '副交感神経' }, { value: 'both', label: '両方' }], value: st.side, onChange: (v) => { st.side = v; if (v === 'both') st.seenBoth = true; update(); } });
+    const readout = h('div', { class: 'small', 'aria-live': 'polite' });
+    const ctlEx = h('div', null, sX.el, sC.el, readout);
+    const ctlT = h('div', null, segSide.el);
+    const exp = explainBox();
+    root.append(panel('操作', segTab.el, ctlEx, ctlT), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      ctlEx.hidden = st.tab !== 'ex';
+      ctlT.hidden = st.tab !== 'table';
+      chart.canvas.parentElement.hidden = st.tab === 'table';
+      leg.hidden = st.tab === 'table';
+      tableBox.hidden = st.tab !== 'table';
+      update();
+    }
+
+    function update() {
+      const lines = [];
+      let state = {};
+      if (st.tab === 'ex') {
+        const run = simulate({ x: st.x, t0: T0, t1: T1, tEnd: TEND });
+        const cur = run.reduce((b, r) => (Math.abs(r.t - st.cursor) < Math.abs(b.t - st.cursor) ? r : b), run[0]);
+        title.replaceChildren('運動による心拍数・心拍出量の変化 ', modelNote());
+        chart.draw({
+          alt: `${fmt(cur.t, 1)}分：心拍数 ${fmt(cur.hr, 0)} 回/分、心拍出量 ${fmt(cur.co, 1)} L/分`,
+          x: { min: 0, max: TEND, label: '時間（分）', step: 2 },
+          y: { min: 0, max: 200, label: '心拍数（回/分）', step: 40 },
+          y2: { min: 0, max: 20, label: '心拍出量（L/分）', step: 4 },
+          regions: st.x > 0 ? [{ x0: T0, x1: T1, label: '運動中', fill: 'region' }] : [],
+          series: [
+            { points: run.map((r) => [r.t, r.hr]), color: 'c2', width: 3, label: '心拍数', labelAt: 12 },
+            { points: run.map((r) => [r.t, r.co]), color: 'c1', dash: 'dash', width: 3, axis: 'y2', label: '心拍出量', labelAt: 5 },
+          ],
+          vlines: [{ x: st.cursor, color: 'fg', dash: 'dot', width: 1.2 }],
+          markers: [{ x: cur.t, y: cur.hr, color: 'c2' }],
+        });
+        leg.replaceChildren(legend([{ label: '心拍数（左の目盛り）', color: 'c2' }, { label: '心拍出量＝1回拍出量×心拍数（右の目盛り）', color: 'c1', dash: 'dash' }]));
+        readout.replaceChildren(h('b', null, `${fmt(cur.t, 1)} 分：`), `心拍数 ${fmt(cur.hr, 0)} 回/分 × 1回拍出量 ${fmt(cur.sv, 0)} mL ＝ 心拍出量 ${fmt(cur.co, 1)} L/分`);
+        if (cur.ex && st.x > 0) lines.push('運動を始めると、筋肉で多くの酸素が使われ、血液中の二酸化炭素が増える。これを延髄が感知し、交感神経のはたらきが強まり（副交感神経は弱まり）、心臓の拍動が速く強くなる。心拍出量が増え、筋肉に多くの酸素が運ばれる。');
+        else if (cur.t >= T1 && st.x > 0) lines.push('運動をやめると、副交感神経のはたらきが強まって心臓の拍動はしだいに遅くなり、安静時の心拍数にもどる。');
+        else lines.push(`安静時の心拍数は約${REST.hr}回/分、1回拍出量は約${REST.sv} mL で、心拍出量は約${fmt(cardiacOutput(REST.hr, REST.sv), 1)} L/分。成人の血液の量は約${BLOOD_L} L なので、血液は約1分で全身をめぐる計算になる。`);
+        lines.push('心臓は、右心房にある洞房結節（ペースメーカー）が周期的に興奮することで、自動的に拍動する（自動性）。自律神経はその速さを調節する。');
+        state = { co: cur.co, coRest: cardiacOutput(REST.hr, REST.sv), t: cur.t, x: st.x };
+      } else if (st.tab === 'table') {
+        title.replaceChildren('交感神経と副交感神経のはたらき');
+        const cols = st.side === 'both' ? ['s', 'p'] : [st.side];
+        const name = { s: '交感神経', p: '副交感神経' };
+        tableBox.replaceChildren(h('table', { class: 'data' },
+          h('thead', null, h('tr', null, h('th', null, '器官'), ...cols.map((c) => h('th', null, name[c])))),
+          h('tbody', null, ...AUTONOMIC.map((r) => h('tr', null, h('td', null, r.organ), ...cols.map((c) => h('td', null, r[c]))))),
+        ));
+        lines.push('交感神経は、興奮したときや運動をしているときなど、体を活動的な状態にするときにはたらく。副交感神経は、休息しているときや食後など、体を落ち着いた状態にするときにはたらく。');
+        lines.push('多くの器官には両方の神経が分布し、互いに反対のはたらき（拮抗的なはたらき）をする。体表の血管・立毛筋・汗腺のように、交感神経だけが分布する器官もある。');
+        lines.push('自律神経の中枢は間脳の視床下部にある。交感神経の末端からは主にノルアドレナリンが、副交感神経の末端からはアセチルコリンが放出される。');
+        state = { seenBoth: st.seenBoth };
+      } else {
+        const run = loewi();
+        title.replaceChildren('レーヴィの実験（模式） ', modelNote());
+        chart.draw({
+          alt: 'レーヴィの実験：心臓Aの迷走神経を刺激すると、Aに続いてBの拍動も遅くなる',
+          x: { min: 0, max: 40, label: '時間（秒）', step: 5 },
+          y: { min: 0, max: 1.2, label: '拍動の速さ（相対値）', step: 0.2, digits: 1 },
+          regions: [{ x0: 10, x1: 20, label: '心臓Aの迷走神経を刺激', fill: 'region' }],
+          series: [
+            { points: run.map((r) => [r.t, r.a]), color: 'c2', width: 3, label: '心臓A', labelAt: 16 },
+            { points: run.map((r) => [r.t, r.b]), color: 'c1', dash: 'dash', width: 3, label: '心臓B', labelAt: 30 },
+          ],
+        });
+        leg.replaceChildren(legend([{ label: '心臓A（迷走神経をつけたまま）', color: 'c2' }, { label: '心臓B（Aを通った液を受ける）', color: 'c1', dash: 'dash' }]));
+        lines.push('カエルの心臓Aの迷走神経（副交感神経）を刺激すると、Aの拍動が遅くなった。Aの中を流れた液を、神経をつないでいない心臓Bに流すと、少し遅れてBの拍動も遅くなった。');
+        lines.push('このことから、神経の末端から化学物質が放出され、それが心臓のはたらきを変えていることがわかった（レーヴィ、1921年）。この物質はのちにアセチルコリンであることがわかった。');
+        state = { loewiSeen: true };
+      }
+      exp.set(lines);
+      ctx.update({ tab: st.tab, ...state });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'ex' && s.t < 2 && Math.abs(s.co - 4.9) < 0.3;
+dojo.tasks[1].check = (s) => s.tab === 'ex' && s.x >= 1 && s.co >= s.coRest * 3;
+dojo.tasks[2].check = (s) => s.tab === 'table' && s.seenBoth;
+dojo.tasks[3].check = (s) => s.tab === 'loewi' && s.loewiSeen;
+return { dojo };
+})();
+
+// ---- models/bioaccumulation.js ----
+__m["models/bioaccumulation.js"] = (function () {
+// B16 生物濃縮
+// 分解されにくく、脂肪に溶けやすく、体外に排出されにくい物質は、食物連鎖を通して栄養段階が上がるほど高い濃度で体内にたまる。
+// 模式：水中の濃度 C0、植物プランクトンは水から取りこんで BCF 倍、それより上の栄養段階では1段ごとに F 倍になる。
+// 分解・排出されやすい物質では F が1より小さく、上の段階ほど濃度が低い。
+const LEVELS = ['水', '植物プランクトン', '動物プランクトン', '小型の魚', '大型の魚', '魚を食べる鳥'];
+const DEFAULT = { c0: 0.00005, bcf: 800, f: 5 }; // ppm（百万分率）
+
+function chain({ c0 = DEFAULT.c0, bcf = DEFAULT.bcf, f = DEFAULT.f } = {}) {
+  const out = [c0];
+  let c = c0 * bcf;
+  for (let i = 1; i < LEVELS.length; i++) {
+    out.push(c);
+    c *= f;
+  }
+  return out;
+}
+
+// 濃縮率 ＝ 生物の体内の濃度 ÷ 水中（環境中）の濃度
+function ratio(c, c0) {
+  return c / c0;
+}
+
+// 生物濃縮の起こりやすい物質の性質
+const PROPERTIES = ['分解されにくい', '脂肪に溶けやすい（水に溶けにくい）', '体外に排出されにくい'];
+return { LEVELS, DEFAULT, chain, ratio, PROPERTIES };
+})();
+
+// ---- dojo/b16.js ----
+__m["dojo/b16.js"] = (function () {
+// B16 生物濃縮 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { LEVELS, DEFAULT, chain, ratio, PROPERTIES } = __m["models/bioaccumulation.js"];
+
+const MARK = ['水', '①', '②', '③', '④', '⑤'];
+const PRESETS = {
+  persistent: { label: '分解・排出されにくい物質（DDT・PCB など）', f: 5 },
+  degradable: { label: '分解・排出されやすい物質', f: 0.4 },
+};
+
+// ppm の値を読みやすく（小さい値は指数表記）
+function ppm(v) {
+  if (v >= 0.01) return fmt(v, v >= 10 ? 1 : v >= 1 ? 2 : 3);
+  const e = Math.floor(Math.log10(v));
+  const sup = String(e).replace('-', '⁻').replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+  return `${fmt(v / Math.pow(10, e), 1)}×10${sup}`;
+}
+
+const dojo = {
+  tasks: [
+    { id: 'top', text: '「分解・排出されにくい物質」で1段ごとの濃縮倍率を3倍にし、魚を食べる鳥の濃縮率（鳥の体内の濃度 ÷ 水中の濃度）を確かめよう。', short: '鳥の濃縮率' },
+    { id: 'deg', text: '「分解・排出されやすい物質」に切り替えて、上の栄養段階ほど濃度が低くなることを確かめよう。', short: '濃縮されない物質' },
+    { id: 'f10', text: '1段ごとの濃縮倍率を10倍にして、鳥の体内の濃度が水中の100万倍をこえることを確かめよう。', short: '濃縮倍率の影響' },
+  ],
+  mount(root, ctx) {
+    const st = { preset: 'persistent', f: PRESETS.persistent.f };
+
+    const top = panel(null);
+    root.append(top);
+    top.append(h('h2', null, '栄養段階と体内の濃度（対数目盛り） ', modelNote()));
+    const chart = createChart(top, { label: '栄養段階ごとの体内の濃度のグラフ', aspect: 0.7 });
+    const names = h('p', { class: 'small' }, MARK.slice(1).map((m, i) => `${m} ${LEVELS[i + 1]}`).join('　'));
+    top.append(names, h('p', { class: 'small muted' }, `濃度の単位は ppm（百万分率。1 ppm は 1 kg あたり 1 mg）。水中の濃度を ${DEFAULT.c0} ppm、植物プランクトンは水から取りこんで ${DEFAULT.bcf} 倍、それより上は1段ごとに一定の倍率で濃くなるとした模式。縦軸は1目盛りで10倍になる。`));
+
+    const segP = segmented({ label: '物質の性質', options: Object.entries(PRESETS).map(([value, p]) => ({ value, label: p.label })), value: st.preset, onChange: (v) => { st.preset = v; st.f = PRESETS[v].f; sF.set(st.f, true); update(); } });
+    const sF = slider({ label: '1段ごとの濃縮倍率（食べる側 ÷ 食べられる側）', min: 0.2, max: 10, step: 0.1, value: st.f, format: (v) => `${fmt(v, 1)} 倍`, onInput: (v) => { st.f = v; st.preset = v >= 1 ? 'persistent' : 'degradable'; segP.set(st.preset, true); update(); } });
+    const calc = h('div', { 'aria-live': 'polite' });
+    const exp = explainBox();
+    root.append(panel('操作', segP.el, sF.el), panel('計算：濃縮率', calc), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const c = chain({ f: st.f });
+      const pts = c.map((v, i) => [i, v]);
+      chart.draw({
+        alt: `水 ${ppm(c[0])} ppm → 魚を食べる鳥 ${ppm(c[5])} ppm`,
+        x: { min: -0.4, max: 5.4, label: '栄養段階（左ほど下位）', ticks: MARK.map((m, i) => ({ v: i, text: m })) },
+        y: { min: 1e-6, max: 1e4, log: true, label: '体内の濃度（ppm）' },
+        series: [{ points: pts, color: st.f >= 1 ? 'c2' : 'c1', width: 3 }],
+        markers: pts.map(([i, v]) => ({ x: i, y: v, color: st.f >= 1 ? 'c2' : 'c1', label: ppm(v) })),
+        hlines: [{ y: c[0], color: 'muted', dash: 'dot', width: 1, label: '水中の濃度', align: 'right' }],
+      });
+      const r = ratio(c[5], c[0]);
+      calc.replaceChildren(
+        h('p', null, h('b', null, '濃縮率 ＝ 生物の体内の濃度 ÷ 水中（環境中）の濃度')),
+        h('p', null, `魚を食べる鳥：${ppm(c[5])} ÷ ${ppm(c[0])} ＝ `, h('b', null, `${r >= 1000 ? Math.round(r).toLocaleString('ja-JP') : fmt(r, 1)} 倍`)),
+        h('p', { class: 'small muted' }, `植物プランクトン：${ppm(c[1])} ÷ ${ppm(c[0])} ＝ ${fmt(ratio(c[1], c[0]), 0)} 倍。1段上がるごとに ${fmt(st.f, 1)} 倍になる。`),
+      );
+      const lines = [];
+      if (st.f >= 1) {
+        lines.push(`${PROPERTIES.join('、')}物質は、食べた生物の体内にたまり続ける。食物連鎖で上位の生物は多くの下位の生物を食べるので、栄養段階が上がるほど体内の濃度が高くなる。この現象を生物濃縮という。`);
+        lines.push(`この設定では、魚を食べる鳥の体内の濃度は水中の約${r >= 1000 ? Math.round(r).toLocaleString('ja-JP') : fmt(r, 0)}倍になる。水中の濃度がごくわずかでも、上位の生物には害が出る濃度になることがある。`);
+        lines.push('例：殺虫剤の DDT、絶縁油などに使われた PCB、有機水銀（水俣病の原因）。DDT が鳥の卵の殻を薄くして繁殖をさまたげたことが知られている。');
+      } else {
+        lines.push('分解されやすく、体外に排出されやすい物質は、食べた生物の体内にたまらないので、上の栄養段階ほど濃度が低くなる。生物濃縮は起こらない。');
+      }
+      exp.set(lines);
+      ctx.update({ ...st, ratio: r, top: c[5], c1: c[1] });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.preset === 'persistent' && Math.abs(s.f - 3) < 0.05;
+dojo.tasks[1].check = (s) => s.preset === 'degradable' && s.f < 1;
+dojo.tasks[2].check = (s) => s.f >= 10 && s.ratio > 1e6;
 return { dojo };
 })();
 
@@ -8364,6 +9098,10 @@ const { dojo: b9 } = __m["dojo/b9.js"];
 const { dojo: b10 } = __m["dojo/b10.js"];
 const { dojo: b11 } = __m["dojo/b11.js"];
 const { dojo: b12 } = __m["dojo/b12.js"];
+const { dojo: b13 } = __m["dojo/b13.js"];
+const { dojo: b14 } = __m["dojo/b14.js"];
+const { dojo: b15 } = __m["dojo/b15.js"];
+const { dojo: b16 } = __m["dojo/b16.js"];
 const { dojo: a1 } = __m["dojo/a1.js"];
 const { dojo: a2 } = __m["dojo/a2.js"];
 const { dojo: a3 } = __m["dojo/a3.js"];
@@ -8386,7 +9124,7 @@ const { dojo: a19 } = __m["dojo/a19.js"];
 const { dojo: a20 } = __m["dojo/a20.js"];
 const { dojo: a21 } = __m["dojo/a21.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21 };
 return { DOJOS };
 })();
 
@@ -11311,6 +12049,787 @@ const B12 = [
   },
 ];
 return { B12 };
+})();
+
+// ---- questions/b13.js ----
+__m["questions/b13.js"] = (function () {
+// B13 細胞の大きさとミクロメーター の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { SPECIMENS, RESOLUTION } = __m["models/micrometer.js"];
+
+// 接眼 e 目盛りと対物 o 目盛りが重なる組（1目盛りの長さが小数第2位までで表せるもの）
+const PAIRS = [];
+for (const e of [4, 5, 8, 10, 12, 15, 16, 20, 25, 40]) {
+  for (let o = 1; o <= 12; o++) {
+    const u = (10 * o) / e;
+    if (o < e && Math.abs(u * 100 - Math.round(u * 100)) < 1e-9 && u >= 0.5) PAIRS.push({ e, o, u });
+  }
+}
+
+const B13 = [
+  {
+    id: 'b13-calibrate',
+    stage: 'b13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const { e, o, u } = rng.pick(PAIRS);
+      const d = distinctNumbers(u, [(10 * e) / o, o / e, e / o, 10 * o * e / 100, u * 10, u / 10], ' μm', 2);
+      return {
+        text: `ある倍率で観察すると、接眼ミクロメーターの ${e} 目盛りと対物ミクロメーターの ${o} 目盛りがちょうど重なった。対物ミクロメーターの1目盛りは 10 μm である。接眼ミクロメーター1目盛りの長さは何 μm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `対物ミクロメーター ${o} 目盛りの長さは 10 × ${o} ＝ ${10 * o} μm で、これが接眼ミクロメーター ${e} 目盛りにあたるので、${10 * o} ÷ ${e} ＝ ${fmt(u, 2)} μm となる。対物ミクロメーターは試料と同じく拡大されるので、その目盛りを基準にして接眼ミクロメーターの1目盛りの長さを決めるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-measure',
+    stage: 'b13',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const { e, o, u } = rng.pick(PAIRS.filter((p) => p.u >= 1));
+      const n = rng.int(3, 30);
+      const L = n * u;
+      const d = distinctNumbers(L, [n * 10, (n * e) / o, n / u, L * 10, L / 10, n * u + u], ' μm', 2);
+      return {
+        text: `接眼ミクロメーターの ${e} 目盛りと対物ミクロメーターの ${o} 目盛り（1目盛り 10 μm）が重なる倍率で細胞を観察したところ、細胞の長さは接眼ミクロメーターの ${n} 目盛り分であった。この細胞の長さは何 μm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `接眼1目盛りは 10 × ${o} ÷ ${e} ＝ ${fmt(u, 2)} μm なので、細胞の長さは ${n} × ${fmt(u, 2)} ＝ ${fmt(L, 2)} μm となる。測るときに目盛りを読むのは接眼ミクロメーターなので、その1目盛りの長さをかければよいからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-mag-change',
+    stage: 'b13',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const u10 = rng.pick([10, 12, 14, 16, 20]);
+      const m2 = rng.pick([40, 20]);
+      const u2 = (u10 * 10) / m2;
+      const n = rng.int(4, 24);
+      const L = n * u2;
+      const d = distinctNumbers(L, [n * u10, (n * u10 * m2) / 10, L * 2, L / 2, n * u10 / 2], ' μm', 1);
+      return {
+        text: `対物レンズ10倍のとき、接眼ミクロメーター1目盛りは ${u10} μm であった。対物レンズを ${m2} 倍に変えて（接眼レンズは同じ）ある細胞を観察すると、細胞の長さは接眼ミクロメーターの ${n} 目盛り分であった。この細胞の長さは何 μm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `対物レンズの倍率が ${m2 / 10} 倍になると、接眼1目盛りが表す長さは 1/${m2 / 10} になるので ${u10} ÷ ${m2 / 10} ＝ ${fmt(u2, 2)} μm、細胞の長さは ${n} × ${fmt(u2, 2)} ＝ ${fmt(L, 1)} μm となる。接眼ミクロメーターは拡大されないが、試料は ${m2 / 10} 倍大きく見えるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-speed',
+    stage: 'b13',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const u = rng.pick([2.5, 3.5, 4, 5]);
+      const n = rng.int(4, 20);
+      const t = rng.pick([2, 4, 5, 8, 10]);
+      const v = (n * u) / t;
+      const d = distinctNumbers(v, [n / t, (n * u) * t, n * u, (t * u) / n, v * 10], ' μm/秒', 2);
+      return {
+        text: `オオカナダモの葉の細胞で原形質流動を観察した。接眼ミクロメーター1目盛りが ${u} μm の倍率で、1つの葉緑体が ${t} 秒間に接眼ミクロメーターの ${n} 目盛り分移動した。葉緑体の移動の速さは何 μm/秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `移動した距離は ${n} × ${u} ＝ ${fmt(n * u, 2)} μm なので、速さは ${fmt(n * u, 2)} ÷ ${t} ＝ ${fmt(v, 2)} μm/秒となる。目盛りの数を長さに直してから時間でわらないと、速さの単位にならないからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-scale-graph',
+    stage: 'b13',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      // 0 の次に重なるのが (e, o) になるよう、e と o が互いに素な組だけを使う
+      const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+      const { e, o, u } = rng.pick(PAIRS.filter((p) => p.e <= 20 && gcd(p.e, p.o) === 1));
+      const N = e * 2;
+      const series = [];
+      for (let i = 0; i <= N; i++) series.push({ points: [[i, 0], [i, i % 5 === 0 ? 1.4 : 0.9]], color: 'fg', width: 1.6 });
+      const step = 10 / u;
+      for (let k = 0; k * step <= N + 1e-9; k++) series.push({ points: [[k * step, 0], [k * step, k % 5 === 0 ? -1.4 : -0.9]], color: 'c1', width: 1.6 });
+      const d = distinctNumbers(u, [(10 * e) / o, o / e, u * 2, u / 2, 10 / u], ' μm', 2);
+      return {
+        text: '図は、顕微鏡で見た接眼ミクロメーター（上側の黒い目盛り）と対物ミクロメーター（下側の青い目盛り、1目盛り 10 μm）である。左端で両方の0の線がそろっている。接眼ミクロメーター1目盛りの長さは何 μm か。',
+        chart: {
+          x: { min: -0.5, max: N + 0.5, label: '接眼ミクロメーターの目盛り', step: 5, grid: false },
+          y: { min: -2, max: 2, ticks: [] },
+          series,
+          texts: [{ x: N / 2, y: 1.75, text: '接眼ミクロメーター' }, { x: N / 2, y: -1.75, text: '対物ミクロメーター（1目盛り 10 μm）', color: 'c1' }],
+          alt: '接眼ミクロメーターと対物ミクロメーターの目盛り',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `0の次に目盛りが重なるのは、接眼 ${e} 目盛りと対物 ${o} 目盛りの位置なので、10 × ${o} ÷ ${e} ＝ ${fmt(u, 2)} μm となる。重なる2点の間では、接眼の目盛り数と対物の目盛り数が同じ長さを表しているからである。`,
+      };
+    },
+  },
+  {
+    id: 'b13-why',
+    stage: 'b13',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '対物レンズの倍率を変えたときは、接眼ミクロメーター1目盛りの長さを求め直す必要がある。その理由として正しいものはどれか。',
+        correct: '接眼ミクロメーターは拡大されないが、試料は倍率に応じて拡大されるから',
+        wrong: ['接眼ミクロメーターも試料と同じ倍率で拡大されるから', '対物ミクロメーターの1目盛りの長さが倍率によって変わるから', '倍率を変えると試料の実際の大きさが変わるから'],
+        explanation: '接眼ミクロメーターは接眼レンズの中にあるので、対物レンズの倍率を変えても見かけの目盛りの間隔は変わらない。一方、試料は対物レンズの倍率に応じて大きく見えるので、接眼1目盛りが表す実際の長さは倍率に反比例して変わる。',
+      };
+    },
+  },
+  {
+    id: 'b13-micrometer-term',
+    stage: 'b13',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: '対物ミクロメーターについての説明として正しいものはどれか。', correct: 'スライドガラスに 1 mm を100等分した目盛りがあり、1目盛りは 10 μm である', wrong: ['接眼レンズの中に入れて使い、1目盛りは倍率によって変わる', 'スライドガラスに 1 mm を10等分した目盛りがあり、1目盛りは 100 μm である', '試料の長さを測るとき、試料といっしょにのせたまま読む'], explanation: '対物ミクロメーターは、スライドガラスに 1 mm を100等分した目盛りが刻まれたもので、1目盛りは 10 μm である。ステージにのせて試料と同じく拡大されるので、接眼ミクロメーターの1目盛りの長さを求める基準に使う。' },
+        { text: '細胞の長さを測るとき、実際に目盛りを読むのはどれか。', correct: '接眼ミクロメーター（対物ミクロメーターは外してから試料を観察する）', wrong: ['対物ミクロメーター（試料と重ねて読む）', '接眼ミクロメーターと対物ミクロメーターの両方を重ねて読む', 'ステージの目盛り'], explanation: '試料の長さは接眼ミクロメーターの目盛りで読む。対物ミクロメーターは接眼1目盛りの長さを求めるために使い、求めたあとは外して試料のプレパラートにかえるからである。' },
+        { text: '1 mm は何 μm か。', correct: '1000 μm', wrong: ['10 μm', '100 μm', '1000000 μm'], explanation: '1 mm ＝ 1000 μm、1 μm ＝ 1000 nm である。μ（マイクロ）は100万分の1を表すので、1 μm は 1 m の100万分の1、つまり 1 mm の1000分の1だからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b13-size-graph',
+    stage: 'b13',
+    level: 1,
+    kind: 'graph',
+    make(rng) {
+      const pool = [...SPECIMENS, { id: 'egg', name: 'ヒトの卵', length: 140 }, { id: 'virus', name: 'インフルエンザウイルス', length: 0.1 }];
+      const items = rng.sample(pool, 4);
+      const ask = rng.int(0, 3);
+      return {
+        text: `図は、ア〜エの大きさ（長さ・直径の目安）を対数目盛りで表したものである。ア〜エは ${items.map((x) => x.name).sort().join('・')} のいずれかである。${items[ask].name}はどれか。`,
+        chart: {
+          x: { min: 0, max: 1 },
+          y: { min: 0.01, max: 1000, log: true, label: '大きさ（μm）' },
+          bars: { categories: KATA.slice(0, 4), groups: [{ label: '大きさ', values: items.map((x) => x.length), color: 'c1' }] },
+          alt: 'ア〜エの大きさの棒グラフ（対数目盛り）',
+        },
+        correct: KATA[ask],
+        wrong: KATA.slice(0, 4).filter((_, i) => i !== ask),
+        explanation: `${items[ask].name}は約${items[ask].length} μm なので${KATA[ask]}である。大きさの目安は、ゾウリムシ 約200 μm、ヒトの卵 約140 μm、ヒトの口腔上皮細胞 約60 μm、ヒトの赤血球 約7〜8 μm、大腸菌 約3 μm、インフルエンザウイルス 約0.1 μm で、対数目盛りでは1目盛りで10倍になるから比べやすい。`,
+      };
+    },
+  },
+  {
+    id: 'b13-resolution',
+    stage: 'b13',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '光学顕微鏡で見分けることができる2点間の最小の距離（分解能）はおよそどれくらいか。',
+          correct: `約${RESOLUTION.light} μm`,
+          wrong: ['約0.1 mm', '約0.2 nm', '約20 μm'],
+          explanation: `光学顕微鏡の分解能は約${RESOLUTION.light} μm で、肉眼（約0.1 mm）よりずっと小さいものを見分けられる。さらに小さい構造は、分解能が約0.2 nm の電子顕微鏡を使わないと見分けられないからである。`,
+        };
+      }
+      return {
+        text: '次のうち、光学顕微鏡では見えず、電子顕微鏡を使わないと形がわからないものはどれか。',
+        correct: 'インフルエンザウイルス（約0.1 μm）',
+        wrong: ['ゾウリムシ（約200 μm）', 'ヒトの赤血球（約7〜8 μm）', 'ヒトの口腔上皮細胞（約60 μm）'],
+        explanation: 'インフルエンザウイルスは約0.1 μm で、光学顕微鏡の分解能（約0.2 μm）より小さい。そのため光学顕微鏡では形を見分けられず、電子顕微鏡が必要になるからである。',
+      };
+    },
+  },
+];
+return { B13 };
+})();
+
+// ---- questions/b14.js ----
+__m["questions/b14.js"] = (function () {
+// B14 酵素のはたらき（カタラーゼ）の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { simulate, totalO2, O2_PER_ML, T_END } = __m["models/catalase.js"];
+
+const curve = (opts) => simulate(opts).map((r) => [r.t, r.o2]);
+
+const B14 = [
+  {
+    id: 'b14-total-calc',
+    stage: 'b14',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([1, 2, 3]);
+      const o = v * O2_PER_ML;
+      const k = rng.pick(['sub', 'enz']);
+      const m = rng.pick([2, 3]);
+      const ans = k === 'sub' ? o * m : o;
+      const d = distinctNumbers(ans, k === 'sub' ? [o, o / m, o * m * m, o + m] : [o * m, o / m, o * m * m, o + 10], ' mL', 0);
+      return {
+        text: `3%過酸化水素水 ${v} mL に肝臓片を加えると、泡が出なくなるまでに酸素が ${o} mL 発生した。${k === 'sub' ? `過酸化水素水を ${v * m} mL にして（肝臓片は同じ量）` : `肝臓片を ${m} 倍の量にして（過酸化水素水は ${v} mL のまま）`}同じ実験をすると、泡が出なくなるまでに発生する酸素は何 mL か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: k === 'sub'
+          ? `発生する酸素の総量は分解される過酸化水素（基質）の量に比例するので、${o} × ${m} ＝ ${ans} mL となる。酵素は反応の前後で変化しないので、基質がすべて分解されるまではたらき続けるからである。`
+          : `酵素を増やすと反応は速くなるが、発生する酸素の総量は基質（過酸化水素）の量で決まるので ${o} mL のままである。酵素は反応の前後で変化せず、基質がなくなれば反応は止まるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b14-rate-graph',
+    stage: 'b14',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const h2o2 = rng.pick([2, 3, 4]);
+      const run = simulate({ cat: 'liver', h2o2, amount: rng.pick([0.5, 1]) });
+      const ask = rng.pick(['total', 'first']);
+      const total = Math.round(run[run.length - 1].o2);
+      const first = Math.round(run.find((r) => r.t >= 1 - 1e-9).o2);
+      const ans = ask === 'total' ? total : first;
+      // グラフの読み取りの誤差（±2 mL 程度）で紛れないよう、正答から離れた値だけを誤答にする
+      const d = distinctNumbers(ans, (ask === 'total' ? [total / 2, first, total * 2, h2o2] : [total, first / 2, first * 2, first + 8]).filter((v) => Math.abs(v - ans) >= 5), ' mL', 0);
+      return {
+        text: `図は、3%過酸化水素水 ${h2o2} mL に肝臓片を加えたときに発生した酸素の量（累計）の変化である。${ask === 'total' ? '泡が出なくなるまでに発生した酸素は全部でおよそ何 mL か。' : 'はじめの1分間に発生した酸素はおよそ何 mL か。'}`,
+        chart: {
+          x: { min: 0, max: T_END, label: '時間（分）', step: 1 },
+          y: { min: 0, max: Math.ceil((total * 1.2) / 5) * 5, label: '発生した酸素の量（mL）', step: 5 },
+          series: [{ points: run.map((r) => [r.t, r.o2]), color: 'c1', width: 3 }],
+          vlines: ask === 'first' ? [{ x: 1, color: 'muted', dash: 'dot', label: '1分' }] : [],
+          alt: '発生した酸素の量の変化のグラフ',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: ask === 'total'
+          ? `グラフが水平になったところの値を読むと、約 ${total} mL である。グラフが水平になるのは、基質の過酸化水素がすべて分解されて反応が止まったからである。`
+          : `1分のときのグラフの値を読むと、約 ${first} mL である。はじめは基質が多いので反応が速く、グラフの傾きが最も大きいからである。`,
+      };
+    },
+  },
+  {
+    id: 'b14-which-curve',
+    stage: 'b14',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const kinds = rng.shuffle(['enz', 'sub', 'boiled']);
+      const opts = { enz: { cat: 'liver', h2o2: 2, amount: 2 }, sub: { cat: 'liver', h2o2: 4, amount: 1 }, boiled: { cat: 'boiled', h2o2: 2, amount: 1 } };
+      const ask = rng.pick(['enz', 'sub']);
+      const idx = kinds.indexOf(ask);
+      const NAME = { enz: '肝臓片の量を2倍にした場合', sub: '過酸化水素水の量を2倍にした場合', boiled: '煮沸した肝臓片を使った場合' };
+      const styles = [{ color: 'c2', dash: 'dash' }, { color: 'c1', dash: 'dashdot' }, { color: 'c4', dash: 'dot' }];
+      return {
+        text: `図の実線は、3%過酸化水素水 2 mL に肝臓片を加えたときに発生した酸素の量（累計）である。ア〜ウは、${Object.values(NAME).join('・')}のいずれかである。${NAME[ask]}はどれか。`,
+        chart: {
+          x: { min: 0, max: T_END, label: '時間（分）', step: 2 },
+          y: { min: 0, max: 50, label: '発生した酸素の量（mL）', step: 10 },
+          series: [
+            { points: curve({ cat: 'liver', h2o2: 2, amount: 1 }), color: 'fg', width: 3, label: 'もとの実験', labelAt: 9 },
+            ...kinds.map((k, i) => ({ points: curve(opts[k]), ...styles[i], width: 3, label: KATA[i], labelAt: k === 'enz' ? 0.8 : k === 'sub' ? 9 : 10 })),
+          ],
+          alt: 'もとの実験とア〜ウの酸素の発生量のグラフ',
+        },
+        correct: KATA[idx],
+        wrong: KATA.slice(0, 3).filter((_, i) => i !== idx).concat(['どれでもない']),
+        explanation: ask === 'enz'
+          ? `肝臓片（酵素）を増やすと反応は速くなるが、発生する酸素の総量はもとの実験と同じになるので${KATA[idx]}である。酸素の総量は基質の過酸化水素の量で決まるからである。`
+          : `過酸化水素水（基質）を2倍にすると、発生する酸素の総量が2倍になるので${KATA[idx]}である。酵素はくり返しはたらくので、増えた基質もすべて分解されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b14-add',
+    stage: 'b14',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '過酸化水素水に肝臓片を入れると泡（酸素）が出て、やがて出なくなった。この試験管に過酸化水素水を追加したときの結果と、そこからわかることの組合せとして正しいものはどれか。',
+          correct: '再び泡が出る。酵素は反応の前後で変化せず、くり返しはたらく',
+          wrong: ['泡は出ない。酵素は1回の反応で使いきられる', '再び泡が出る。酵素は反応によって新しくつくられる', '泡は出ない。過酸化水素は肝臓片とは反応しない'],
+          explanation: '過酸化水素水を追加すると再び泡が出る。泡が止まったのは基質の過酸化水素がなくなったためで、酵素（カタラーゼ）は反応の前後で変化せず残っているからである。',
+        };
+      }
+      return {
+        text: '過酸化水素水に肝臓片を入れると泡（酸素）が出て、やがて出なくなった。この試験管に新しい肝臓片を追加したときの結果と、その理由の組合せとして正しいものはどれか。',
+        correct: '泡は出ない。基質の過酸化水素がすべて分解されているから',
+        wrong: ['再び泡が出る。新しい酵素が加わったから', '泡は出ない。新しい肝臓片の酵素がはたらかないから', '再び泡が出る。肝臓片が過酸化水素をつくるから'],
+        explanation: '新しい肝臓片を加えても泡は出ない。泡が止まったのは酵素がなくなったからではなく、基質の過酸化水素がすべて分解されてなくなったからである。',
+      };
+    },
+  },
+  {
+    id: 'b14-boiled',
+    stage: 'b14',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '煮沸した肝臓片を過酸化水素水に入れても、泡（酸素）はほとんど出なかった。その理由として正しいものはどれか。',
+          correct: 'カタラーゼはタンパク質でできていて、高温で変性してはたらきを失ったから',
+          wrong: ['煮沸によって肝臓片の中のカタラーゼの量が増えたから', '過酸化水素は高温の肝臓片とは混ざらないから', '煮沸によって肝臓片が無機触媒に変わったから'],
+          explanation: '酵素（カタラーゼ）はタンパク質を主成分とするので、高温にすると立体構造が変化して（変性して）はたらきを失う。そのため煮沸した肝臓片では過酸化水素がほとんど分解されない。',
+        };
+      }
+      return {
+        text: '酸化マンガン(IV)を加熱してから過酸化水素水に入れると、どうなるか。',
+        correct: '加熱しないときと同じように泡（酸素）が出る',
+        wrong: ['泡はまったく出ない', '泡は出るが、酸素ではなく二酸化炭素が出る', '過酸化水素が増える'],
+        explanation: '酸化マンガン(IV)は無機触媒で、タンパク質ではないので加熱してもはたらきを失わない。そのため加熱したあとでも過酸化水素を分解し、酸素が発生する。',
+      };
+    },
+  },
+  {
+    id: 'b14-enzyme-term',
+    stage: 'b14',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: '酵素についての説明として正しいものはどれか。', correct: '主成分がタンパク質の生体触媒で、反応の前後で変化しない', wrong: ['主成分が脂質の生体触媒で、反応のたびに使いきられる', '細胞の外では、まったくはたらかない', 'どんな物質にも同じようにはたらく'], explanation: '酵素は、細胞内でつくられるタンパク質を主成分とする触媒（生体触媒）である。反応の前後で変化しないので、少量でもくり返しはたらくことができる。' },
+        { text: '酵素が特定の物質にだけはたらく性質を何というか。', correct: '基質特異性', wrong: ['恒常性', '自動性', '最適温度'], explanation: 'この性質を基質特異性という。酵素は活性部位の形に合う特定の物質（基質）とだけ結合するので、決まった反応だけを促進するからである。' },
+        { text: '酵素がはたらく相手の物質を何というか。', correct: '基質', wrong: ['生成物', '触媒', '補酵素'], explanation: '酵素がはたらく相手の物質を基質という。カタラーゼの基質は過酸化水素で、酵素が基質と結合することで反応が進むからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b14-atp',
+    stage: 'b14',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: 'ATP（アデノシン三リン酸）を構成するものの組合せとして正しいものはどれか。', correct: 'アデニン・リボース・3個のリン酸', wrong: ['アデニン・デオキシリボース・3個のリン酸', 'アデニン・リボース・2個のリン酸', 'アミノ酸・リボース・3個のリン酸'], explanation: 'ATP は、塩基のアデニンと糖のリボース（この2つでアデノシン）に、3個のリン酸が結合した物質である。リン酸どうしの結合（高エネルギーリン酸結合）にエネルギーがたくわえられているので、生命活動のエネルギーの受けわたしに使われる。' },
+        { text: 'ATP が分解されてエネルギーが取り出されるときの反応として正しいものはどれか。', correct: 'ATP → ADP ＋ リン酸', wrong: ['ADP ＋ リン酸 → ATP', 'ATP → アデニン ＋ リボース', 'ATP → DNA ＋ リン酸'], explanation: 'ATP の末端のリン酸が切り離されて ADP とリン酸になるとき、エネルギーが放出される。このエネルギーが筋肉の収縮や物質の合成などに使われるからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b14-metabolism',
+    stage: 'b14',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const isAna = rng.chance(0.5);
+      return {
+        text: isAna ? '代謝のうち、簡単な物質から複雑な物質を合成し、エネルギーを吸収する過程を何というか。また、その例はどれか。' : '代謝のうち、複雑な物質を簡単な物質に分解し、エネルギーを放出する過程を何というか。また、その例はどれか。',
+        correct: isAna ? '同化：光合成' : '異化：呼吸',
+        wrong: isAna ? ['同化：呼吸', '異化：光合成', '異化：呼吸'] : ['異化：光合成', '同化：呼吸', '同化：光合成'],
+        explanation: isAna
+          ? '簡単な物質から複雑な物質を合成する過程を同化といい、光合成は光エネルギーを使って二酸化炭素と水から有機物をつくる同化である。同化ではエネルギーが吸収され、有機物の中にたくわえられるからである。'
+          : '複雑な物質を分解してエネルギーを取り出す過程を異化といい、呼吸は有機物を二酸化炭素と水に分解する異化である。取り出したエネルギーは ATP の合成に使われるからである。',
+      };
+    },
+  },
+  {
+    id: 'b14-partial-calc',
+    stage: 'b14',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const v = rng.pick([2, 3, 4, 5]);
+      const frac = rng.pick([0.25, 0.5, 0.75]);
+      const ans = v * O2_PER_ML * frac;
+      const d = distinctNumbers(ans, [v * O2_PER_ML, v * frac, v * O2_PER_ML * (1 - frac), ans * 2, ans / 2], ' mL', 1);
+      return {
+        text: `3%過酸化水素水 1 mL がすべて分解されると、酸素が ${O2_PER_ML} mL 発生するとする。3%過酸化水素水 ${v} mL に肝臓片を加え、含まれる過酸化水素の ${fmt(frac * 100, 0)}% が分解された時点で、発生した酸素は何 mL か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${v} mL がすべて分解されると ${v * O2_PER_ML} mL 発生するので、その ${fmt(frac * 100, 0)}% の ${fmt(ans, 1)} mL となる。発生する酸素の量は、分解された過酸化水素の量に比例するからである。`,
+      };
+    },
+  },
+];
+return { B14 };
+})();
+
+// ---- questions/b15.js ----
+__m["questions/b15.js"] = (function () {
+// B15 心臓の拍動と自律神経 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { simulate, loewi, AUTONOMIC } = __m["models/heart.js"];
+
+const B15 = [
+  {
+    id: 'b15-co-calc',
+    stage: 'b15',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const hr = rng.pick([60, 65, 70, 72, 75, 80, 120, 150]);
+      const sv = rng.pick([60, 65, 70, 75, 80, 90, 100]);
+      const co = (hr * sv) / 1000;
+      const d = distinctNumbers(co, [hr + sv, (hr * sv) / 100, sv / hr, co * 2, co / 2, (hr * sv) / 10000], ' L', 2);
+      return {
+        text: `心拍数が ${hr} 回/分、1回の拍動で心臓（左心室）から送り出される血液の量（1回拍出量）が ${sv} mL のとき、心臓が1分間に送り出す血液の量（心拍出量）は何 L か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `心拍出量 ＝ 1回拍出量 × 心拍数 ＝ ${sv} × ${hr} ＝ ${hr * sv} mL ＝ ${fmt(co, 2)} L となる。1分間に ${hr} 回、毎回 ${sv} mL ずつ送り出すので、かけ合わせればよいからである。`,
+      };
+    },
+  },
+  {
+    id: 'b15-pulse',
+    stage: 'b15',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const sec = rng.pick([10, 15, 20, 30]);
+      const n = rng.int(Math.round(sec * 1), Math.round(sec * 1.5));
+      const hr = (n * 60) / sec;
+      const d = distinctNumbers(hr, [n, n * sec, (n * sec) / 60, hr / 2, hr + 10], ' 回/分', 0);
+      return {
+        text: `手首で脈拍を ${sec} 秒間数えたところ、${n} 回であった。1分間あたりの心拍数は何回か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `1分は ${sec} 秒の ${60 / sec} 倍なので、${n} × ${60 / sec} ＝ ${fmt(hr, 0)} 回/分となる。脈拍は心臓の拍動に合わせて動脈が拍動するものなので、脈拍の数から心拍数がわかるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b15-circulation',
+    stage: 'b15',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const blood = rng.pick([4.5, 5, 5.5, 6]);
+      const co = rng.pick([4.5, 5, 6, 10, 15, 20]);
+      const min = blood / co;
+      const sec = min * 60;
+      const d = distinctNumbers(sec, [co / blood * 60, blood * co, sec * 2, sec / 2, blood * 60], ' 秒', 0);
+      return {
+        text: `ある人の血液の量は ${blood} L で、心拍出量（心臓が1分間に送り出す血液の量）は ${co} L/分である。体内の血液と同じ量の血液を心臓が送り出すのにかかる時間は何秒か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `${blood} ÷ ${co} ＝ ${fmt(min, 2)} 分 ＝ ${fmt(sec, 0)} 秒となる。運動中は心拍出量が増えるので、血液はより短い時間で全身をめぐり、筋肉に多くの酸素を運べるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b15-sv-calc',
+    stage: 'b15',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const hr = rng.pick([60, 70, 80, 100, 120, 150]);
+      const sv = rng.pick([60, 70, 75, 80, 90, 100]);
+      const co = (hr * sv) / 1000;
+      const d = distinctNumbers(sv, [co * hr, hr, sv * 2, sv / 2, sv + 20], ' mL', 0);
+      return {
+        text: `運動中のある人の心拍出量は ${fmt(co, 2)} L/分、心拍数は ${hr} 回/分であった。1回拍出量は何 mL か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `1回拍出量 ＝ 心拍出量 ÷ 心拍数 ＝ ${fmt(co * 1000, 0)} mL ÷ ${hr} ＝ ${sv} mL となる。心拍出量は1回拍出量と心拍数の積なので、心拍数でわれば1回分の量が求められるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b15-autonomic',
+    stage: 'b15',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const rows = AUTONOMIC.filter((r) => !r.p.startsWith('—'));
+      const r = rng.pick(rows);
+      const side = rng.pick(['s', 'p']);
+      const name = side === 's' ? '交感神経' : '副交感神経';
+      const other = side === 's' ? 'p' : 's';
+      const extra = { 心臓の拍動: '変化しない', 瞳孔: '変化しない', 気管支: '変化しない', '胃・腸のぜん動': '変化しない', 'ぼうこう（排尿）': '変化しない' };
+      return {
+        text: `${name}がはたらいたとき、「${r.organ}」はどうなるか。`,
+        correct: r[side],
+        wrong: [r[other], extra[r.organ] || '変化しない', side === 's' ? '副交感神経がはたらいたときと同じ変化をする' : '交感神経がはたらいたときと同じ変化をする'],
+        explanation: `${name}がはたらくと、${r.organ}は「${r[side]}」となる。交感神経と副交感神経は、多くの器官に対して互いに反対のはたらき（拮抗的なはたらき）をするからである。`,
+      };
+    },
+  },
+  {
+    id: 'b15-center',
+    stage: 'b15',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: '心臓の拍動のリズムをつくり出している、右心房にある部分を何というか。', correct: '洞房結節（ペースメーカー）', wrong: ['延髄', '視床下部', '弁'], explanation: '右心房にある洞房結節（ペースメーカー）が周期的に興奮し、それが心臓全体に伝わって拍動が起こる。そのため心臓は、体から取り出しても自動的に拍動を続ける（自動性）。' },
+        { text: '心臓の拍動を調節する中枢がある部位はどこか。', correct: '延髄', wrong: ['大脳', '小脳', '洞房結節'], explanation: '心臓の拍動の中枢は延髄にある。延髄は血液中の二酸化炭素濃度の変化などを感知し、自律神経を通じて拍動の速さを調節するからである。' },
+        { text: '自律神経系のはたらきを調節する最高の中枢はどこか。', correct: '間脳の視床下部', wrong: ['大脳', '小脳', '脊髄'], explanation: '自律神経系の最高の中枢は間脳の視床下部にある。視床下部は体内の状態を感知し、自律神経系と内分泌系の両方を通じて体内環境を調節するからである。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b15-transmitter',
+    stage: 'b15',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '交感神経と副交感神経の末端から主に放出される物質の組合せとして正しいものはどれか。',
+        correct: '交感神経：ノルアドレナリン　副交感神経：アセチルコリン',
+        wrong: ['交感神経：アセチルコリン　副交感神経：ノルアドレナリン', '交感神経：インスリン　副交感神経：グルカゴン', '交感神経：チロキシン　副交感神経：アセチルコリン'],
+        explanation: '交感神経の末端からは主にノルアドレナリンが、副交感神経の末端からはアセチルコリンが放出される。これらの物質が器官の細胞に作用して、はたらきを促進したり抑制したりするからである。',
+      };
+    },
+  },
+  {
+    id: 'b15-exercise-graph',
+    stage: 'b15',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const t0 = rng.pick([2, 3, 4]);
+      const t1 = t0 + rng.pick([4, 5, 6]);
+      const run = simulate({ x: rng.pick([0.5, 0.7, 0.9]), t0, t1, tEnd: 18 });
+      const ask = rng.pick(['up', 'down']);
+      return {
+        text: `図は、ある人が運動をしたときの心拍数の変化である。${ask === 'up' ? `${t0}〜${t0 + 1}分ごろに心拍数が急に増えているときの自律神経のはたらきとして正しいものはどれか。` : `${t1}分以降に心拍数がしだいに減っているときの自律神経のはたらきとして正しいものはどれか。`}`,
+        chart: {
+          x: { min: 0, max: 18, label: '時間（分）', step: 2 },
+          y: { min: 40, max: 200, label: '心拍数（回/分）', step: 20 },
+          series: [{ points: run.map((r) => [r.t, r.hr]), color: 'c2', width: 3 }],
+          alt: '運動による心拍数の変化のグラフ',
+        },
+        correct: ask === 'up' ? '交感神経のはたらきが強まり、副交感神経のはたらきが弱まっている' : '副交感神経のはたらきが強まり、交感神経のはたらきが弱まっている',
+        wrong: ask === 'up'
+          ? ['副交感神経のはたらきが強まり、交感神経のはたらきが弱まっている', '交感神経も副交感神経もはたらいていない', '心臓は自律神経とは関係なく拍動が速くなる']
+          : ['交感神経のはたらきが強まり、副交感神経のはたらきが弱まっている', '交感神経も副交感神経もはたらいていない', '心臓の拍動が止まりかけている'],
+        explanation: ask === 'up'
+          ? '運動を始めると血液中の二酸化炭素が増え、延髄がこれを感知して交感神経のはたらきを強め、副交感神経のはたらきを弱める。そのため心臓の拍動が速く強くなり、筋肉に多くの酸素が運ばれる。'
+          : '運動をやめると、副交感神経のはたらきが強まり、交感神経のはたらきが弱まる。そのため心臓の拍動はしだいに遅くなり、安静時の心拍数にもどる。',
+      };
+    },
+  },
+  {
+    id: 'b15-loewi',
+    stage: 'b15',
+    level: 3,
+    kind: 'graph',
+    make(rng) {
+      const run = loewi();
+      const order = rng.shuffle(['a', 'b']);
+      const lab = { [order[0]]: KATA[0], [order[1]]: KATA[1] };
+      return {
+        text: `カエルの心臓Aの迷走神経（副交感神経）を10〜20秒の間刺激し、心臓Aの中を流れた液を、神経をつないでいない心臓Bに流した。図のア・イは心臓Aと心臓Bの拍動の速さの変化である。心臓Bはどちらか。また、この実験からわかることを選べ。`,
+        chart: {
+          x: { min: 0, max: 40, label: '時間（秒）', step: 5 },
+          y: { min: 0, max: 1.2, label: '拍動の速さ（相対値）', step: 0.2, digits: 1 },
+          regions: [{ x0: 10, x1: 20, label: '刺激', fill: 'region' }],
+          series: order.map((k, i) => ({ points: run.map((r) => [r.t, r[k]]), color: i ? 'c1' : 'c2', dash: i ? 'dash' : 'solid', width: 3, label: KATA[i], labelAt: k === 'a' ? 13 : 27 })),
+          alt: '心臓A・Bの拍動の速さの変化ア・イ',
+        },
+        correct: `${lab.b}：神経の末端から放出された化学物質が、心臓のはたらきを変えている`,
+        wrong: [
+          `${lab.a}：神経の末端から放出された化学物質が、心臓のはたらきを変えている`,
+          `${lab.b}：神経の電気的な興奮が、液を通って心臓Bに直接伝わっている`,
+          `${lab.a}：心臓Bは心臓Aの拍動の音を感じて遅くなっている`,
+        ],
+        explanation: `心臓Bは${lab.b}で、心臓Aより少し遅れて拍動が遅くなっている。神経をつないでいない心臓Bが、心臓Aを通った液だけで同じ変化を示したので、神経の末端から液の中に化学物質（のちにアセチルコリンとわかった）が放出されていると考えられるからである。`,
+      };
+    },
+  },
+];
+return { B15 };
+})();
+
+// ---- questions/b16.js ----
+__m["questions/b16.js"] = (function () {
+// B16 生物濃縮 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { chain, LEVELS } = __m["models/bioaccumulation.js"];
+
+const B16 = [
+  {
+    id: 'b16-ratio-calc',
+    stage: 'b16',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const water = rng.pick([0.00002, 0.00005, 0.0001, 0.0002]);
+      const r = rng.pick([1000, 5000, 20000, 50000, 100000, 400000]);
+      const body = water * r;
+      const d = distinctNumbers(r, [r / 10, r * 10, r / 100, r * 100, r / 2], ' 倍', 0);
+      return {
+        text: `ある湖の水中の DDT 濃度は ${water} ppm であった。この湖の魚を食べる鳥の体内の DDT 濃度は ${fmt(body, 2)} ppm であった。この鳥の濃縮率（体内の濃度 ÷ 水中の濃度）は何倍か。`,
+        correct: d.correct.replace(/\B(?=(\d{3})+(?!\d))/g, ','),
+        wrong: d.wrong.map((w) => w.replace(/\B(?=(\d{3})+(?!\d))/g, ',')),
+        ordered: true,
+        explanation: `濃縮率 ＝ ${fmt(body, 2)} ÷ ${water} ＝ ${r.toLocaleString('ja-JP')} 倍となる。DDT は分解されにくく脂肪に溶けやすいので、食物連鎖を通して上位の生物ほど体内に高い濃度でたまるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b16-chain-calc',
+    stage: 'b16',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const p = rng.pick([0.02, 0.04, 0.05, 0.1]);
+      const f = rng.pick([2, 3, 4, 5, 10]);
+      const n = rng.pick([2, 3, 4]);
+      const ans = p * Math.pow(f, n);
+      const d = distinctNumbers(ans, [p * f * n, p * f, p * Math.pow(f, n - 1), p * Math.pow(f, n + 1), p + f * n], ' ppm', 3);
+      return {
+        text: `ある物質の濃度は、植物プランクトンで ${p} ppm であった。この物質は、食物連鎖で栄養段階が1つ上がるごとに体内の濃度が ${f} 倍になるとする。植物プランクトンから ${n} 段階上の生物の体内の濃度は何 ppm か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `1段階ごとに ${f} 倍になるので、${n} 段階上では ${p} × ${f}${n === 2 ? '²' : n === 3 ? '³' : '⁴'} ＝ ${fmt(ans, 3)} ppm となる。濃度は段階ごとに「足される」のではなく「かけ算で」高くなるので、上位の生物ほど急激に高い濃度になる。`,
+      };
+    },
+  },
+  {
+    id: 'b16-mass-calc',
+    stage: 'b16',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const ppm = rng.pick([2, 5, 10, 20, 25]);
+      const kg = rng.pick([0.5, 1, 1.5, 2, 3]);
+      const mg = ppm * kg;
+      const d = distinctNumbers(mg, [ppm / kg, ppm * kg * 1000, ppm * kg / 1000, ppm, kg], ' mg', 3);
+      return {
+        text: `体重 ${kg} kg の鳥の体内の PCB 濃度が ${ppm} ppm であった。この鳥の体内に含まれる PCB は何 mg か。ただし 1 ppm は体重 1 kg あたり 1 mg とする。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        ordered: true,
+        explanation: `1 kg あたり ${ppm} mg 含まれるので、${ppm} × ${kg} ＝ ${fmt(mg, 3)} mg となる。ppm は百万分率で、1 kg（100万 mg）あたり 1 mg が 1 ppm にあたるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b16-graph',
+    stage: 'b16',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const order = rng.shuffle(['acc', 'deg']);
+      const data = { acc: chain({ f: rng.pick([3, 5, 8]) }), deg: chain({ f: rng.pick([0.3, 0.5]) }) };
+      const ask = order.indexOf('acc');
+      const marks = ['水', '①', '②', '③', '④', '⑤'];
+      return {
+        text: `図は、2種類の物質ア・イについて、水中の濃度と、栄養段階ごとの生物の体内の濃度（対数目盛り）を表したものである（①植物プランクトン → ②動物プランクトン → ③小型の魚 → ④大型の魚 → ⑤魚を食べる鳥）。生物濃縮が起こっている物質と、その物質の性質の組合せとして正しいものはどれか。`,
+        chart: {
+          x: { min: -0.4, max: 5.4, label: '栄養段階', ticks: marks.map((m, i) => ({ v: i, text: m })) },
+          y: { min: 1e-7, max: 1e4, log: true, label: '体内の濃度（ppm）' },
+          series: order.map((k, i) => ({ points: data[k].map((v, j) => [j, v]), color: i ? 'c1' : 'c2', dash: i ? 'dash' : 'solid', width: 3, label: KATA[i], labelAt: 4.5 })),
+          alt: '物質ア・イの栄養段階ごとの濃度',
+        },
+        correct: `${KATA[ask]}：分解されにくく、体外に排出されにくい`,
+        wrong: [`${KATA[1 - ask]}：分解されにくく、体外に排出されにくい`, `${KATA[ask]}：分解されやすく、体外に排出されやすい`, `${KATA[1 - ask]}：分解されやすく、水に溶けやすい`],
+        explanation: `${KATA[ask]}は栄養段階が上がるほど濃度が高くなっているので、生物濃縮が起こっている。分解されにくく、脂肪に溶けやすく、体外に排出されにくい物質は、食べた生物の体内にたまり続けるからである。`,
+      };
+    },
+  },
+  {
+    id: 'b16-property',
+    stage: 'b16',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: '生物濃縮が起こりやすい物質の性質として正しいものはどれか。',
+        correct: '分解されにくく、脂肪に溶けやすく、体外に排出されにくい',
+        wrong: ['分解されやすく、水に溶けやすく、体外に排出されやすい', '分解されにくいが、水に溶けやすく、すぐに尿として排出される', '生物にとって必要な栄養分で、すぐに呼吸で分解される'],
+        explanation: '分解されにくく、脂肪に溶けやすく、体外に排出されにくい物質は、取りこまれると体内にたまっていく。食物連鎖の上位の生物は多くの下位の生物を食べるので、体内の濃度が高くなるからである。',
+      };
+    },
+  },
+  {
+    id: 'b16-examples',
+    stage: 'b16',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const Q = [
+        { text: '生物濃縮によって人の健康被害が起こった例として、熊本県や新潟県で起こった水俣病の原因物質はどれか。', correct: '有機水銀（メチル水銀）', wrong: ['二酸化炭素', 'フロン', 'リン酸塩'], explanation: '水俣病は、工場の排水に含まれた有機水銀（メチル水銀）が魚介類に濃縮され、それを食べた人に神経の障害が起こった公害である。有機水銀は体外に排出されにくく、食物連鎖を通して濃縮されたからである。' },
+        { text: 'かつて殺虫剤として広く使われ、鳥の卵の殻を薄くして繁殖をさまたげたことで知られる、生物濃縮しやすい物質はどれか。', correct: 'DDT', wrong: ['フロン', '窒素酸化物', '二酸化硫黄'], explanation: 'DDT は分解されにくい殺虫剤で、食物連鎖を通して魚を食べる鳥などに高い濃度で蓄積した。その結果、卵の殻が薄くなって割れやすくなり、繁殖がさまたげられたので、多くの国で使用が禁止された。' },
+      ];
+      return rng.pick(Q);
+    },
+  },
+  {
+    id: 'b16-alien',
+    stage: 'b16',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '外来生物の説明として正しいものはどれか。',
+          correct: '人間の活動によって、本来の生息地から別の地域に持ちこまれて定着した生物',
+          wrong: ['もとからその地域にすみ、数が減っている生物', '季節によって長い距離を移動する渡り鳥', '生態系のバランスを保つうえで大きな影響をもつ種'],
+          explanation: '外来生物は、人間の活動によって本来の生息地以外に持ちこまれ、定着した生物である。天敵がいないことが多いので数が増え、在来生物を捕食したり競争で追いやったりして、生態系のバランスをくずすことがある。',
+        };
+      }
+      return {
+        text: '日本に持ちこまれた外来生物の例として正しいものはどれか。',
+        correct: 'オオクチバス（ブラックバス）',
+        wrong: ['ニホンザル', 'ゲンジボタル', 'ヤンバルクイナ'],
+        explanation: 'オオクチバスは北アメリカ原産で、日本の湖や池に持ちこまれて定着した外来生物である。在来の魚や水生昆虫を食べるので、特定外来生物に指定されて飼育や放流が規制されている。',
+      };
+    },
+  },
+  {
+    id: 'b16-eutrophication',
+    stage: 'b16',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      if (rng.chance(0.5)) {
+        return {
+          text: '生活排水などで湖や海に窒素やリンなどの栄養塩類が増え、植物プランクトンが異常に増えて赤潮やアオコが発生することがある。栄養塩類が増えるこの現象を何というか。',
+          correct: '富栄養化',
+          wrong: ['生物濃縮', '自然浄化', '酸性雨'],
+          explanation: 'これは富栄養化である。増えた植物プランクトンが死ぬと、それを分解する微生物が水中の酸素を大量に使うので、魚などが酸欠で死ぬことがある。',
+        };
+      }
+      return {
+        text: '川に流れこんだ少量の有機物が、微生物による分解などによって減っていくはたらきを何というか。',
+        correct: '自然浄化',
+        wrong: ['富栄養化', '生物濃縮', '遷移'],
+        explanation: 'これは自然浄化である。川の微生物が有機物を分解したり、水で薄められたりするので、流入量が少なければ水質がもとにもどる。ただし流入量が多すぎると、自然浄化が追いつかなくなる。',
+      };
+    },
+  },
+  {
+    id: 'b16-why-top',
+    stage: 'b16',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: `生物濃縮で、${LEVELS[5]}のような食物連鎖の上位の生物ほど体内の濃度が高くなる理由として最も適当なものはどれか。`,
+        correct: '下位の生物を多く食べ、その体内にたまっていた物質を取りこみ続けるから',
+        wrong: ['上位の生物ほど水を多く飲むから', '上位の生物ほど体内でその物質を合成するから', '上位の生物ほど呼吸でその物質を分解しやすいから'],
+        explanation: '上位の生物は、下位の生物を数多く食べて、それぞれの体内にたまっていた物質を取りこむ。その物質は分解・排出されにくいので体内にたまり続けるから、栄養段階が上がるほど濃度が高くなる。',
+      };
+    },
+  },
+];
+return { B16 };
 })();
 
 // ---- questions/a1.js ----
@@ -15418,6 +16937,10 @@ const { B9 } = __m["questions/b9.js"];
 const { B10 } = __m["questions/b10.js"];
 const { B11 } = __m["questions/b11.js"];
 const { B12 } = __m["questions/b12.js"];
+const { B13 } = __m["questions/b13.js"];
+const { B14 } = __m["questions/b14.js"];
+const { B15 } = __m["questions/b15.js"];
+const { B16 } = __m["questions/b16.js"];
 const { A1 } = __m["questions/a1.js"];
 const { A2 } = __m["questions/a2.js"];
 const { A3 } = __m["questions/a3.js"];
@@ -15441,7 +16964,7 @@ const { A20 } = __m["questions/a20.js"];
 const { A21 } = __m["questions/a21.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...B14, ...B15, ...B16, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -16220,6 +17743,45 @@ const GLOSSARY = {
     { term: 'チロキシン', desc: '甲状腺から分泌され、多くの細胞で代謝（化学反応）を促進するホルモン。材料にヨウ素を含む。' },
     { term: '負のフィードバック', desc: '結果が原因にもどって、そのはたらきをおさえるしくみ。チロキシンが多くなると TRH と TSH の分泌がおさえられる。' },
     { term: 'TRH・TSH', desc: 'TRH は視床下部から分泌される甲状腺刺激ホルモン放出ホルモン、TSH は脳下垂体前葉から分泌される甲状腺刺激ホルモン。' },
+  ],
+  b13: [
+    { term: '対物ミクロメーター', desc: 'スライドガラスに 1 mm を100等分した目盛りをつけたもの。1目盛りは 10 μm。ステージにのせ、試料と同じく拡大される。' },
+    { term: '接眼ミクロメーター', desc: '接眼レンズの中に入れて使う目盛り。拡大されないので、1目盛りが表す長さは対物レンズの倍率ごとに求める。' },
+    { term: '接眼ミクロメーター1目盛りの長さ', desc: '10 μm × 対物ミクロメーターの目盛り数 ÷ 接眼ミクロメーターの目盛り数（両方の目盛りが重なる2点の間で数える）。対物レンズの倍率を4倍にすると 1/4 になる。' },
+    { term: 'μm（マイクロメートル）', desc: '1 μm ＝ 1/1000 mm。1 nm（ナノメートル）＝ 1/1000 μm。細胞の大きさを表すのに使う。' },
+    { term: '分解能', desc: '近くにある2点を2点として見分けられる最小の距離。肉眼 約0.1 mm、光学顕微鏡 約0.2 μm、電子顕微鏡 約0.2 nm。' },
+    { term: '細胞の大きさの目安', desc: 'ゾウリムシ 約200 μm、ヒトの卵 約140 μm、ヒトの口腔上皮細胞 約60 μm、ヒトの赤血球 約7〜8 μm、大腸菌 約3 μm、インフルエンザウイルス 約0.1 μm。' },
+    { term: '原形質流動', desc: '細胞内で細胞質が流れるように動く現象。オオカナダモの葉の細胞では葉緑体が動いて見える。速さ ＝ 移動した目盛り数 × 1目盛りの長さ ÷ 時間。' },
+  ],
+  b14: [
+    { term: '代謝', desc: '生体内で起こる化学反応全体。物質を合成する同化と、分解する異化がある。' },
+    { term: '同化・異化', desc: '同化：簡単な物質から複雑な物質を合成し、エネルギーを吸収する（例：光合成）。異化：複雑な物質を分解してエネルギーを取り出す（例：呼吸）。' },
+    { term: 'ATP（アデノシン三リン酸）', desc: 'アデニン・リボース・3個のリン酸からなる。リン酸どうしの結合（高エネルギーリン酸結合）が切れて ADP とリン酸になるとき、エネルギーを放出する。生命活動のエネルギーの通貨。' },
+    { term: '酵素', desc: 'タンパク質を主成分とする生体触媒。反応の前後で変化せず、くり返しはたらく。細胞内でも細胞外でもはたらく。' },
+    { term: '基質・基質特異性', desc: '酵素がはたらく相手の物質が基質。酵素が特定の基質にだけはたらく性質が基質特異性。' },
+    { term: 'カタラーゼ', desc: '過酸化水素を水と酸素に分解する酵素（2H₂O₂ → 2H₂O ＋ O₂）。肝臓などに多く含まれる。' },
+    { term: '無機触媒', desc: '酸化マンガン(IV)など、生物がつくったものではない触媒。カタラーゼと同じ反応を促進し、加熱してもはたらきを失わない。' },
+    { term: '酵素の失活', desc: '酵素はタンパク質なので、高温や強い酸・アルカリで立体構造が変化（変性）し、はたらきを失う。煮沸した肝臓片では過酸化水素が分解されない。' },
+  ],
+  b15: [
+    { term: '自律神経系', desc: '意思とは関係なく内臓などのはたらきを調節する神経系。交感神経と副交感神経からなる。最高の中枢は間脳の視床下部。' },
+    { term: '交感神経', desc: '活動しているとき・興奮したときにはたらく。心臓の拍動を促進、瞳孔を拡大、気管支を拡張、胃・腸のぜん動を抑制する。末端から主にノルアドレナリンを放出する。' },
+    { term: '副交感神経', desc: '休息しているときにはたらく。心臓の拍動を抑制、瞳孔を縮小、気管支を収縮、胃・腸のぜん動を促進する。末端からアセチルコリンを放出する。' },
+    { term: '拮抗的なはたらき', desc: '交感神経と副交感神経が同じ器官に対して互いに反対のはたらきをすること。' },
+    { term: '洞房結節（ペースメーカー）', desc: '右心房にあり、周期的に興奮して心臓の拍動のリズムをつくる部分。心臓は体から取り出しても拍動を続ける（自動性）。' },
+    { term: '心拍出量', desc: '心臓が1分間に送り出す血液の量。1回拍出量 × 心拍数。安静時は約5 L/分（約70 mL × 約70回）。' },
+    { term: '延髄', desc: '心臓の拍動や呼吸の中枢がある。血液中の二酸化炭素濃度の上昇などを感知し、自律神経を通じて拍動を調節する。' },
+    { term: 'レーヴィの実験', desc: 'カエルの心臓の迷走神経を刺激すると拍動が遅くなり、その心臓を通った液を別の心臓に流すとその心臓の拍動も遅くなった。神経の末端から化学物質（アセチルコリン）が放出されることを示した。' },
+  ],
+  b16: [
+    { term: '生物濃縮', desc: '特定の物質が、外部の環境より高い濃度で生物の体内に蓄積すること。食物連鎖を通して栄養段階が上がるほど濃度が高くなる。' },
+    { term: '生物濃縮が起こりやすい物質', desc: '分解されにくく、脂肪に溶けやすく、体外に排出されにくい物質。例：DDT（殺虫剤）、PCB、有機水銀（メチル水銀）。' },
+    { term: '濃縮率', desc: '生物の体内の濃度 ÷ 水中（環境中）の濃度。' },
+    { term: 'ppm', desc: '百万分率。1 ppm は 1 kg あたり 1 mg。' },
+    { term: '水俣病', desc: '工場排水中の有機水銀が魚介類に濃縮され、それを食べた人に神経の障害が起こった公害。' },
+    { term: '外来生物', desc: '人間の活動によって本来の生息地以外に持ちこまれ、定着した生物。例：オオクチバス、マングース、アライグマ。生態系や人間の生活に大きな影響を与えるものは特定外来生物に指定される。' },
+    { term: '富栄養化', desc: '窒素やリンなどの栄養塩類が湖や海に増えること。植物プランクトンが異常に増え、赤潮やアオコが発生する。' },
+    { term: '自然浄化', desc: '川や海に流れこんだ少量の有機物などが、微生物による分解や希釈によって減っていくはたらき。' },
   ],
   a1: [
     { term: '酵素', desc: '生体内の化学反応を促進する触媒としてはたらくタンパク質。反応の前後で変化せず、くり返しはたらく。' },
