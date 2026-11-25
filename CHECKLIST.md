@@ -28,6 +28,10 @@
 | ☐ | B10 塩基組成 | 10塩基対＝3.4 nm、ヒトのゲノム 約30億塩基対・遺伝子 約2万個、体細胞のDNA 約2 m | | [開く](https://punonmamoru.github.io/biology/#/dojo/b10) |
 | ☐ | B11 植生の遷移 | 遷移の年数（目安）、陽樹が生育できる相対照度 約10% | | [開く](https://punonmamoru.github.io/biology/#/dojo/b11) |
 | ☐ | B12 ホルモン | 処置後のホルモン量の変化の大きさ（模式） | | [開く](https://punonmamoru.github.io/biology/#/dojo/b12) |
+| ☐ | B13 ミクロメーター | 対物10倍で接眼1目盛り 14 μm（接眼5＝対物7）、4倍 35 μm・40倍 3.5 μm。試料の大きさ（ゾウリムシ 約210・口腔上皮細胞 約63・赤血球 約7.7・大腸菌 約2.8 μm） | | [開く](https://punonmamoru.github.io/biology/#/dojo/b13) |
+| ☐ | B14 カタラーゼ | 3%過酸化水素水 1 mL から酸素 約10 mL、肝臓片と酸化マンガン(IV)の反応の速さ、対照に石英砂を使うこと | | [開く](https://punonmamoru.github.io/biology/#/dojo/b14) |
+| ☐ | B15 心臓と自律神経 | 安静時 心拍数 約70回/分・1回拍出量 約70 mL・心拍出量 約5 L/分、運動時の上限 180回/分、自律神経のはたらきの表、レーヴィの実験の図 | | [開く](https://punonmamoru.github.io/biology/#/dojo/b15) |
+| ☐ | B16 生物濃縮 | 水 0.00005 ppm → 植物プランクトン 0.04 → … → 魚を食べる鳥 約25 ppm（模式）、例として DDT・PCB・有機水銀 | | [開く](https://punonmamoru.github.io/biology/#/dojo/b16) |
 
 ### 生物
 
