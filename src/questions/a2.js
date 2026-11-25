@@ -6,7 +6,7 @@ import { simulate, expected } from '../models/genetics.js';
 
 // エンドウの形質（左が顕性）
 const TRAITS = [
-  { name: '種子の形', dom: '丸', rec: 'しわ', A: 'A', a: 'a' },
+  { name: '種子の形', dom: '丸', rec: 'しわ', A: 'R', a: 'r' },
   { name: '子葉の色', dom: '黄色', rec: '緑色', A: 'Y', a: 'y' },
   { name: '花の色', dom: '紫色', rec: '白色', A: 'P', a: 'p' },
   { name: 'さやの形', dom: 'ふくれ', rec: 'くびれ', A: 'V', a: 'v' },

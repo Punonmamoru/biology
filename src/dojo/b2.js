@@ -33,7 +33,7 @@ export const dojo = {
       legend([
         { label: '血糖値（左の目盛り）', color: 'c2' },
         { label: 'インスリン（右の目盛り）', color: 'c1', dash: 'dash' },
-        { label: 'グルカゴン（右の目盛り）', color: 'c3', dash: 'dot' },
+        { label: 'グルカゴン（右の目盛り・「健康」の設定のみ）', color: 'c3', dash: 'dot' },
         { label: '健康な人の血糖値（比較）', color: 'muted', dash: 'long' },
       ]),
       h('p', { class: 'small muted' }, 'ホルモン量は「健康な人の空腹時＝1」とした相対値。食事は時刻0にとる。'),
@@ -76,6 +76,10 @@ export const dojo = {
       const cur = at(run, cursor);
       const toH = (pts) => pts.map(([m, v]) => [m / 60, v]);
       const gMax = Math.max(300, Math.ceil(sm.peakG / 50) * 50);
+      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
+      // 糖尿病の設定ではグルカゴンを描かない（このモデルはグルカゴンを血糖値だけで決めており、
+      // インスリンが少ないときにグルカゴンが抑えられにくいことを表せないため）
+      const showN = kind === 'healthy';
       chart.draw({
         alt: `血糖値は空腹時 ${fmt(sm.fastingG, 0)}、最大 ${fmt(sm.peakG, 0)} mg/100mL（食後${fmt(sm.peakT, 0)}分）`,
         x: { min: 0, max: MINUTES / 60, label: '食事からの時間（時間）', step: 1 },
@@ -87,7 +91,7 @@ export const dojo = {
           !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
           { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値', labelAt: sm.peakT / 60 },
           { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
-          { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
+          !showN ? null : { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
         ].filter(Boolean),
         markers: [{ x: cursor / 60, y: cur.G, color: 'c2' }],
       });
@@ -96,12 +100,11 @@ export const dojo = {
       const Nrel = cur.N / ref.N;
       readout.replaceChildren(
         h('b', null, `食後 ${cursor} 分：`),
-        `血糖値 ${fmt(cur.G, 0)} mg/100mL、インスリン ${fmt(Irel, 1)}、グルカゴン ${fmt(Nrel, 1)}（相対値）`,
+        `血糖値 ${fmt(cur.G, 0)} mg/100mL、インスリン ${fmt(Irel, 1)}${showN ? `、グルカゴン ${fmt(Nrel, 1)}` : ''}（相対値）`,
       );
 
       const lines = [];
       const fast = sm.fastingG;
-      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
       const rising = cursor < sm.peakT && cur.G > fast + 3;
       const high = cur.G > fast + 3;
       if (kind === 'type1') {
@@ -133,6 +136,7 @@ export const dojo = {
       } else {
         lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値に戻るとインスリンも元の量に戻る。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
       }
+      if (!showN) lines.push('この設定ではグルカゴンの線は表示していない。実際の糖尿病では、インスリンが不足するとグルカゴンの分泌が抑えられにくくなるが、このモデルではその関係を扱っていないためである。');
       exp.set(lines);
       ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
     }
