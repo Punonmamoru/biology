@@ -69,7 +69,7 @@ export const B16 = [
     kind: 'graph',
     make(rng) {
       const order = rng.shuffle(['acc', 'deg']);
-      const data = { acc: chain({ f: rng.pick([3, 5, 8]) }), deg: chain({ f: rng.pick([0.3, 0.5]) }) };
+      const data = { acc: chain({ f: rng.pick([3, 5, 8]) }), deg: chain({ bcf: 1, f: rng.pick([0.3, 0.5]) }) };
       const ask = order.indexOf('acc');
       const marks = ['水', '①', '②', '③', '④', '⑤'];
       return {
@@ -82,7 +82,7 @@ export const B16 = [
         },
         correct: `${KATA[ask]}：分解されにくく、体外に排出されにくい`,
         wrong: [`${KATA[1 - ask]}：分解されにくく、体外に排出されにくい`, `${KATA[ask]}：分解されやすく、体外に排出されやすい`, `${KATA[1 - ask]}：分解されやすく、水に溶けやすい`],
-        explanation: `${KATA[ask]}は栄養段階が上がるほど濃度が高くなっているので、生物濃縮が起こっている。分解されにくく、脂肪に溶けやすく、体外に排出されにくい物質は、食べた生物の体内にたまり続けるからである。`,
+        explanation: `${KATA[ask]}は水中より高い濃度で体内にたまり、栄養段階が上がるほどさらに高くなっているので、生物濃縮が起こっている。分解されにくく、体外に排出されにくい物質は、食べた生物の体内にたまり続けるからである。`,
       };
     },
   },

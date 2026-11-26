@@ -89,7 +89,7 @@ function drawField(canvas, st) {
     g.stroke();
   }
 
-  // 接眼ミクロメーター（拡大されない）
+  // 接眼ミクロメーター（対物レンズでは拡大されない）
   g.strokeStyle = fg;
   g.fillStyle = fg;
   g.lineWidth = 1.4;
@@ -131,7 +131,7 @@ export const dojo = {
     top.append(h('h2', null, '顕微鏡の視野 ', modelNote()));
     const canvas = h('canvas', { role: 'img', 'aria-label': '顕微鏡の視野の模式図' });
     const wrap = h('div', { class: 'cell-view', style: { justifyContent: 'center' } }, canvas);
-    top.append(wrap, h('p', { class: 'small muted' }, '黒い目盛りが接眼ミクロメーター（接眼レンズの中にあり、拡大されない）。青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく拡大される）。'));
+    top.append(wrap, h('p', { class: 'small muted' }, '黒い目盛りが接眼ミクロメーター（接眼レンズの中にあり、対物レンズでは拡大されない）。青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく対物レンズで拡大される）。対物4倍では青い目盛りが細かいので、5目盛りごとの長い線で数えるとよい。'));
 
     const segMag = segmented({ label: '対物レンズの倍率', options: LENSES.map((m) => ({ value: m, label: `${m}倍` })), value: st.mag, onChange: (v) => { st.mag = v; update(); } });
     const segView = segmented({ label: '見るもの', options: [{ value: 'obj', label: '対物ミクロメーター' }, ...SPECIMENS.map((s) => ({ value: s.id, label: s.name }))], value: st.view, onChange: (v) => { st.view = v; update(); } });
@@ -199,16 +199,16 @@ export const dojo = {
       const lines = [];
       if (st.view === 'obj') {
         lines.push(`対物${st.mag}倍では、接眼ミクロメーター ${co.eye} 目盛りと対物ミクロメーター ${co.obj} 目盛りが重なる（ステージを動かして0の線をそろえると見やすい）。`);
-        lines.push('対物ミクロメーターは試料と同じく拡大されるが、接眼ミクロメーターは接眼レンズの中にあって拡大されない。そのため、接眼1目盛りが表す長さは、対物レンズの倍率を変えるたびに求め直す必要がある。');
+        lines.push('対物ミクロメーターは試料と同じく対物レンズで拡大されるが、接眼ミクロメーターは接眼レンズの中にあるので対物レンズでは拡大されず、倍率を変えても見かけの目盛りの間隔は変わらない。そのため、接眼1目盛りが表す長さは、対物レンズの倍率を変えるたびに求め直す必要がある。');
         lines.push('長さを測るときは、対物ミクロメーターを外して試料のプレパラートをのせ、接眼ミクロメーターの目盛りで読む。');
       } else {
         const sp = SPECIMENS.find((s) => s.id === st.view);
         const divs = sp.length / u;
         if (divs > N_EYE) lines.push(`${sp.name}は、この倍率では視野の目盛り（${N_EYE}目盛り）に収まらない。倍率を下げて測ろう。`);
-        else if (divs < 2) lines.push(`${sp.name}は、この倍率では接眼の目盛り${divs < 1 ? '1つ分にも満たず' : '2つ分ほどしかなく'}、長さを正確に読み取れない。倍率を上げて測ろう。`);
+        else if (divs < 2) lines.push(`${sp.name}は、この倍率では接眼の目盛り${divs < 1 ? '1つ分にも満たず' : '2つ分ほどしかなく'}、長さを正確に読み取れない。${st.mag < 40 ? '倍率を上げて測ろう。' : 'このアプリの最大の倍率（対物40倍）でも測れない。実際には油浸の対物100倍レンズなどを使う。'}`);
         else lines.push(`${sp.name}が占める接眼の目盛りを数え、1目盛りの長さをかければ長さがわかる（目盛りの0に端をそろえると読みやすい）。`);
         if (sp.id === 'ecoli') lines.push(`大腸菌は長さ約${sp.length} μm と小さく、光学顕微鏡の高倍率でようやく形がわかる。光学顕微鏡で見分けられる最小の間隔（分解能）は約${RESOLUTION.light} μm、肉眼では約0.1 mm である。`);
-        if (sp.id === 'rbc') lines.push('ヒトの赤血球は直径 約7〜8 μm。核をもたない円盤状の細胞である。');
+        if (sp.id === 'rbc') lines.push('ヒトの赤血球は直径 約7〜8 μm。核をもたない、中央がくぼんだ円盤状の細胞である。');
         if (sp.id === 'paramecium') lines.push('ゾウリムシは1個の細胞からなる単細胞生物で、長さは約0.2 mm（200 μm）ある。');
       }
       lines.push('1 mm ＝ 1000 μm、1 μm ＝ 1000 nm。');

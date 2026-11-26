@@ -3,12 +3,12 @@ import { fmt } from '../lib/format.js';
 import { KATA, distinctNumbers } from './common.js';
 import { SPECIMENS, RESOLUTION } from '../models/micrometer.js';
 
-// 接眼 e 目盛りと対物 o 目盛りが重なる組（1目盛りの長さが小数第2位までで表せるもの）
+// 接眼 e 目盛りと対物 o 目盛りが重なる組（1目盛りの長さが小数第2位までで表せ、高校の顕微鏡の範囲（約 1〜25 μm）に入るもの）
 const PAIRS = [];
-for (const e of [4, 5, 8, 10, 12, 15, 16, 20, 25, 40]) {
-  for (let o = 1; o <= 12; o++) {
+for (const e of [2, 4, 5, 8, 10, 12, 15, 16, 20, 25, 40]) {
+  for (let o = 1; o <= 30; o++) {
     const u = (10 * o) / e;
-    if (o < e && Math.abs(u * 100 - Math.round(u * 100)) < 1e-9 && u >= 0.5) PAIRS.push({ e, o, u });
+    if (Math.abs(u * 100 - Math.round(u * 100)) < 1e-9 && u >= 1 && u <= 25 && u !== 10) PAIRS.push({ e, o, u });
   }
 }
 
@@ -20,7 +20,7 @@ export const B13 = [
     kind: 'calc',
     make(rng) {
       const { e, o, u } = rng.pick(PAIRS);
-      const d = distinctNumbers(u, [(10 * e) / o, o / e, e / o, 10 * o * e / 100, u * 10, u / 10], ' μm', 2);
+      const d = distinctNumbers(u, [(10 * e) / o, o / e, e / o, (o * e) / 10, u * 10, u / 10, u * 2], ' μm', 2);
       return {
         text: `ある倍率で観察すると、接眼ミクロメーターの ${e} 目盛りと対物ミクロメーターの ${o} 目盛りがちょうど重なった。対物ミクロメーターの1目盛りは 10 μm である。接眼ミクロメーター1目盛りの長さは何 μm か。`,
         correct: d.correct,
@@ -66,7 +66,7 @@ export const B13 = [
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
-        explanation: `対物レンズの倍率が ${m2 / 10} 倍になると、接眼1目盛りが表す長さは 1/${m2 / 10} になるので ${u10} ÷ ${m2 / 10} ＝ ${fmt(u2, 2)} μm、細胞の長さは ${n} × ${fmt(u2, 2)} ＝ ${fmt(L, 1)} μm となる。接眼ミクロメーターは拡大されないが、試料は ${m2 / 10} 倍大きく見えるからである。`,
+        explanation: `対物レンズの倍率が ${m2 / 10} 倍になると、接眼1目盛りが表す長さは 1/${m2 / 10} になるので ${u10} ÷ ${m2 / 10} ＝ ${fmt(u2, 2)} μm、細胞の長さは ${n} × ${fmt(u2, 2)} ＝ ${fmt(L, 1)} μm となる。接眼ミクロメーターの目盛りは対物レンズでは拡大されないが、試料は ${m2 / 10} 倍大きく見えるからである。`,
       };
     },
   },
@@ -76,9 +76,11 @@ export const B13 = [
     level: 3,
     kind: 'calc',
     make(rng) {
+      // オオカナダモの原形質流動の速さの目安（数〜十数 μm/秒）に入る組だけを使う
       const u = rng.pick([2.5, 3.5, 4, 5]);
       const n = rng.int(4, 20);
       const t = rng.pick([2, 4, 5, 8, 10]);
+      if ((n * u) / t > 20) return this.make(rng);
       const v = (n * u) / t;
       const d = distinctNumbers(v, [n / t, (n * u) * t, n * u, (t * u) / n, v * 10], ' μm/秒', 2);
       return {
@@ -98,7 +100,16 @@ export const B13 = [
     make(rng) {
       // 0 の次に重なるのが (e, o) になるよう、e と o が互いに素な組だけを使う
       const gcd = (a, b) => (b ? gcd(b, a % b) : a);
-      const { e, o, u } = rng.pick(PAIRS.filter((p) => p.e <= 20 && gcd(p.e, p.o) === 1));
+      // 0 の次の一致点より手前に、ほぼ重なって見える目盛り（ずれが接眼0.15目盛り未満）がない組だけを使う
+      const clear = (p) => {
+        const step = 10 / p.u;
+        for (let k = 1; k < p.e; k++) {
+          const j = Math.round(k / step);
+          if (j >= 1 && Math.abs(k - j * step) < 0.15) return false;
+        }
+        return true;
+      };
+      const { e, o, u } = rng.pick(PAIRS.filter((p) => p.e <= 20 && gcd(p.e, p.o) === 1 && 10 * p.o / p.e <= 25 && clear(p)));
       const N = e * 2;
       const series = [];
       for (let i = 0; i <= N; i++) series.push({ points: [[i, 0], [i, i % 5 === 0 ? 1.4 : 0.9]], color: 'fg', width: 1.6 });
@@ -129,8 +140,8 @@ export const B13 = [
     make() {
       return {
         text: '対物レンズの倍率を変えたときは、接眼ミクロメーター1目盛りの長さを求め直す必要がある。その理由として正しいものはどれか。',
-        correct: '接眼ミクロメーターは拡大されないが、試料は倍率に応じて拡大されるから',
-        wrong: ['接眼ミクロメーターも試料と同じ倍率で拡大されるから', '対物ミクロメーターの1目盛りの長さが倍率によって変わるから', '倍率を変えると試料の実際の大きさが変わるから'],
+        correct: '接眼ミクロメーターは対物レンズでは拡大されないが、試料は対物レンズの倍率に応じて拡大されるから',
+        wrong: ['接眼ミクロメーターも試料と同じく対物レンズの倍率で拡大されるから', '対物ミクロメーターの1目盛りの長さが倍率によって変わるから', '倍率を変えると試料の実際の大きさが変わるから'],
         explanation: '接眼ミクロメーターは接眼レンズの中にあるので、対物レンズの倍率を変えても見かけの目盛りの間隔は変わらない。一方、試料は対物レンズの倍率に応じて大きく見えるので、接眼1目盛りが表す実際の長さは倍率に反比例して変わる。',
       };
     },
@@ -156,7 +167,9 @@ export const B13 = [
     kind: 'graph',
     make(rng) {
       const pool = [...SPECIMENS, { id: 'egg', name: 'ヒトの卵', length: 140 }, { id: 'virus', name: 'インフルエンザウイルス', length: 0.1 }];
-      const items = rng.sample(pool, 4);
+      let items = rng.sample(pool, 4);
+      // ゾウリムシ（約200 μm）とヒトの卵（約140 μm）は対数目盛りでは近いので、同時には出さない
+      while (items.some((x) => x.id === 'paramecium') && items.some((x) => x.id === 'egg')) items = rng.sample(pool, 4);
       const ask = rng.int(0, 3);
       return {
         text: `図は、ア〜エの大きさ（長さ・直径の目安）を対数目盛りで表したものである。ア〜エは ${items.map((x) => x.name).sort().join('・')} のいずれかである。${items[ask].name}はどれか。`,

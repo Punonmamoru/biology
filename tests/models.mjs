@@ -406,6 +406,9 @@ section('B14 酵素のはたらき（カタラーゼ）');
   check('肝臓片・酸化マンガン(IV)：過酸化水素がほぼすべて分解される（総量 ＝ 過酸化水素水 1 mL あたり 10 mL）', near(end({ cat: 'liver' }), 20, 0.1) && near(end({ cat: 'mno2' }), 20, 0.2), `${f(end({ cat: 'liver' }), 1)}・${f(end({ cat: 'mno2' }), 1)} mL`);
   check('煮沸した肝臓片・石英砂：酸素はほとんど発生しない', end({ cat: 'boiled' }) < 0.01 && end({ cat: 'sand' }) < 0.01);
   check('過酸化水素水を2倍にすると、酸素の総量が2倍', near(end({ cat: 'liver', h2o2: 4 }), 2 * end({ cat: 'liver', h2o2: 2 }), 0.2));
+  const r0 = (o) => cat.simulate(o).find((q) => q.t >= 0.1 - 1e-9).o2 / 0.1;
+  check('同じ3%の液を2倍量にしても、はじめの反応の速さ（濃度で決まる）はほぼ同じ', near(r0({ cat: 'liver', h2o2: 4 }), r0({ cat: 'liver', h2o2: 2 }), r0({ cat: 'liver', h2o2: 2 }) * 0.1), `${f(r0({ cat: 'liver', h2o2: 2 }), 1)} → ${f(r0({ cat: 'liver', h2o2: 4 }), 1)} mL/分`);
+  check('何も入れないと、酸素はほとんど発生しない', end({ cat: 'none' }) < 0.01 && end({ cat: 'none', amount: 2 }) < 0.01);
   check('肝臓片を2倍にすると、反応は速くなるが総量は変わらない', at({ cat: 'liver', amount: 2 }, 1) > at({ cat: 'liver', amount: 1 }, 1) && near(end({ cat: 'liver', amount: 2 }), end({ cat: 'liver', amount: 1 }), 0.1));
   check('反応が止まったあと、過酸化水素水を追加すると再び酸素が発生する（酵素は変化しない）', end({ cat: 'liver', add: 'h2o2' }) > at({ cat: 'liver', add: 'h2o2' }, cat.T_ADD) + 15);
   check('反応が止まったあと、肝臓片を追加しても酸素は発生しない（基質がない）', end({ cat: 'liver', add: 'cat' }) - at({ cat: 'liver', add: 'cat' }, cat.T_ADD) < 0.1);
@@ -428,7 +431,7 @@ section('B15 心臓の拍動と自律神経');
   check('交感神経と副交感神経のはたらきは、両方が分布する器官では反対（拮抗的）', bothSides.every((r) => r.s !== r.p) && hr.AUTONOMIC.find((r) => r.organ === '心臓の拍動').s.startsWith('促進') && hr.AUTONOMIC.find((r) => r.organ === '瞳孔').s === '拡大');
   const lw = hr.loewi();
   const firstDrop = (k) => lw.find((r) => r[k] < 0.95).t;
-  check('レーヴィの実験：迷走神経の刺激で心臓Aが遅くなり、心臓Bは遅れて遅くなる', firstDrop('a') < firstDrop('b') && Math.min(...lw.map((r) => r.b)) < 0.7, `Aは${firstDrop('a')}秒、Bは${firstDrop('b')}秒から`);
+  check('レーウィの実験：迷走神経の刺激で心臓Aが遅くなり、心臓Bは遅れて遅くなる', firstDrop('a') < firstDrop('b') && Math.min(...lw.map((r) => r.b)) < 0.7, `Aは${firstDrop('a')}秒、Bは${firstDrop('b')}秒から`);
 }
 
 // ---------- B16 ----------
@@ -437,8 +440,9 @@ section('B16 生物濃縮');
   const c = bio.chain();
   check('分解されにくい物質（1段ごとの倍率 ＞ 1）では、栄養段階が上がるほど濃度が高い', c.every((v, i) => i === 0 || v > c[i - 1]), c.map((v) => v.toPrecision(2)).join(' → '));
   check('既定値は教科書でよく引用される DDT の例と同程度（水 0.00005 ppm → 鳥 約25 ppm、約50万倍）', near(c[0], 0.00005, 1e-12) && near(c[5], 25, 0.5) && near(bio.ratio(c[5], c[0]), 500000, 1000));
-  const d = bio.chain({ f: 0.4 });
-  check('分解・排出されやすい物質（倍率 ＜ 1）では、プランクトンより上の段階ほど濃度が低い', d.slice(1).every((v, i, a) => i === 0 || v < a[i - 1]));
+  const sd = bio.SUBSTANCES.degradable;
+  const d = bio.chain({ bcf: sd.bcf, f: sd.f });
+  check('分解・排出されやすい物質では、どの段階も水中の濃度をこえず（生物濃縮が起こらない）、上の段階ほど低い', d.every((v) => v <= d[0] + 1e-15) && d.slice(1).every((v, i, a) => i === 0 || v < a[i - 1]), d.map((v) => v.toPrecision(2)).join(' → '));
   check('濃縮率 ＝ 体内の濃度 ÷ 水中の濃度', near(bio.ratio(25, 0.00005), 500000, 1e-6));
 }
 

@@ -14,7 +14,7 @@ export const dojo = {
     { id: 'co', text: '「運動」で、時刻スライダーを運動を始める前（0〜2分）に合わせ、安静時の心拍出量（1回拍出量×心拍数）を確かめよう。', short: '安静時の心拍出量' },
     { id: 'hard', text: '運動の強さを最大にして、心拍出量が安静時の3倍以上になる時刻を探そう。', short: '激しい運動' },
     { id: 'table', text: '「自律神経のはたらき」で、交感神経と副交感神経の両方を表示し、はたらきが反対になる器官を確かめよう。', short: '拮抗的にはたらく' },
-    { id: 'loewi', text: '「レーヴィの実験」で、心臓Bの拍動が心臓Aより遅れて遅くなることを確かめよう。', short: '神経伝達物質の発見' },
+    { id: 'loewi', text: '「レーウィの実験」で、心臓Bの拍動が心臓Aより遅れて遅くなることを確かめよう。', short: '神経伝達物質の発見' },
   ],
   mount(root, ctx) {
     const st = { tab: 'ex', x: 0.5, cursor: 5, side: 's', seenBoth: false };
@@ -28,7 +28,7 @@ export const dojo = {
     const tableBox = h('div', { class: 'table-scroll' });
     top.append(leg, tableBox);
 
-    const segTab = segmented({ label: '表示', options: [{ value: 'ex', label: '運動' }, { value: 'table', label: '自律神経のはたらき' }, { value: 'loewi', label: 'レーヴィの実験' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const segTab = segmented({ label: '表示', options: [{ value: 'ex', label: '運動' }, { value: 'table', label: '自律神経のはたらき' }, { value: 'loewi', label: 'レーウィの実験' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
     const sX = slider({ label: '運動の強さ', min: 0, max: 1, step: 0.05, value: st.x, format: (v) => (v === 0 ? '運動しない' : `${fmt(v * 100, 0)}%（最大を100%）`), onInput: (v) => { st.x = v; update(); } });
     const sC = slider({ label: '時刻（値を読む）', min: 0, max: TEND, step: 0.1, value: st.cursor, format: (v) => `${fmt(v, 1)} 分`, onInput: (v) => { st.cursor = v; update(); } });
     const segSide = segmented({ label: '表に示す神経', options: [{ value: 's', label: '交感神経' }, { value: 'p', label: '副交感神経' }, { value: 'both', label: '両方' }], value: st.side, onChange: (v) => { st.side = v; if (v === 'both') st.seenBoth = true; update(); } });
@@ -69,7 +69,7 @@ export const dojo = {
         });
         leg.replaceChildren(legend([{ label: '心拍数（左の目盛り）', color: 'c2' }, { label: '心拍出量＝1回拍出量×心拍数（右の目盛り）', color: 'c1', dash: 'dash' }]));
         readout.replaceChildren(h('b', null, `${fmt(cur.t, 1)} 分：`), `心拍数 ${fmt(cur.hr, 0)} 回/分 × 1回拍出量 ${fmt(cur.sv, 0)} mL ＝ 心拍出量 ${fmt(cur.co, 1)} L/分`);
-        if (cur.ex && st.x > 0) lines.push('運動を始めると、筋肉で多くの酸素が使われ、血液中の二酸化炭素が増える。これを延髄が感知し、交感神経のはたらきが強まり（副交感神経は弱まり）、心臓の拍動が速く強くなる。心拍出量が増え、筋肉に多くの酸素が運ばれる。');
+        if (cur.ex && st.x > 0) lines.push('運動を始めると、交感神経のはたらきが強まり、副交感神経のはたらきが弱まって、心臓の拍動が速く強くなる。運動が続いて筋肉で多くの酸素が使われ、血液中の二酸化炭素濃度が上がると、延髄がこれを感知して、心臓の拍動をさらに促進する。心拍出量が増え、筋肉に多くの酸素が運ばれる。');
         else if (cur.t >= T1 && st.x > 0) lines.push('運動をやめると、副交感神経のはたらきが強まって心臓の拍動はしだいに遅くなり、安静時の心拍数にもどる。');
         else lines.push(`安静時の心拍数は約${REST.hr}回/分、1回拍出量は約${REST.sv} mL で、心拍出量は約${fmt(cardiacOutput(REST.hr, REST.sv), 1)} L/分。成人の血液の量は約${BLOOD_L} L なので、血液は約1分で全身をめぐる計算になる。`);
         lines.push('心臓は、右心房にある洞房結節（ペースメーカー）が周期的に興奮することで、自動的に拍動する（自動性）。自律神経はその速さを調節する。');
@@ -84,13 +84,13 @@ export const dojo = {
         ));
         lines.push('交感神経は、興奮したときや運動をしているときなど、体を活動的な状態にするときにはたらく。副交感神経は、休息しているときや食後など、体を落ち着いた状態にするときにはたらく。');
         lines.push('多くの器官には両方の神経が分布し、互いに反対のはたらき（拮抗的なはたらき）をする。体表の血管・立毛筋・汗腺のように、交感神経だけが分布する器官もある。');
-        lines.push('自律神経の中枢は間脳の視床下部にある。交感神経の末端からは主にノルアドレナリンが、副交感神経の末端からはアセチルコリンが放出される。');
+        lines.push('自律神経系の最高中枢は間脳の視床下部にある（心臓の拍動の中枢は延髄）。交感神経の末端からは主にノルアドレナリンが、副交感神経の末端からはアセチルコリンが放出される。');
         state = { seenBoth: st.seenBoth };
       } else {
         const run = loewi();
-        title.replaceChildren('レーヴィの実験（模式） ', modelNote());
+        title.replaceChildren('レーウィの実験（模式） ', modelNote());
         chart.draw({
-          alt: 'レーヴィの実験：心臓Aの迷走神経を刺激すると、Aに続いてBの拍動も遅くなる',
+          alt: 'レーウィの実験：心臓Aの迷走神経を刺激すると、Aに続いてBの拍動も遅くなる',
           x: { min: 0, max: 40, label: '時間（秒）', step: 5 },
           y: { min: 0, max: 1.2, label: '拍動の速さ（相対値）', step: 0.2, digits: 1 },
           regions: [{ x0: 10, x1: 20, label: '心臓Aの迷走神経を刺激', fill: 'region' }],
@@ -101,7 +101,7 @@ export const dojo = {
         });
         leg.replaceChildren(legend([{ label: '心臓A（迷走神経をつけたまま）', color: 'c2' }, { label: '心臓B（Aを通った液を受ける）', color: 'c1', dash: 'dash' }]));
         lines.push('カエルの心臓Aの迷走神経（副交感神経）を刺激すると、Aの拍動が遅くなった。Aの中を流れた液を、神経をつないでいない心臓Bに流すと、少し遅れてBの拍動も遅くなった。');
-        lines.push('このことから、神経の末端から化学物質が放出され、それが心臓のはたらきを変えていることがわかった（レーヴィ、1921年）。この物質はのちにアセチルコリンであることがわかった。');
+        lines.push('このことから、神経の末端から化学物質が放出され、それが心臓のはたらきを変えていることがわかった（レーウィ、1921年）。この物質はのちにアセチルコリンであることがわかった。');
         state = { loewiSeen: true };
       }
       exp.set(lines);
