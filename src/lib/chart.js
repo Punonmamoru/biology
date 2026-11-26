@@ -428,6 +428,7 @@ export function drawSpec(ctx, W, H, spec) {
     else ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    placed.push({ x0: cx - 7, y0: cy - 7, x1: cx + 7, y1: cy + 7 }); // 点そのものにもほかの文字を重ねない
     if (m.label) {
       ctx.font = `bold ${fs}px ${font}`;
       const right = cx > pad.l + pw * 0.75;
