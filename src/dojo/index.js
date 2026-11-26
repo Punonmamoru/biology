@@ -36,5 +36,9 @@ import { dojo as a18 } from './a18.js';
 import { dojo as a19 } from './a19.js';
 import { dojo as a20 } from './a20.js';
 import { dojo as a21 } from './a21.js';
+import { dojo as a22 } from './a22.js';
+import { dojo as a23 } from './a23.js';
+import { dojo as a24 } from './a24.js';
+import { dojo as a25 } from './a25.js';
 
-export const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21 };
+export const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24, a25 };

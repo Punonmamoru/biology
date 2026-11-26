@@ -42,6 +42,10 @@ export const STAGES = [
   { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
   { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
   { id: 'a21', code: 'A21', course: 'advanced', title: '炭素の循環', unit: '生態と環境', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
+  { id: 'a22', code: 'A22', course: 'advanced', title: 'DNAの複製（半保存的複製）', unit: '遺伝情報の発現と発生', lead: 'メセルソンとスタールの実験。¹⁵N から ¹⁴N の培地に移したあとの DNA の重さの比を計算する。' },
+  { id: 'a23', code: 'A23', course: 'advanced', title: 'カルビン回路', unit: '生命現象と物質', lead: '光や CO₂ を止めると RuBP と PGA の量はどう変わるか。¹⁴CO₂ の追跡と光合成の計算。' },
+  { id: 'a24', code: 'A24', course: 'advanced', title: '種間競争と生態的地位', unit: '生態と環境', lead: 'ゾウリムシの混合飼育。生態的地位が重なると競争的排除、重なりが小さいと共存。' },
+  { id: 'a25', code: 'A25', course: 'advanced', title: '自然選択と遺伝子頻度', unit: '生物の進化', lead: '工業暗化・潜性致死遺伝子・ヘテロ接合体の有利（発展）で、遺伝子頻度が世代とともに変わる。' },
 ];
 
 export function stageById(id) {

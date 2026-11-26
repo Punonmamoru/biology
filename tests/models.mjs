@@ -38,6 +38,10 @@ import * as mic from '../src/models/micrometer.js';
 import * as cat from '../src/models/catalase.js';
 import * as hr from '../src/models/heart.js';
 import * as bio from '../src/models/bioaccumulation.js';
+import * as rep from '../src/models/replication.js';
+import * as cal from '../src/models/calvin.js';
+import * as cmp from '../src/models/competition.js';
+import * as sel from '../src/models/selection.js';
 
 const results = [];
 let current = '';
@@ -942,6 +946,78 @@ section('A20 減数分裂と遺伝的多様性');
   check('DNA 量：G1 2 → G2 4 → 第一分裂のあと 2 → 第二分裂のあと 1', me.dnaAt(at.G1) === 2 && me.dnaAt(at.G2) === 4 && me.dnaAt(acc - me.PHASES[4].len - 0.01) === 2 && me.dnaAt(acc) === 1);
   check('染色体数：第一分裂の終わりに 2n → n、第二分裂では n のまま', me.chromosomeSetsAt(at.G2) === 2 && me.chromosomeSetsAt(acc - me.PHASES[4].len - 0.01) === 1 && me.chromosomeSetsAt(acc) === 1);
   check('配偶子の組合せ 2ⁿ（ヒト n＝23 で 8,388,608 通り）、受精で 2ⁿ × 2ⁿ', me.gameteTypes(23) === 8388608 && me.zygoteTypes(3) === 64);
+}
+
+// ---------- A22 ----------
+section('A22 DNAの複製（半保存的複製）');
+{
+  const kinds = (g, m) => rep.bands(g, m).map((b) => b.kind).sort().join(',');
+  check('0世代は重いバンドだけ', kinds(0, 'semi') === 'heavy');
+  check('半保存的：1世代は中間だけ、2世代は中間と軽いが1：1', kinds(1, 'semi') === 'hybrid' && rep.bands(2, 'semi').every((b) => Math.abs(b.frac - 0.5) < 1e-12));
+  check('半保存的：中間の DNA はどの世代でも2分子（割合 2/2ⁿ）', [1, 2, 3, 4, 5].every((g) => Math.abs(rep.bands(g, 'semi').find((b) => b.kind === 'hybrid').frac - 2 / Math.pow(2, g)) < 1e-12));
+  check('半保存的：3世代で中間：軽い ＝ 1：3', (() => { const r = rep.hybridLightRatio(3); return r.light / r.hybrid === 3; })());
+  check('保存的（仮説）：1世代で重いと軽いが1：1、中間はできない', kinds(1, 'cons') === 'heavy,light' && rep.bands(1, 'cons').every((b) => b.frac === 0.5));
+  check('分散的（仮説）：1世代は中間の1本、2世代は軽い側へ移った1本（半保存的の2本と区別できる）', kinds(1, 'disp') === 'mixed' && rep.bands(1, 'disp')[0].pos === 0.5 && rep.bands(2, 'disp').length === 1 && rep.bands(2, 'disp')[0].pos === 0.25);
+  check('どの仮説でも割合の合計は1', ['semi', 'cons', 'disp'].every((m) => [0, 1, 2, 3, 4].every((g) => Math.abs(rep.bands(g, m).reduce((a, b) => a + b.frac, 0) - 1) < 1e-12)));
+  check('¹⁵N の鎖の割合は 1/2ⁿ', rep.heavyStrandFraction(3) === 1 / 8);
+}
+
+// ---------- A23 ----------
+section('A23 カルビン回路');
+{
+  const s0 = cal.steady(1, 1);
+  check('ふだん（光も CO₂ も十分）は PGA が RuBP より多い', s0.pga > s0.rubp);
+  const dark = cal.at(cal.T_END, 0, 1);
+  check('光を消すと RuBP が減り PGA が増える', dark.rubp < s0.rubp * 0.1 && dark.pga > s0.pga);
+  const noco2 = cal.at(cal.T_END, 1, 0);
+  check('CO₂ をなくすと RuBP が増え PGA が減る', noco2.rubp > s0.rubp && noco2.pga < s0.pga * 0.1);
+  let mono = true;
+  for (let t = cal.T_CHANGE; t < cal.T_END; t += 0.05) if (cal.at(t + 0.05, 0, 1).rubp > cal.at(t, 0, 1).rubp + 1e-12) mono = false;
+  check('光を消したあと RuBP は単調に減る（はね返りがない）', mono);
+  check('操作の前は一定、合計量は保たれる', Math.abs(cal.at(1, 0, 1).rubp - s0.rubp) < 1e-12 && Math.abs(dark.rubp + dark.pga - cal.TOTAL) < 1e-9);
+  const l1 = cal.label(1);
+  const l60 = cal.label(60);
+  check('¹⁴CO₂：最初はほとんど PGA に、時間がたつと糖などが多くなる', l1.pga > 90 && l60.sugar > l60.pga);
+  check('質量の計算：CO₂ 264 mg → グルコース 180 mg、グルコース 180 mg → O₂ 192 mg', Math.abs(cal.glucoseFromCO2(264) - 180) < 1e-9 && Math.abs(cal.o2FromGlucose(180) - 192) < 1e-9);
+}
+
+// ---------- A24 ----------
+section('A24 種間競争と生態的地位');
+{
+  const single = cmp.run('aurelia', 1, false);
+  const e = single[single.length - 1];
+  check('単独飼育ではどちらも環境収容力まで増える', Math.abs(e.n1 - cmp.SPECIES.caudatum.K) < 1 && Math.abs(e.n2 - cmp.SPECIES.aurelia.K) < 1);
+  const mix = cmp.run('aurelia', 1, true);
+  const m = mix[mix.length - 1];
+  let peak = mix[0];
+  for (const q of mix) if (q.n1 > peak.n1) peak = q;
+  check('ヒメゾウリムシとの混合飼育：ゾウリムシは一度増えてから減り、ほぼいなくなる（競争的排除）', cmp.outcome('aurelia', 1) === 'exclude1' && peak.t > 3 && peak.t < 12 && m.n1 < 3 && m.n2 > 150);
+  const bur = cmp.run('bursaria', cmp.PAIRS.bursaria.overlap, true);
+  const b = bur[bur.length - 1];
+  check('ミドリゾウリムシとの混合飼育：共存し、どちらも単独飼育より少ない', cmp.outcome('bursaria', cmp.PAIRS.bursaria.overlap) === 'coexist' && b.n1 > 50 && b.n1 < cmp.SPECIES.caudatum.K && b.n2 > 30 && b.n2 < cmp.SPECIES.bursaria.K);
+  check('生態的地位の重なりが小さいとヒメゾウリムシとも共存できる', cmp.outcome('aurelia', 0.5) === 'coexist');
+  let monoOv = true;
+  for (let d = 0; d < 6; d += 0.1) if (cmp.overlapOfDistance(d + 0.1) >= cmp.overlapOfDistance(d)) monoOv = false;
+  check('資源の利用曲線：山が離れるほど重なりが小さい、逆算も一致', monoOv && Math.abs(cmp.overlapOfDistance(cmp.distanceOfOverlap(0.4)) - 0.4) < 1e-4);
+}
+
+// ---------- A25 ----------
+section('A25 自然選択と遺伝子頻度');
+{
+  const ind = sel.trajectory(0.99, sel.fitness('industrial', 0.2), 80);
+  let mono = true;
+  for (let g = 1; g < ind.length; g++) if (ind[g] > ind[g - 1] + 1e-12) mono = false;
+  check('工業暗化：明色の遺伝子 c は単調に減り、暗色型の割合が 50% をこえる', mono && 1 - ind[80] ** 2 > 0.9);
+  const strong = sel.trajectory(0.99, sel.fitness('industrial', 0.4), 30);
+  check('選択が強いほど早く変化する', strong[30] < ind[30]);
+  check('選択がない（0%）と遺伝子頻度は変わらない（ハーディー・ワインベルグ）', Math.abs(sel.trajectory(0.3, sel.fitness('industrial', 0), 50)[50] - 0.3) < 1e-12);
+  const lt = sel.trajectory(0.5, sel.fitness('lethal', 0), 20);
+  check('潜性致死：q_n ＝ q₀ ÷ (1 ＋ n·q₀) と一致', [1, 5, 10, 20].every((n) => Math.abs(lt[n] - sel.lethalQ(0.5, n)) < 1e-12));
+  check('潜性致死：q が小さくなるほど減り方がゆっくり', lt[1] - lt[2] > lt[10] - lt[11]);
+  const eq = sel.heteroEquilibrium(0.3, 1 - sel.fitness('hetero', 0).aa);
+  const h1 = sel.trajectory(0.05, sel.fitness('hetero', 0.3), 200)[200];
+  const h2 = sel.trajectory(0.9, sel.fitness('hetero', 0.3), 200)[200];
+  check('ヘテロ接合体有利：はじめの頻度によらず平衡の頻度 s÷(s＋t) に近づく', Math.abs(h1 - eq) < 1e-3 && Math.abs(h2 - eq) < 1e-3);
 }
 
 const ng = results.filter((r) => !r.ok);

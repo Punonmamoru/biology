@@ -1200,6 +1200,10 @@ const STAGES = [
   { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
   { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
   { id: 'a21', code: 'A21', course: 'advanced', title: '炭素の循環', unit: '生態と環境', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
+  { id: 'a22', code: 'A22', course: 'advanced', title: 'DNAの複製（半保存的複製）', unit: '遺伝情報の発現と発生', lead: 'メセルソンとスタールの実験。¹⁵N から ¹⁴N の培地に移したあとの DNA の重さの比を計算する。' },
+  { id: 'a23', code: 'A23', course: 'advanced', title: 'カルビン回路', unit: '生命現象と物質', lead: '光や CO₂ を止めると RuBP と PGA の量はどう変わるか。¹⁴CO₂ の追跡と光合成の計算。' },
+  { id: 'a24', code: 'A24', course: 'advanced', title: '種間競争と生態的地位', unit: '生態と環境', lead: 'ゾウリムシの混合飼育。生態的地位が重なると競争的排除、重なりが小さいと共存。' },
+  { id: 'a25', code: 'A25', course: 'advanced', title: '自然選択と遺伝子頻度', unit: '生物の進化', lead: '工業暗化・潜性致死遺伝子・ヘテロ接合体の有利（発展）で、遺伝子頻度が世代とともに変わる。' },
 ];
 
 function stageById(id) {
@@ -9199,6 +9203,818 @@ dojo.tasks[2].check = (s) => s.tab === 'curve' && s.touched > 0 && (s.month === 
 return { dojo };
 })();
 
+// ---- models/replication.js ----
+__m["models/replication.js"] = (function () {
+// A22 DNAの複製（メセルソンとスタールの実験）
+// ¹⁵N だけを含む培地で何世代も育てた大腸菌（DNA の2本鎖がどちらも ¹⁵N：重い）を、¹⁴N の培地に移して g 世代分裂させる。
+// DNA を取り出して密度勾配遠心法で分けると、DNA は密度に応じた位置にバンドをつくる。
+//   重い（¹⁵N/¹⁵N）・中間（¹⁵N/¹⁴N）・軽い（¹⁴N/¹⁴N）
+// 位置は「軽い＝0、重い＝1」の相対値で表す（遠心管では重いものほど底に近い）。
+const POS = { light: 0, hybrid: 0.5, heavy: 1 };
+const MODES = {
+  semi: '半保存的複製',
+  cons: '保存的複製',
+  disp: '分散的複製',
+};
+
+// g 世代後の DNA 分子の数（はじめの DNA 分子 1 個あたり）
+function molecules(g) {
+  return Math.pow(2, g);
+}
+
+// バンドの一覧 [{ pos, frac, kind }]。frac は全 DNA に対する割合
+function bands(g, mode = 'semi') {
+  if (g <= 0) return [{ pos: POS.heavy, frac: 1, kind: 'heavy' }];
+  const n = molecules(g);
+  if (mode === 'semi') {
+    // 親の ¹⁵N 鎖2本は、それぞれ別の分子に1本ずつ残る → 中間の分子はいつも2個
+    const out = [{ pos: POS.hybrid, frac: 2 / n, kind: 'hybrid' }];
+    if (n > 2) out.unshift({ pos: POS.light, frac: (n - 2) / n, kind: 'light' });
+    return out;
+  }
+  if (mode === 'cons') {
+    // 親の2本鎖はそのまま1個残り、新しい分子はすべて ¹⁴N/¹⁴N
+    return [
+      { pos: POS.light, frac: (n - 1) / n, kind: 'light' },
+      { pos: POS.heavy, frac: 1 / n, kind: 'heavy' },
+    ];
+  }
+  // 分散的：どの分子も ¹⁵N を同じ割合（1/2^g）ずつ含む → 1本のバンドが少しずつ軽い側へ移る
+  return [{ pos: 1 / n, frac: 1, kind: 'mixed' }];
+}
+
+// 中間：軽い の比（半保存的複製）。g ≧ 1
+function hybridLightRatio(g) {
+  const n = molecules(g);
+  return { hybrid: 2, light: n - 2 };
+}
+
+// 全 DNA 鎖（1本鎖）のうち ¹⁵N の鎖の割合
+function heavyStrandFraction(g) {
+  return 1 / molecules(g);
+}
+
+// 密度勾配の吸光度のような分布（バンドを山で表す）
+function profile(bs, x, width = 0.045) {
+  let y = 0;
+  for (const b of bs) y += b.frac * Math.exp(-((x - b.pos) ** 2) / (2 * width * width));
+  return y;
+}
+return { POS, MODES, molecules, bands, hybridLightRatio, heavyStrandFraction, profile };
+})();
+
+// ---- dojo/a22.js ----
+__m["dojo/a22.js"] = (function () {
+// A22 DNAの複製（メセルソンとスタールの実験） の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend, tokenColor, keepRedrawn } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { bands, profile, MODES, molecules } = __m["models/replication.js"];
+const { sample } = __m["lib/series.js"];
+
+const GMAX = 4;
+const KIND_NAME = { heavy: '重い（¹⁵N／¹⁵N）', hybrid: '中間（¹⁵N／¹⁴N）', light: '軽い（¹⁴N／¹⁴N）', mixed: '1本だけ' };
+
+// 遠心管の模式図：0〜4世代の管を横に並べ、DNA のバンドを描く（重いものほど底に近い）
+function drawTubes(canvas, st) {
+  const W = Math.max(280, Math.min(520, canvas.parentElement ? canvas.parentElement.clientWidth : 340));
+  const H = 190;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const fg = tokenColor('fg');
+  const muted = tokenColor('muted');
+  const surface = tokenColor('surface-2');
+  const c1 = tokenColor('c1');
+  const c2 = tokenColor('c2');
+  g.clearRect(0, 0, W, H);
+  g.font = '12px system-ui, sans-serif';
+  const left = 58;
+  const slot = (W - left - 6) / (GMAX + 1);
+  const tw = Math.min(34, slot * 0.55);
+  const top = 22;
+  const bot = H - 22;
+  const yOfPos = (p) => top + 30 + (bot - top - 60) * p; // 軽い（0）が上、重い（1）が下
+  // 左の目盛り
+  g.fillStyle = muted;
+  g.textAlign = 'right';
+  g.textBaseline = 'middle';
+  g.fillText('軽い', left - 8, yOfPos(0));
+  g.fillText('中間', left - 8, yOfPos(0.5));
+  g.fillText('重い', left - 8, yOfPos(1));
+  for (let k = 0; k <= GMAX; k++) {
+    const cx = left + slot * (k + 0.5);
+    const x0 = cx - tw / 2;
+    // 管
+    g.fillStyle = surface;
+    g.strokeStyle = k === st.g ? c2 : muted;
+    g.lineWidth = k === st.g ? 2.5 : 1.2;
+    g.beginPath();
+    g.moveTo(x0, top);
+    g.lineTo(x0, bot - tw / 2);
+    g.arc(cx, bot - tw / 2, tw / 2, Math.PI, 0, true);
+    g.lineTo(x0 + tw, top);
+    g.fill();
+    g.stroke();
+    // バンド
+    for (const b of bands(k, st.mode)) {
+      const y = yOfPos(b.pos);
+      const th = 3 + 7 * b.frac;
+      g.globalAlpha = 0.35 + 0.65 * b.frac;
+      g.fillStyle = c1;
+      g.fillRect(x0 + 3, y - th / 2, tw - 6, th);
+      g.globalAlpha = 1;
+    }
+    g.fillStyle = k === st.g ? fg : muted;
+    g.textAlign = 'center';
+    g.textBaseline = 'bottom';
+    g.fillText(`${k}世代`, cx, top - 4);
+  }
+  g.textBaseline = 'top';
+  g.fillStyle = muted;
+  g.textAlign = 'left';
+  g.fillText('↓ 遠心管の底（重い DNA ほど底に近い）', left, bot + 4);
+}
+
+const dojo = {
+  tasks: [
+    { id: 'g1', text: '「半保存的複製」で1世代にすると、バンドが中間の1本だけになることを確かめよう。', short: '1世代は中間だけ' },
+    { id: 'g3', text: '「半保存的複製」で3世代にして、中間：軽い ＝ 1：3 になることを確かめよう。', short: '3世代の比' },
+    { id: 'reject', text: '「保存的複製」「分散的複製」に切りかえて、1世代・2世代のバンドが実際の実験結果と合わないことを確かめよう。', short: '仮説の否定' },
+  ],
+  mount(root, ctx) {
+    const st = { mode: 'semi', g: 0, seenCons: false, seenDisp: false };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const canvas = h('canvas', { role: 'img', 'aria-label': '遠心管の模式図' });
+    top.append(h('div', { style: { display: 'flex', justifyContent: 'center' } }, canvas));
+    const chart = createChart(top, { label: '密度ごとの DNA 量のグラフ', aspect: 0.5 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const segM = segmented({
+      label: '複製のしかた',
+      options: Object.entries(MODES).map(([value, label]) => ({ value, label: value === 'semi' ? `${label}（実際）` : `${label}（仮説）` })),
+      value: st.mode,
+      onChange: (v) => { st.mode = v; update(); },
+    });
+    const sG = slider({ label: '¹⁴N の培地に移してからの分裂の回数', min: 0, max: GMAX, step: 1, value: st.g, format: (v) => `${v} 世代`, onInput: (v) => { st.g = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segM.el, sG.el), panel('いま何が起きているか', exp.el));
+
+    const redraw = () => drawTubes(canvas, st);
+    keepRedrawn(canvas, redraw);
+
+    function update() {
+      const { g, mode } = st;
+      if (mode === 'cons' && g >= 1) st.seenCons = true;
+      if (mode === 'disp' && g >= 2) st.seenDisp = true;
+      const bs = bands(g, mode);
+      title.replaceChildren(`${MODES[mode]}${mode === 'semi' ? '' : '（仮説）'}：${g} 世代のあとの DNA `, modelNote());
+      redraw();
+      canvas.setAttribute('aria-label', `遠心管の模式図。${g}世代：${bs.map((b) => `${KIND_NAME[b.kind]} ${fmt(b.frac * 100, 1)}%`).join('、')}`);
+      const ymax = 1.15;
+      chart.draw({
+        alt: `${g}世代のバンド：${bs.map((b) => `${KIND_NAME[b.kind]} ${fmt(b.frac * 100, 1)}%`).join('、')}`,
+        x: { min: -0.2, max: 1.2, label: 'DNA の密度（左ほど軽い・右ほど重い）', ticks: [{ v: 0, text: '軽い' }, { v: 0.5, text: '中間' }, { v: 1, text: '重い' }] },
+        y: { min: 0, max: ymax, label: 'DNA の量（割合）', step: 0.25, digits: 2 },
+        series: [{ points: sample((x) => profile(bs, x), -0.2, 1.2, 400), color: 'c1', width: 3 }],
+        markers: bs.map((b) => ({ x: b.pos, y: b.frac, color: 'c2', label: `${fmt(b.frac * 100, 1)}%` })),
+      });
+      leg.replaceChildren(legend([{ label: '密度ごとの DNA の量（山の高さ＝その密度の DNA の割合）', color: 'c1' }]));
+      note.textContent = '¹⁵N だけを含む培地で育てた大腸菌（DNA の2本鎖がどちらも ¹⁵N）を、¹⁴N の培地に移して分裂させた。密度勾配遠心法で、重い DNA ほど遠心管の底に近い位置に集まる。';
+
+      const n = molecules(g);
+      const lines = [];
+      if (g === 0) {
+        lines.push('移す前の DNA は2本鎖ともに ¹⁵N を含むので、すべて「重い」位置にバンドができる。');
+      } else if (mode === 'semi') {
+        lines.push(`はじめの DNA 1分子は ${g} 世代で ${n} 分子になる。半保存的複製では、もとの2本鎖がほどけてそれぞれが鋳型になり、新しい鎖（¹⁴N）と組になるので、もとの ¹⁵N の鎖を含む「中間」の分子はいつも2個である。`);
+        lines.push(g === 1
+          ? 'したがって1世代では、すべての DNA が「中間」になる。メセルソンとスタールの実験でも、1世代では中間の1本のバンドだけが見られた。'
+          : `したがって中間：軽い ＝ 2：${n - 2}${n - 2 !== 2 ? `（＝ 1：${(n - 2) / 2}）` : '（＝ 1：1）'}になる。世代が進むほど、軽い DNA の割合が増えていく。`);
+      } else if (mode === 'cons') {
+        lines.push(`保存的複製（仮説）では、もとの2本鎖はそのまま残り、新しい分子は2本鎖とも新しい鎖になる。${g} 世代では、重い DNA 1分子と軽い DNA ${n - 1}分子ができる。`);
+        lines.push('実際の実験では1世代で「中間」のバンドだけが見られ、重いバンドは見られなかったので、この仮説は否定される。');
+      } else {
+        lines.push(`分散的複製（仮説）では、どの分子も古い部分と新しい部分が混ざるので、すべての DNA が同じ密度になる。${g} 世代では ¹⁵N の割合が 1/${n} なので、バンドは1本で、「軽い」から「重い」までの間の、軽い側から 1/${n} の位置にある。`);
+        lines.push(g === 1
+          ? '1世代では、半保存的複製と同じく中間の1本になるので、1世代だけでは区別できない。2世代を見てみよう。'
+          : '実際の実験では2世代で「中間」と「軽い」の2本のバンドが見られたので、1本のバンドが少しずつ軽い側へ移るこの仮説は否定される。');
+      }
+      lines.push('窒素（N）は DNA の塩基に含まれている。¹⁵N を含む DNA は、¹⁴N の DNA より少しだけ重い（密度が大きい）ので、遠心すると位置の違いとして区別できる。');
+      exp.set(lines);
+      ctx.update({ ...st, bands: bs });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.mode === 'semi' && s.g === 1;
+dojo.tasks[1].check = (s) => s.mode === 'semi' && s.g === 3;
+dojo.tasks[2].check = (s) => s.seenCons && s.seenDisp;
+return { dojo };
+})();
+
+// ---- models/calvin.js ----
+__m["models/calvin.js"] = (function () {
+// A23 カルビン回路（光や CO₂ を止めたときの RuBP と PGA の量の変化）
+// 2つの反応だけを考えた模式：
+//   CO₂ の固定（ルビスコ）：RuBP ＋ CO₂ → PGA    速さ ＝ B × CO₂ × [RuBP]
+//   PGA の還元と RuBP の再生：PGA → RuBP          速さ ＝ A × 光 × [PGA]（光化学反応でつくられた ATP・NADPH を使う）
+// RuBP と PGA の合計は一定とする（回路の中の物質のやりとりだけを見る）。
+// 定常状態では [RuBP] : [PGA] ＝ B·CO₂ の逆数 : A·光 の逆数 になり、ふだんは PGA のほうが多い。
+const TOTAL = 9;
+const A = 0.6; // 1/分（光が100%のとき）
+const B = 1.2; // 1/分（CO₂ が100%のとき）
+const T_CHANGE = 4; // 条件を変える時刻（分）
+const T_END = 12;
+
+function steady(light, co2) {
+  const a = A * light;
+  const b = B * co2;
+  if (a + b === 0) return null;
+  return { rubp: (TOTAL * a) / (a + b), pga: (TOTAL * b) / (a + b) };
+}
+
+// 時刻 t の RuBP・PGA（light・co2 は 0〜1。t < T_CHANGE ではどちらも 1）
+function at(t, light, co2) {
+  const s0 = steady(1, 1);
+  if (t <= T_CHANGE) return { ...s0 };
+  const s1 = steady(light, co2);
+  if (!s1) return { ...s0 }; // 光も CO₂ もないと、どちらの反応も止まり、量は変わらない
+  const k = A * light + B * co2;
+  const e = Math.exp(-k * (t - T_CHANGE));
+  return { rubp: s1.rubp + (s0.rubp - s1.rubp) * e, pga: s1.pga + (s0.pga - s1.pga) * e };
+}
+
+// ¹⁴CO₂ を与えたあとの放射能の分布（カルビンの実験の模式）
+// CO₂ はまず PGA に取り込まれ、PGA から糖などがつくられる。
+//   PGA の放射能 a：da/dt ＝ 1 − a/τ、糖など b：db/dt ＝ a/τ
+const TAU = 6; // 秒
+function label(t) {
+  if (t <= 0) return { pga: 100, sugar: 0 };
+  const a = TAU * (1 - Math.exp(-t / TAU));
+  const b = t - a;
+  return { pga: (100 * a) / t, sugar: (100 * b) / t };
+}
+
+// 光合成の反応式 6CO₂ ＋ 12H₂O → C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O の質量の関係（mg）
+const M = { CO2: 44, GLUCOSE: 180, O2: 32, H2O: 18 };
+function glucoseFromCO2(mgCO2) {
+  return (mgCO2 * M.GLUCOSE) / (6 * M.CO2);
+}
+function o2FromGlucose(mgGlucose) {
+  return (mgGlucose * 6 * M.O2) / M.GLUCOSE;
+}
+return { TOTAL, A, B, T_CHANGE, T_END, steady, at, TAU, label, M, glucoseFromCO2, o2FromGlucose };
+})();
+
+// ---- dojo/a23.js ----
+__m["dojo/a23.js"] = (function () {
+// A23 カルビン回路 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { at, steady, label, T_CHANGE, T_END } = __m["models/calvin.js"];
+const { sample } = __m["lib/series.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'dark', text: '①で「光を消す」にして、RuBP が減り PGA が増えることを確かめよう。', short: '光を消す' },
+    { id: 'noco2', text: '①で「CO₂ をなくす」にして、RuBP が増え PGA が減ることを確かめよう。', short: 'CO₂ をなくす' },
+    { id: 'pulse', text: '②で時間を 2 秒以下にして、¹⁴C がまず PGA に取り込まれる（PGA の割合が最も大きい）ことを確かめよう。', short: '最初の物質' },
+  ],
+  mount(root, ctx) {
+    const st = { tab: 'change', light: 100, co2: 100, preset: 'free', t: 30 };
+
+    const tabs = segmented({ label: '内容', options: [{ value: 'change', label: '①光・CO₂ を止める' }, { value: 'pulse', label: '②¹⁴CO₂ の追跡' }], value: st.tab, onChange: (v) => { st.tab = v; layout(); } });
+    const top = panel(null);
+    root.append(tabs.el, top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: 'グラフ', aspect: 0.62 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const segP = segmented({
+      label: `時刻 ${T_CHANGE} に行う操作`,
+      options: [{ value: 'dark', label: '光を消す' }, { value: 'noco2', label: 'CO₂ をなくす' }, { value: 'free', label: '自由に設定' }],
+      value: st.preset,
+      onChange: (v) => {
+        st.preset = v;
+        if (v === 'dark') { sL.set(0, true); sC.set(100, true); }
+        if (v === 'noco2') { sL.set(100, true); sC.set(0, true); }
+        readSliders();
+        update();
+      },
+    });
+    const sL = slider({ label: '操作のあとの光の強さ', min: 0, max: 100, step: 10, value: st.light, format: (v) => `${v}%`, onInput: () => { st.preset = 'free'; segP.set('free', true); readSliders(); update(); } });
+    const sC = slider({ label: '操作のあとの CO₂ 濃度', min: 0, max: 100, step: 10, value: st.co2, format: (v) => `${v}%`, onInput: () => { st.preset = 'free'; segP.set('free', true); readSliders(); update(); } });
+    const ctlChange = h('div', null, segP.el, sL.el, sC.el);
+    const sT = slider({ label: '¹⁴CO₂ を与えてからの時間', min: 1, max: 60, step: 1, value: st.t, format: (v) => `${v} 秒`, onInput: (v) => { st.t = v; update(); } });
+    const ctlPulse = h('div', null, sT.el);
+    const exp = explainBox();
+    root.append(panel('操作', ctlChange, ctlPulse), panel('いま何が起きているか', exp.el));
+
+    function readSliders() {
+      st.light = sL.value;
+      st.co2 = sC.value;
+    }
+
+    function layout() {
+      ctlChange.hidden = st.tab !== 'change';
+      ctlPulse.hidden = st.tab !== 'pulse';
+      update();
+    }
+
+    function drawChange() {
+      const L = st.light / 100;
+      const C = st.co2 / 100;
+      const s0 = steady(1, 1);
+      const end = at(T_END, L, C);
+      title.replaceChildren('RuBP と PGA の量の変化 ', modelNote());
+      chart.draw({
+        alt: `操作のあと：RuBP ${fmt(end.rubp, 1)}、PGA ${fmt(end.pga, 1)}`,
+        x: { min: 0, max: T_END, label: '時間（相対値）', step: 2 },
+        y: { min: 0, max: 10, label: '物質の量（相対値）', step: 2 },
+        regions: [{ x0: T_CHANGE, x1: T_END, fill: 'region', label: '操作のあと' }],
+        series: [
+          { points: sample((t) => at(t, L, C).pga, 0, T_END, 300), color: 'c2', dash: 'dash', width: 3, label: 'PGA' },
+          { points: sample((t) => at(t, L, C).rubp, 0, T_END, 300), color: 'c1', width: 3, label: 'RuBP' },
+        ],
+        vlines: [{ x: T_CHANGE, color: 'muted', dash: 'dot' }],
+      });
+      leg.replaceChildren(legend([{ label: 'PGA（ホスホグリセリン酸・C₃）', color: 'c2', dash: 'dash' }, { label: 'RuBP（リブロースビスリン酸・C₅）', color: 'c1' }]));
+      note.textContent = '光も CO₂ も十分な状態から、時刻 4 で条件を変えた。RuBP ＋ CO₂ → PGA（ルビスコ）と、PGA → RuBP（ATP・NADPH を使う）の2つの反応だけを考えた模式図。';
+      const lines = [];
+      const dR = end.rubp - s0.rubp;
+      const dP = end.pga - s0.pga;
+      if (L === 0 && C === 0) {
+        lines.push('光も CO₂ もないと、2つの反応がどちらも止まるので、RuBP も PGA も量が変わらない（このモデルの場合）。');
+      } else if (Math.abs(dR) < 0.05) {
+        lines.push('光と CO₂ のバランスが変わらないので、RuBP と PGA の量はほとんど変わらない。');
+      } else if (dR < 0) {
+        lines.push(`RuBP が減り（${fmt(s0.rubp, 1)} → ${fmt(end.rubp, 1)}）、PGA が増える（${fmt(s0.pga, 1)} → ${fmt(end.pga, 1)}）。`);
+        lines.push(L < 1
+          ? '光が弱くなると、チラコイドでつくられる ATP と NADPH が減るので、PGA から RuBP をつくる反応が進みにくくなる。一方、CO₂ を固定して RuBP から PGA をつくる反応はしばらく続くので、PGA がたまり RuBP が減る。'
+          : 'CO₂ が多いので RuBP から PGA をつくる反応が速くなり、PGA がたまり RuBP が減る。');
+      } else {
+        lines.push(`RuBP が増え（${fmt(s0.rubp, 1)} → ${fmt(end.rubp, 1)}）、PGA が減る（${fmt(s0.pga, 1)} → ${fmt(end.pga, 1)}）。`);
+        lines.push(C < 1
+          ? 'CO₂ が少なくなると、RuBP に CO₂ を結合させて PGA をつくる反応が進みにくくなる。一方、光があるので ATP と NADPH を使って PGA から RuBP をつくる反応は続き、RuBP がたまり PGA が減る。'
+          : '光が強いので PGA から RuBP をつくる反応が速くなり、RuBP がたまり PGA が減る。');
+      }
+      lines.push(`ふだん（光も CO₂ も十分なとき）は、RuBP ${fmt(s0.rubp, 1)}・PGA ${fmt(s0.pga, 1)} でつり合っている。カルビン回路は葉緑体のストロマで行われ、CO₂ を取り込んで有機物をつくる。`);
+      exp.set(lines);
+      return { dR, dP };
+    }
+
+    function drawPulse() {
+      const t = st.t;
+      const v = label(t);
+      title.replaceChildren('¹⁴CO₂ を与えたあとの放射能の割合 ', modelNote());
+      chart.draw({
+        alt: `${t}秒：PGA ${fmt(v.pga, 0)}%、糖など ${fmt(v.sugar, 0)}%`,
+        x: { min: 0, max: 60, label: '¹⁴CO₂ を与えてからの時間（秒）', step: 10 },
+        y: { min: 0, max: 100, label: '放射能の割合（%）', step: 20 },
+        series: [
+          { points: sample((x) => label(x).pga, 0.2, 60, 300), color: 'c2', dash: 'dash', width: 3, label: 'PGA' },
+          { points: sample((x) => label(x).sugar, 0.2, 60, 300), color: 'c3', width: 3, label: '糖など' },
+        ],
+        vlines: [{ x: t, color: 'muted', dash: 'dot' }],
+        markers: [
+          { x: t, y: v.pga, color: 'c2', label: `${fmt(v.pga, 0)}%` },
+          { x: t, y: v.sugar, color: 'c3', shape: 'square', label: `${fmt(v.sugar, 0)}%` },
+        ],
+      });
+      leg.replaceChildren(legend([{ label: 'PGA にある放射能の割合', color: 'c2', dash: 'dash' }, { label: 'PGA からつくられた糖などにある割合', color: 'c3' }]));
+      note.textContent = 'カルビンらの実験の模式図。緑藻に ¹⁴C を含む CO₂ を短い時間だけ与えてすぐに反応を止め、放射能をもつ物質を調べた。';
+      exp.set([
+        `${t} 秒後：取り込まれた ¹⁴C のうち、PGA に ${fmt(v.pga, 0)}%、糖などに ${fmt(v.sugar, 0)}% がある。`,
+        t <= 5
+          ? 'ごく短い時間では、放射能のほとんどが PGA にある。CO₂ はまず RuBP と結合して PGA になるので、最初に ¹⁴C が現れる物質は PGA である。'
+          : '時間がたつと、PGA からつくられた糖などにも ¹⁴C が広がり、PGA の割合は下がっていく。こうして、CO₂ が取り込まれる順番（CO₂ → PGA → 糖など）が明らかになった。',
+        'このように、放射性同位体で目印をつけて物質の流れを追う方法をトレーサー法という。',
+      ]);
+      return { pga: v.pga, sugar: v.sugar };
+    }
+
+    function update() {
+      const r = st.tab === 'change' ? drawChange() : drawPulse();
+      ctx.update({ ...st, ...r });
+    }
+    readSliders();
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.tab === 'change' && s.light === 0 && s.co2 === 100 && s.dR < 0 && s.dP > 0;
+dojo.tasks[1].check = (s) => s.tab === 'change' && s.co2 === 0 && s.light === 100 && s.dR > 0 && s.dP < 0;
+dojo.tasks[2].check = (s) => s.tab === 'pulse' && s.t <= 2 && s.pga > s.sugar;
+return { dojo };
+})();
+
+// ---- models/competition.js ----
+__m["models/competition.js"] = (function () {
+// A24 種間競争と生態的地位（ガウゼのゾウリムシの実験の模式）
+// 2種の個体数 N1・N2（相対値）。それぞれロジスティック型に増え、生態的地位（ニッチ）が重なるほど、相手からの影響が大きい。
+//   dN1/dt ＝ r1·N1·(K1 − N1 − α12·N2)/K1
+//   dN2/dt ＝ r2·N2·(K2 − N2 − α21·N1)/K2
+// α は「相手1個体が、自分の何個体分の資源を使うか」。ここでは生態的地位の重なり（0〜1）に種ごとの係数をかける。
+const SPECIES = {
+  caudatum: { name: 'ゾウリムシ', K: 100, r: 0.9 },
+  aurelia: { name: 'ヒメゾウリムシ', K: 160, r: 0.7 },
+  bursaria: { name: 'ミドリゾウリムシ', K: 80, r: 0.5 },
+};
+// 相手（partner）とゾウリムシの組合せ
+const PAIRS = {
+  aurelia: { partner: 'aurelia', overlap: 1, on1: 0.8, on2: 0.9 },
+  bursaria: { partner: 'bursaria', overlap: 0.25, on1: 1.0, on2: 1.0 },
+};
+const DAYS = 24;
+const N0 = 2;
+
+function coefficients(pairKey, overlap) {
+  const p = PAIRS[pairKey];
+  return { a12: overlap * p.on1, a21: overlap * p.on2 };
+}
+
+// mixed：混合飼育なら true、単独飼育なら相手からの影響なし
+function run(pairKey, overlap, mixed = true, dt = 0.02, every = 10) {
+  const s1 = SPECIES.caudatum;
+  const s2 = SPECIES[PAIRS[pairKey].partner];
+  const { a12, a21 } = mixed ? coefficients(pairKey, overlap) : { a12: 0, a21: 0 };
+  const f = (x, y) => [
+    (s1.r * x * (s1.K - x - a12 * y)) / s1.K,
+    (s2.r * y * (s2.K - y - a21 * x)) / s2.K,
+  ];
+  let x = N0;
+  let y = N0;
+  const out = [];
+  const steps = Math.round(DAYS / dt);
+  for (let i = 0; i <= steps; i++) {
+    if (i % every === 0) out.push({ t: i * dt, n1: x, n2: y });
+    const [a1, b1] = f(x, y);
+    const [a2, b2] = f(x + (a1 * dt) / 2, y + (b1 * dt) / 2);
+    const [a3, b3] = f(x + (a2 * dt) / 2, y + (b2 * dt) / 2);
+    const [a4, b4] = f(x + a3 * dt, y + b3 * dt);
+    x = Math.max(0, x + (dt / 6) * (a1 + 2 * a2 + 2 * a3 + a4));
+    y = Math.max(0, y + (dt / 6) * (b1 + 2 * b2 + 2 * b3 + b4));
+  }
+  return out;
+}
+
+// 長い時間ののちの結果：'coexist' | 'exclude1'（ゾウリムシが排除）| 'exclude2'（相手が排除）
+function outcome(pairKey, overlap) {
+  const s1 = SPECIES.caudatum;
+  const s2 = SPECIES[PAIRS[pairKey].partner];
+  const { a12, a21 } = coefficients(pairKey, overlap);
+  const ok1 = a12 * s2.K < s1.K; // 相手が K2 のときでも、ゾウリムシが増えられる
+  const ok2 = a21 * s1.K < s2.K;
+  if (ok1 && ok2) return 'coexist';
+  if (!ok1 && ok2) return 'exclude1';
+  if (ok1 && !ok2) return 'exclude2';
+  return 'bistable';
+}
+
+// 資源の利用曲線（例：えさの大きさ）。2種の山の間の距離 d と重なり（共通部分の面積）の関係
+function erfc(x) {
+  // Abramowitz–Stegun 7.1.26
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x);
+  return x >= 0 ? y : 2 - y;
+}
+function overlapOfDistance(d, sigma = 1) {
+  return erfc(d / (2 * Math.SQRT2 * sigma));
+}
+function distanceOfOverlap(ov, sigma = 1) {
+  if (ov >= 1) return 0;
+  let lo = 0;
+  let hi = 20 * sigma;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (overlapOfDistance(mid, sigma) > ov) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+function useCurve(x, center, sigma = 1) {
+  return Math.exp(-((x - center) ** 2) / (2 * sigma * sigma));
+}
+return { SPECIES, PAIRS, DAYS, N0, coefficients, run, outcome, overlapOfDistance, distanceOfOverlap, useCurve };
+})();
+
+// ---- dojo/a24.js ----
+__m["dojo/a24.js"] = (function () {
+// A24 種間競争と生態的地位 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { SPECIES, PAIRS, DAYS, run, outcome, distanceOfOverlap, useCurve } = __m["models/competition.js"];
+const { sample } = __m["lib/series.js"];
+
+const dojo = {
+  tasks: [
+    { id: 'single', text: '「単独飼育」で、ゾウリムシもヒメゾウリムシも、それぞれ一定の数（環境収容力）まで増えることを確かめよう。', short: '単独飼育' },
+    { id: 'exclude', text: '「ヒメゾウリムシと混合飼育」にして、ゾウリムシがいなくなる（競争的排除）ことを確かめよう。', short: '競争的排除' },
+    { id: 'coexist', text: '「ミドリゾウリムシと混合飼育」で、2種が共存することを確かめよう。そのあと、ヒメゾウリムシとの組で生態的地位の重なりを小さくすると共存できることも確かめよう。', short: '共存' },
+  ],
+  mount(root, ctx) {
+    const st = { pair: 'bursaria', mixed: false, ov: Math.round(PAIRS.bursaria.overlap * 100), seenSingle: false, seenBursaria: false };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '個体数の変化のグラフ', aspect: 0.62 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+    const title2 = h('h3', { class: 'small' });
+    top.append(title2);
+    const chart2 = createChart(top, { label: '資源の利用のしかたのグラフ', aspect: 0.4 });
+    const leg2 = h('div');
+    top.append(leg2);
+
+    const segPair = segmented({
+      label: 'ゾウリムシと組み合わせる種',
+      options: [{ value: 'aurelia', label: 'ヒメゾウリムシ' }, { value: 'bursaria', label: 'ミドリゾウリムシ' }],
+      value: st.pair,
+      onChange: (v) => { st.pair = v; sOv.set(Math.round(PAIRS[v].overlap * 100), true); st.ov = sOv.value; update(); },
+    });
+    const segMix = segmented({
+      label: '飼育のしかた',
+      options: [{ value: 'single', label: '単独飼育（別々の容器）' }, { value: 'mixed', label: '混合飼育（同じ容器）' }],
+      value: st.mixed ? 'mixed' : 'single',
+      onChange: (v) => { st.mixed = v === 'mixed'; update(); },
+    });
+    const sOv = slider({ label: '生態的地位（食物・生活場所）の重なり', min: 0, max: 100, step: 5, value: st.ov, format: (v) => `${v}%`, onInput: (v) => { st.ov = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segPair.el, segMix.el, sOv.el), panel('いま何が起きているか', exp.el));
+
+    function update() {
+      const s1 = SPECIES.caudatum;
+      const s2 = SPECIES[PAIRS[st.pair].partner];
+      const ov = st.ov / 100;
+      const r = run(st.pair, ov, st.mixed);
+      const end = r[r.length - 1];
+      const res = st.mixed ? outcome(st.pair, ov) : 'single';
+      if (!st.mixed && st.pair === 'aurelia') st.seenSingle = true;
+      if (st.mixed && st.pair === 'bursaria' && res === 'coexist') st.seenBursaria = true;
+      title.replaceChildren(`ゾウリムシと${s2.name}の${st.mixed ? '混合飼育' : '単独飼育'} `, modelNote());
+      const ymax = 180;
+      chart.draw({
+        alt: `${DAYS}日目：ゾウリムシ ${fmt(end.n1, 0)}、${s2.name} ${fmt(end.n2, 0)}`,
+        x: { min: 0, max: DAYS, label: '日数', step: 4 },
+        y: { min: 0, max: ymax, label: '個体数（相対値）', step: 40 },
+        series: [
+          { points: r.map((q) => [q.t, q.n2]), color: 'c3', dash: 'dash', width: 3, label: s2.name },
+          { points: r.map((q) => [q.t, q.n1]), color: 'c1', width: 3, label: 'ゾウリムシ' },
+        ],
+        hlines: st.mixed ? [] : [{ y: s1.K, color: 'c1', dash: 'dot' }, { y: s2.K, color: 'c3', dash: 'dot' }],
+      });
+      leg.replaceChildren(legend([{ label: 'ゾウリムシ', color: 'c1' }, { label: s2.name, color: 'c3', dash: 'dash' }, ...(st.mixed ? [] : [{ label: '単独飼育での環境収容力', color: 'muted', dash: 'dot' }])]));
+      note.textContent = 'ガウゼの実験をもとにした模式図。えさ（細菌）を一定の割合で与えて飼育した。個体数・日数は目安。';
+
+      // 資源の利用曲線
+      const d = distanceOfOverlap(ov);
+      const c1 = -d / 2;
+      const c2 = d / 2;
+      const span = Math.max(4, d / 2 + 3.5);
+      title2.textContent = `資源の利用のしかた（重なり ${st.ov}%）`;
+      chart2.draw({
+        alt: `資源の利用曲線の重なり ${st.ov}%`,
+        x: { min: -span, max: span, label: '食物の大きさ・生活する場所など', ticks: [] },
+        y: { min: 0, max: 1.25, label: '利用の多さ', ticks: [] },
+        series: [
+          { points: sample((x) => useCurve(x, c2), -span, span, 300), color: 'c3', dash: 'dash', width: 2.5 },
+          { points: sample((x) => useCurve(x, c1), -span, span, 300), color: 'c1', width: 2.5 },
+          { points: sample((x) => Math.min(useCurve(x, c1), useCurve(x, c2)), -span, span, 300), color: 'c4', width: 1.5, dash: 'dot' },
+        ],
+        texts: [{ x: 0, y: 1.15, text: st.ov >= 5 ? `重なり ${st.ov}%` : 'ほとんど重ならない', color: 'c4' }],
+      });
+      leg2.replaceChildren(legend([{ label: 'ゾウリムシ', color: 'c1' }, { label: s2.name, color: 'c3', dash: 'dash' }, { label: '2種が同じ資源を使う部分', color: 'c4', dash: 'dot' }]));
+
+      const lines = [];
+      if (!st.mixed) {
+        lines.push(`別々の容器で飼育すると、ゾウリムシは約${s1.K}、${s2.name}は約${s2.K}まで増えて、それ以上は増えない。えさや生活空間には限りがあり、同じ種の個体どうしで奪い合う（種内競争）からである。`);
+        lines.push('「混合飼育」に切りかえて、同じ容器で飼うとどうなるか見てみよう。');
+      } else if (res === 'exclude1') {
+        lines.push(`同じ容器で飼うと、はじめは両方とも増えるが、やがてゾウリムシが減って、${DAYS}日目には約${fmt(end.n1, 0)}になる。${s2.name}との間で同じえさや生活場所を奪い合い（種間競争）、競争に強い${s2.name}だけが残る。`);
+        lines.push('このように、生態的地位（ニッチ）が大きく重なる2種が同じ場所にいると、一方がもう一方を排除することがある。これを競争的排除という。');
+      } else if (res === 'exclude2') {
+        lines.push(`重なりが ${st.ov}% と大きいので、${s2.name}が減っていき、ゾウリムシだけが残る（このモデルの場合）。生態的地位が大きく重なると、一方がもう一方を排除する（競争的排除）。`);
+      } else {
+        lines.push(`同じ容器で飼っても、ゾウリムシ（約${fmt(end.n1, 0)}）と${s2.name}（約${fmt(end.n2, 0)}）が共存する。ただし、どちらも単独飼育のときより少ない。`);
+        lines.push(st.pair === 'bursaria'
+          ? 'ゾウリムシとミドリゾウリムシは、試験管の中で主に生活する場所や食物が異なり、生態的地位の重なりが小さい。そのため奪い合いが弱く、共存できる。'
+          : '生態的地位の重なりが小さいと、使う資源の奪い合いが弱くなるので、競争に弱い種も生き残り、2種は共存できる。');
+      }
+      lines.push('自然界では、すむ場所を分けるすみわけや、食物を分ける食いわけによって、生態的地位の重なりが小さくなり、似た種が共存していることが多い。');
+      exp.set(lines);
+      ctx.update({ ...st, res, n1: end.n1, n2: end.n2 });
+    }
+    update();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.seenSingle;
+dojo.tasks[1].check = (s) => s.mixed && s.pair === 'aurelia' && s.res === 'exclude1';
+dojo.tasks[2].check = (s) => s.seenBursaria && s.mixed && s.pair === 'aurelia' && s.res === 'coexist';
+return { dojo };
+})();
+
+// ---- models/selection.js ----
+__m["models/selection.js"] = (function () {
+// A25 自然選択と遺伝子頻度
+// 1つの遺伝子座の対立遺伝子 A（頻度 p）・a（頻度 q ＝ 1 − p）。
+// 毎世代、自由交配で AA : Aa : aa ＝ p² : 2pq : q² の子が生まれ、遺伝子型ごとの「生き残って子を残す割合」w で選択を受ける。
+//   次の世代の q' ＝ (pq·wAa ＋ q²·waa) ÷ (p²·wAA ＋ 2pq·wAa ＋ q²·waa)
+function nextQ(q, w) {
+  const p = 1 - q;
+  const mean = p * p * w.AA + 2 * p * q * w.Aa + q * q * w.aa;
+  if (mean <= 0) return q;
+  return (p * q * w.Aa + q * q * w.aa) / mean;
+}
+
+function trajectory(q0, w, gens) {
+  const out = [q0];
+  let q = q0;
+  for (let g = 1; g <= gens; g++) {
+    q = nextQ(q, w);
+    out.push(q);
+  }
+  return out;
+}
+
+// 場面（プリセット）
+//  industrial：工業暗化。暗色型の遺伝子 C（顕性）と明色型の c（潜性）。明色型（cc）が鳥に食べられやすい。
+//              A ＝ C（暗色・顕性）、a ＝ c（明色・潜性）として、waa ＝ 明色型の生き残る割合。
+//  lethal：潜性致死。aa は子を残さない（waa ＝ 0）。q_n ＝ q₀ ÷ (1 ＋ n·q₀)
+//  hetero：ヘテロ接合体が有利（鎌状赤血球貧血症とマラリア）。平衡の q ＝ s ÷ (s ＋ t)
+const PRESETS = {
+  industrial: { q0: 0.99, gens: 80 },
+  lethal: { q0: 0.5, gens: 40 },
+  hetero: { q0: 0.05, gens: 60 },
+};
+
+function fitness(preset, strength) {
+  // strength：選択の強さ（0〜1）
+  if (preset === 'industrial') return { AA: 1, Aa: 1, aa: 1 - strength };
+  if (preset === 'lethal') return { AA: 1, Aa: 1, aa: 0 };
+  // hetero：AA（正常）はマラリアにかかりやすい（1 − s）、aa（鎌状）は貧血で（1 − t）、Aa が最も有利
+  return { AA: 1 - strength, Aa: 1, aa: 0.2 };
+}
+
+function lethalQ(q0, n) {
+  return q0 / (1 + n * q0);
+}
+
+// ヘテロ接合体有利の平衡頻度（a の遺伝子頻度）
+function heteroEquilibrium(s, t) {
+  return s / (s + t);
+}
+
+// 表現型の割合：A_ （顕性形質）＝ 1 − q²、aa（潜性形質）＝ q²
+function recessivePhenotype(q) {
+  return q * q;
+}
+return { nextQ, trajectory, PRESETS, fitness, lethalQ, heteroEquilibrium, recessivePhenotype };
+})();
+
+// ---- dojo/a25.js ----
+__m["dojo/a25.js"] = (function () {
+// A25 自然選択と遺伝子頻度 の図解道場
+const { h } = __m["lib/dom.js"];
+const { fmt } = __m["lib/format.js"];
+const { createChart, legend } = __m["lib/chart.js"];
+const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"];
+const { PRESETS, fitness, trajectory, lethalQ, heteroEquilibrium } = __m["models/selection.js"];
+
+const T_HETERO = 1 - fitness('hetero', 0).aa; // 鎌状赤血球貧血症（aa）で子を残せない割合（モデルで固定）
+
+const dojo = {
+  tasks: [
+    { id: 'dark', text: '「工業暗化」で、暗色型の割合が 50% をこえる世代まで「見る世代」を進めよう。', short: '暗色型が増える' },
+    { id: 'lethal', text: '「潜性致死」で 10 世代目を見て、q が q₀ ÷ (1 ＋ 10q₀) と一致することを確かめよう。', short: '潜性致死の計算' },
+    { id: 'hetero', text: '「ヘテロ接合体が有利（発展）」で、はじめの頻度 q₀ を変えても、q が同じ値に近づくことを確かめよう。', short: '平衡の頻度' },
+  ],
+  mount(root, ctx) {
+    const st = { preset: 'industrial', s: 20, q0: PRESETS.industrial.q0, gen: 0, heteroQ0s: [] };
+
+    const top = panel(null);
+    root.append(top);
+    const title = h('h2');
+    top.append(title);
+    const chart = createChart(top, { label: '遺伝子頻度の変化のグラフ', aspect: 0.62 });
+    const leg = h('div');
+    const note = h('p', { class: 'small muted' });
+    top.append(leg, note);
+
+    const segP = segmented({
+      label: '場面',
+      options: [{ value: 'industrial', label: '工業暗化' }, { value: 'lethal', label: '潜性致死' }, { value: 'hetero', label: 'ヘテロ接合体が有利（発展）' }],
+      value: st.preset,
+      onChange: (v) => {
+        st.preset = v;
+        sQ.set(Math.round(PRESETS[v].q0 * 100), true);
+        st.q0 = sQ.value / 100;
+        sGen.setRange(0, PRESETS[v].gens);
+        st.gen = sGen.value;
+        layout();
+      },
+    });
+    const sS = slider({ label: '選択の強さ', min: 0, max: 50, step: 5, value: st.s, format: (v) => `${v}%`, onInput: (v) => { st.s = v; update(); } });
+    const sQ = slider({ label: 'はじめの潜性の遺伝子の頻度 q₀', min: 1, max: 99, step: 1, value: Math.round(st.q0 * 100), format: (v) => fmt(v / 100, 2), onInput: (v) => { st.q0 = v / 100; update(); } });
+    const sGen = slider({ label: '見る世代', min: 0, max: PRESETS.industrial.gens, step: 1, value: st.gen, format: (v) => `${v} 世代`, onInput: (v) => { st.gen = v; update(); } });
+    const exp = explainBox();
+    root.append(panel('操作', segP.el, sS.el, sQ.el, sGen.el), panel('いま何が起きているか', exp.el));
+
+    function layout() {
+      sS.el.hidden = st.preset === 'lethal';
+      const lab = sS.el.querySelector('label');
+      if (lab) lab.textContent = st.preset === 'industrial' ? '明色型（cc）が鳥に食べられて子を残せない割合' : '正常型（AA）がマラリアで子を残せない割合';
+      update();
+    }
+
+    function update() {
+      const { preset, q0, gen } = st;
+      const s = st.s / 100;
+      const w = fitness(preset, s);
+      const gens = PRESETS[preset].gens;
+      const tr = trajectory(q0, w, gens);
+      const q = tr[gen];
+      const isInd = preset === 'industrial';
+      const pheno = isInd ? 1 - q * q : q * q;
+      if (preset === 'hetero' && !st.heteroQ0s.includes(q0)) st.heteroQ0s.push(q0);
+      const qName = isInd ? '明色の遺伝子 c の頻度 q' : preset === 'lethal' ? '致死遺伝子 a の頻度 q' : '鎌状赤血球の遺伝子 a の頻度 q';
+      const pName = isInd ? '暗色型（CC・Cc）の割合' : preset === 'lethal' ? '生まれた子のうち aa の割合（q²）' : '生まれた子のうち aa（貧血症）の割合（q²）';
+      const heading = { industrial: '工業暗化（オオシモフリエダシャク）', lethal: '潜性致死遺伝子', hetero: 'ヘテロ接合体が有利な場合（鎌状赤血球貧血症とマラリア）' }[preset];
+      title.replaceChildren(`${heading} `, modelNote());
+      const eq = preset === 'hetero' ? heteroEquilibrium(s, T_HETERO) : null;
+      chart.draw({
+        alt: `${gen}世代：q ＝ ${fmt(q, 3)}、${pName} ${fmt(pheno * 100, 1)}%`,
+        x: { min: 0, max: gens, label: '世代', step: gens >= 60 ? 10 : 5 },
+        y: { min: 0, max: 1, label: '頻度・割合', step: 0.2, digits: 1 },
+        series: [
+          { points: tr.map((v, i) => [i, isInd ? 1 - v * v : v * v]), color: 'c3', dash: 'dash', width: 3 },
+          { points: tr.map((v, i) => [i, v]), color: 'c1', width: 3 },
+        ],
+        hlines: eq != null && s > 0 ? [{ y: eq, color: 'c4', dash: 'dot', label: `平衡 ${fmt(eq, 2)}` }] : [],
+        vlines: [{ x: gen, color: 'muted', dash: 'dot' }],
+        markers: [
+          { x: gen, y: q, color: 'c1', label: `q ＝ ${fmt(q, 3)}` },
+          { x: gen, y: pheno, color: 'c3', shape: 'square', label: `${fmt(pheno * 100, 1)}%` },
+        ],
+      });
+      leg.replaceChildren(legend([{ label: qName, color: 'c1' }, { label: pName, color: 'c3', dash: 'dash' }, ...(eq != null && s > 0 ? [{ label: '平衡の頻度', color: 'c4', dash: 'dot' }] : [])]));
+      note.textContent = '毎世代、自由交配で AA : Aa : aa ＝ p² : 2pq : q² の子が生まれ、遺伝子型ごとに子を残せる割合が違うとした模式図（集団は十分に大きく、突然変異・移入・移出はない）。';
+
+      const lines = [`${gen} 世代目：q ＝ ${fmt(q, 3)}、${pName}は ${fmt(pheno * 100, 1)}%。`];
+      if (isInd) {
+        lines.push(s > 0
+          ? `工業地帯で樹皮がすすで黒くなると、明色型（cc）は鳥に見つかりやすく、${st.s}% が食べられて子を残せない。暗色型の遺伝子 C は顕性なので、CC・Cc はどちらも暗色型で生き残りやすい。そのため世代を重ねると、c が減って暗色型の割合が増える（工業暗化）。`
+          : '選択の強さが 0% なので、どの型も同じように子を残し、遺伝子頻度は変わらない（ハーディー・ワインベルグの法則）。');
+        lines.push('はじめのうち暗色型の増え方がゆっくりなのは、まれな C の遺伝子が、まだ少ない暗色型の個体にしか含まれていないからである。大気汚染が改善されると、明色型が再び増えた。');
+      } else if (preset === 'lethal') {
+        lines.push(`aa の子は育たないので、毎世代 a が取り除かれ、q ＝ q₀ ÷ (1 ＋ n·q₀) と減っていく。${gen} 世代目は ${fmt(q0, 2)} ÷ (1 ＋ ${gen} × ${fmt(q0, 2)}) ＝ ${fmt(lethalQ(q0, gen), 3)}。`);
+        lines.push('q が小さくなるほど減り方がゆっくりになる。a の多くは表現型に現れないヘテロ接合体（Aa）の中にあり、自然選択を受けないからである。そのため有害な潜性の遺伝子は、集団からなかなかなくならない。');
+      } else {
+        lines.push(s > 0
+          ? `マラリアの多い地域では、ヘテロ接合体（Aa）がマラリアにかかりにくく、最も子を残しやすい。AA はマラリアで、aa は貧血で子を残しにくいので、q は AA と aa の不利さのつり合う ${fmt(eq, 2)} に近づく。はじめの q₀ を変えても、近づく値は同じである。`
+          : '正常型が不利でない（0%）と、aa だけが不利なので、a は少しずつ減っていく。');
+        lines.push('このように、ある環境で有利な形質をもつ個体がより多くの子を残すことで、集団の遺伝子頻度が変化することを自然選択という。');
+      }
+      exp.set(lines);
+      ctx.update({ ...st, q, pheno, heteroCount: st.heteroQ0s.length, eq });
+    }
+    layout();
+    return null;
+  },
+};
+
+dojo.tasks[0].check = (s) => s.preset === 'industrial' && s.s > 0 && s.pheno > 0.5;
+dojo.tasks[1].check = (s) => s.preset === 'lethal' && s.gen === 10;
+dojo.tasks[2].check = (s) => s.preset === 'hetero' && s.s > 0 && s.heteroCount >= 2;
+return { dojo };
+})();
+
 // ---- dojo/index.js ----
 __m["dojo/index.js"] = (function () {
 // 図解道場の登録表
@@ -9239,8 +10055,12 @@ const { dojo: a18 } = __m["dojo/a18.js"];
 const { dojo: a19 } = __m["dojo/a19.js"];
 const { dojo: a20 } = __m["dojo/a20.js"];
 const { dojo: a21 } = __m["dojo/a21.js"];
+const { dojo: a22 } = __m["dojo/a22.js"];
+const { dojo: a23 } = __m["dojo/a23.js"];
+const { dojo: a24 } = __m["dojo/a24.js"];
+const { dojo: a25 } = __m["dojo/a25.js"];
 
-const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21 };
+const DOJOS = { b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24, a25 };
 return { DOJOS };
 })();
 
@@ -17054,6 +17874,803 @@ const A21 = [
 return { A21 };
 })();
 
+// ---- questions/a22.js ----
+__m["questions/a22.js"] = (function () {
+// A22 DNAの複製（メセルソンとスタールの実験） の問題
+const { fmt, gcd } = __m["lib/format.js"];
+const { distinctNumbers } = __m["questions/common.js"];
+const { bands, profile, molecules } = __m["models/replication.js"];
+const { sample } = __m["lib/series.js"];
+
+const ratio = (a, b) => {
+  const g = gcd(a, b);
+  return `${a / g}：${b / g}`;
+};
+
+const A22 = [
+  {
+    id: 'a22-ratio-calc',
+    stage: 'a22',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([2, 3, 4, 5]);
+      const n = molecules(g);
+      const correct = ratio(2, n - 2);
+      const cands = [ratio(1, n - 1), ratio(1, n), ratio(1, g), ratio(1, g - 1), ratio(2, n), ratio(1, 1), ratio(1, 2 * n - 1)];
+      return {
+        text: `¹⁵N だけを含む培地で何世代も育てた大腸菌を、¹⁴N だけを含む培地に移して ${g} 回分裂させた。DNA を取り出して密度勾配遠心法で調べると、中間の重さの DNA と軽い DNA の量の比（中間：軽い）はいくらになるか。`,
+        correct,
+        wrong: cands.filter((c) => c !== correct),
+        explanation: `${g} 回分裂すると DNA は ${n} 分子になり、半保存的複製では、もとの ¹⁵N の鎖を1本ずつ含む中間の DNA が2分子、残りの ${n - 2} 分子が軽い DNA となる。したがって中間：軽い ＝ 2：${n - 2} ＝ ${correct} である。もとの2本の ¹⁵N 鎖は分かれて別々の分子に入り、その後もずっと残るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a22-light-pct',
+    stage: 'a22',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([2, 3, 4, 5]);
+      const n = molecules(g);
+      const ans = (100 * (n - 2)) / n;
+      const d = distinctNumbers(ans, [100 * (n - 1) / n, 100 / n, 200 / n, 50, 100 * (1 - 1 / g), 100 * (n - 4) / n, 100, 100 * (n - 2) / (2 * n)], ' %', 1);
+      return {
+        text: `メセルソンとスタールの実験で、¹⁵N の DNA をもつ大腸菌を ¹⁴N の培地に移して ${g} 世代たった。全 DNA のうち、軽い DNA（2本鎖とも ¹⁴N）は何 % か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `DNA は ${n} 分子になり、そのうち中間の DNA が2分子なので、軽い DNA は (${n} − 2) ÷ ${n} × 100 ＝ ${fmt(ans, 1)} % となる。半保存的複製では、もとの ¹⁵N の鎖を含む分子の数は2のまま増えないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a22-strand-calc',
+    stage: 'a22',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([1, 2, 3, 4, 5]);
+      const n = molecules(g);
+      const ans = 100 / n;
+      const d = distinctNumbers(ans, [200 / n, 100 / (2 * n), 100 / g, 50, 100 - 100 / n, 100 / (4 * n), 100 - 100 / (2 * n)], ' %', 2);
+      return {
+        text: `¹⁵N の DNA をもつ大腸菌を ¹⁴N の培地に移して ${g} 回分裂させた。すべての DNA の鎖（1本鎖として数える）のうち、¹⁵N を含む鎖は何 % か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `DNA は ${n} 分子、鎖は ${2 * n} 本になるが、¹⁵N の鎖ははじめの2本のままなので、2 ÷ ${2 * n} × 100 ＝ ${fmt(ans, 2)} % となる。複製では新しい鎖がすべて ¹⁴N でつくられ、もとの鎖は分解されずに残るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a22-band-graph',
+    stage: 'a22',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const g = rng.pick([1, 2, 3]);
+      const bs = bands(g, 'semi');
+      const cands = ['移す前（0世代）', '1世代', '2世代', '3世代', '4世代'];
+      return {
+        text: '¹⁵N の DNA をもつ大腸菌を ¹⁴N の培地に移して育て、ある世代で DNA を取り出して密度勾配遠心法で調べると、図のようになった（山の高さは DNA の量の割合）。これは何世代目の結果か。',
+        chart: {
+          x: { min: -0.2, max: 1.2, label: 'DNA の密度', ticks: [{ v: 0, text: '軽い' }, { v: 0.5, text: '中間' }, { v: 1, text: '重い' }] },
+          y: { min: 0, max: 1.15, label: 'DNA の量（割合）', step: 0.25, digits: 2 },
+          series: [{ points: sample((x) => profile(bs, x), -0.2, 1.2, 300), color: 'c1', width: 3 }],
+          alt: `バンド：${bs.map((b) => `${b.kind === 'light' ? '軽い' : '中間'} ${fmt(b.frac * 100, 0)}%`).join('、')}`,
+        },
+        correct: `${g}世代`,
+        wrong: cands.filter((c) => c !== `${g}世代`),
+        explanation: g === 1
+          ? '中間の DNA だけなので1世代目である。半保存的複製では、1回の複製でできた2分子がどちらも「¹⁵N の古い鎖＋¹⁴N の新しい鎖」になるからである。'
+          : `中間：軽い ＝ ${fmt(bs[1].frac * 100, 0)}：${fmt(bs[0].frac * 100, 0)} ＝ 2：${molecules(g) - 2} なので、DNA が ${molecules(g)} 分子になった ${g} 世代目である。中間の DNA はいつも2分子で、世代ごとに全体の分子数が2倍になるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a22-reject-cons',
+    stage: 'a22',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '¹⁵N の DNA をもつ大腸菌を ¹⁴N の培地に移して1回分裂させたところ、DNA はすべて中間の重さになった。この結果から否定される複製のしかた（仮説）はどれか。',
+        correct: '保存的複製（もとの2本鎖がそのまま残り、新しい2本鎖が別にできる）',
+        wrong: ['半保存的複製（もとの鎖が1本ずつ新しい分子に受けつがれる）', '分散的複製（もとの鎖と新しい鎖が混ざり合う）', 'どの仮説も否定されない'],
+        explanation: '保存的複製なら、1世代で重い DNA と軽い DNA が1：1でできるはずなので、中間だけという結果と合わない。分散的複製でも1世代ではすべて中間になるので、1世代の結果だけでは否定できないからである。',
+      };
+    },
+  },
+  {
+    id: 'a22-reject-disp',
+    stage: 'a22',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '¹⁵N の DNA をもつ大腸菌を ¹⁴N の培地に移して2回分裂させたところ、中間の DNA と軽い DNA が1：1で見られた。この結果から否定される複製のしかた（仮説）として最も適当なものはどれか。',
+        correct: '分散的複製（もとの鎖と新しい鎖が混ざり合う）',
+        wrong: ['半保存的複製（もとの鎖が1本ずつ新しい分子に受けつがれる）', '保存的複製だけが否定され、分散的複製は否定されない', 'どの仮説も否定されない'],
+        explanation: '分散的複製なら、どの分子も ¹⁵N を同じ割合（1/4）ずつ含むので、2世代では中間と軽いの間に1本のバンドだけができるはずである。実際には中間と軽いの2本に分かれたので、分散的複製は否定され、半保存的複製と合うからである。',
+      };
+    },
+  },
+  {
+    id: 'a22-reverse-calc',
+    stage: 'a22',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([2, 3, 4]);
+      const n = molecules(g);
+      const correct = ratio(2, n - 2);
+      const cands = [ratio(1, n - 1), ratio(1, n), ratio(1, g), ratio(n - 2, 2), ratio(1, 1), ratio(2, n)].filter((c) => c !== correct);
+      return {
+        text: `¹⁴N だけを含む培地で育てた大腸菌（DNA はすべて軽い）を、¹⁵N だけを含む培地に移して ${g} 回分裂させた。中間の重さの DNA と重い DNA の量の比（中間：重い）はいくらか。`,
+        correct,
+        wrong: cands,
+        explanation: `今度は新しい鎖が ¹⁵N でつくられるので、もとの ¹⁴N の鎖を1本ずつ含む中間の DNA が2分子、残りの ${n - 2} 分子が重い DNA となり、中間：重い ＝ ${correct} である。半保存的複製では、どちらの向きに培地を移しても、もとの2本の鎖は分かれて2つの分子に残るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a22-semi-term',
+    stage: 'a22',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['semi', 'nitrogen']);
+      if (which === 'semi') {
+        return {
+          text: 'DNA が複製されるとき、もとの2本鎖がほどけてそれぞれが鋳型となり、新しくできた2本鎖 DNA には、もとの鎖が1本ずつ受けつがれる。このような複製のしかたを何というか。',
+          correct: '半保存的複製',
+          wrong: ['保存的複製', '分散的複製', '転写', '翻訳'],
+          explanation: 'これは半保存的複製で、メセルソンとスタールが ¹⁵N を使った実験で確かめた。もとの鎖の塩基に相補的な塩基をもつヌクレオチドがつながって新しい鎖ができるので、もとと同じ塩基配列の DNA が2つできる。',
+        };
+      }
+      return {
+        text: 'メセルソンとスタールの実験で、¹⁵N を使って DNA に目印をつけることができたのはなぜか。',
+        correct: 'DNA の塩基が窒素を含むから',
+        wrong: ['DNA の糖（デオキシリボース）が窒素を含むから', 'DNA のリン酸が窒素を含むから', 'DNA には窒素が含まれず、まわりのタンパク質に目印がつくから'],
+        explanation: 'DNA のヌクレオチドは糖・リン酸・塩基からなり、窒素を含むのは塩基である。¹⁵N を取り込んだ DNA は ¹⁴N の DNA より密度が大きいので、密度勾配遠心法で位置の違いとして区別できるからである。',
+      };
+    },
+  },
+  {
+    id: 'a22-molecules-calc',
+    stage: 'a22',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const g = rng.pick([3, 4, 5, 6]);
+      const n = molecules(g);
+      const ask = rng.pick(['hybrid', 'light']);
+      const ans = ask === 'hybrid' ? 2 : n - 2;
+      const d = distinctNumbers(ans, [1, 2, 4, n, n - 1, n / 2, g, 2 * g], ' 分子', 0);
+      return {
+        text: `¹⁵N の DNA をもつ大腸菌1個（DNA 1分子とする）を ¹⁴N の培地に移して ${g} 回分裂させ、DNA が ${n} 分子になった。このうち${ask === 'hybrid' ? '中間の重さの DNA' : '軽い DNA'}は何分子か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `もとの ¹⁵N の鎖2本は、1本ずつ別の DNA 分子に受けつがれるので、中間の DNA は世代によらず2分子、軽い DNA は ${n} − 2 ＝ ${n - 2} 分子である。したがって答えは ${ans} 分子で、¹⁵N の鎖は分解されずに残り、新しい鎖はすべて ¹⁴N でつくられるからである。`,
+      };
+    },
+  },
+];
+return { A22 };
+})();
+
+// ---- questions/a23.js ----
+__m["questions/a23.js"] = (function () {
+// A23 カルビン回路 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { at, label, T_CHANGE, T_END, glucoseFromCO2, o2FromGlucose } = __m["models/calvin.js"];
+const { sample } = __m["lib/series.js"];
+
+const COND = {
+  dark: { text: '光を消した', L: 0, C: 1, rubp: '減る', pga: '増える' },
+  noco2: { text: '光を当てたまま CO₂ をなくした', L: 1, C: 0, rubp: '増える', pga: '減る' },
+};
+
+const A23 = [
+  {
+    id: 'a23-change-graph',
+    stage: 'a23',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const key = rng.pick(['dark', 'noco2']);
+      const c = COND[key];
+      const rubpIsA = rng.chance(0.5);
+      const lab = rubpIsA ? { rubp: KATA[0], pga: KATA[1] } : { rubp: KATA[1], pga: KATA[0] };
+      const line = (f, isA) => ({ points: sample(f, 0, T_END, 240), color: isA ? 'c1' : 'c2', dash: isA ? 'solid' : 'dash', width: 3 });
+      const fR = (t) => at(t, c.L, c.C).rubp;
+      const fP = (t) => at(t, c.L, c.C).pga;
+      const reason = key === 'dark' ? 'ATP と NADPH がつくられなくなり、PGA から RuBP をつくる反応が止まる' : 'RuBP に CO₂ を結合させて PGA をつくる反応が止まる';
+      return {
+        text: `光も CO₂ も十分な条件で光合成をしている緑藻で、図の時刻 ${T_CHANGE} に${c.text}。図のア（実線）・イ（破線）は、RuBP と PGA のいずれかの量の変化である。RuBP はどちらか。理由とともに選べ。`,
+        chart: {
+          x: { min: 0, max: T_END, label: '時間', ticks: [{ v: T_CHANGE, text: '操作' }] },
+          y: { min: 0, max: 10, label: '物質の量（相対値）', ticks: [] },
+          series: rubpIsA ? [line(fR, true), line(fP, false)] : [line(fP, true), line(fR, false)],
+          vlines: [{ x: T_CHANGE, color: 'muted', dash: 'dot' }],
+          alt: `${c.text}あとの RuBP と PGA（ア：実線、イ：破線）`,
+        },
+        correct: `${lab.rubp}：${reason}から`,
+        wrong: [
+          `${lab.pga}：${reason}から`,
+          `${lab.rubp}：光合成が止まると、すべての物質の量が減るから`,
+          `${lab.pga}：光合成が止まると、すべての物質の量が減るから`,
+        ],
+        ordered: true,
+        explanation: `${c.text}ので、${reason}。そのため${key === 'dark' ? 'RuBP が減って PGA が増える' : 'RuBP が増えて PGA が減る'}ので、RuBP は${lab.rubp}である。カルビン回路の2つの反応のうち、片方だけが止まると、その反応の材料がたまり、もう一方の材料が減るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a23-change-term',
+    stage: 'a23',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const key = rng.pick(['dark', 'noco2']);
+      const c = COND[key];
+      const opt = (r, p) => `RuBP は${r}、PGA は${p}`;
+      const correct = opt(c.rubp, c.pga);
+      const all = [opt('増える', '増える'), opt('減る', '減る'), opt('増える', '減る'), opt('減る', '増える'), opt('変わらず', '変わらない')];
+      return {
+        text: `光も CO₂ も十分な条件で光合成をしている植物で、${c.text}。その直後、葉緑体の中の RuBP と PGA の量はそれぞれどうなるか。`,
+        correct,
+        wrong: all.filter((x) => x !== correct),
+        explanation: key === 'dark'
+          ? '光を消すと、チラコイドで ATP と NADPH がつくられなくなるので、PGA を還元して RuBP にもどす反応が止まる。一方、RuBP に CO₂ を結合させて PGA をつくる反応はしばらく続くので、RuBP は減り、PGA は増える。'
+          : 'CO₂ がなくなると、RuBP に CO₂ を結合させて PGA をつくる反応が止まる。一方、光があるので ATP と NADPH を使って PGA から RuBP をつくる反応は続くため、RuBP は増え、PGA は減る。',
+      };
+    },
+  },
+  {
+    id: 'a23-pulse-graph',
+    stage: 'a23',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const pgaIsA = rng.chance(0.5);
+      const lab = pgaIsA ? { pga: KATA[0], sugar: KATA[1] } : { pga: KATA[1], sugar: KATA[0] };
+      const line = (f, isA) => ({ points: sample(f, 0.3, 60, 240), color: isA ? 'c1' : 'c2', dash: isA ? 'solid' : 'dash', width: 3 });
+      const fP = (t) => label(t).pga;
+      const fS = (t) => label(t).sugar;
+      return {
+        text: '緑藻に ¹⁴C を含む CO₂ を与え、いろいろな時間で反応を止めて、取り込まれた ¹⁴C がどの物質にあるかを調べた。図のア（実線）・イ（破線）は、PGA と、PGA からつくられる糖などのいずれかに含まれる放射能の割合である。PGA はどちらか。理由とともに選べ。',
+        chart: {
+          x: { min: 0, max: 60, label: '¹⁴CO₂ を与えてからの時間（秒）', step: 10 },
+          y: { min: 0, max: 100, label: '放射能の割合（%）', step: 20 },
+          series: pgaIsA ? [line(fP, true), line(fS, false)] : [line(fS, true), line(fP, false)],
+          alt: '放射能の割合（ア：実線、イ：破線）',
+        },
+        correct: `${lab.pga}：ごく短い時間では、ほとんどの ¹⁴C がこの物質にあるから`,
+        wrong: [
+          `${lab.sugar}：ごく短い時間では、ほとんどの ¹⁴C がこの物質にあるから`,
+          `${lab.sugar}：時間がたつと、この物質の割合が大きくなるから`,
+          `${lab.pga}：時間がたつと、この物質の割合が大きくなるから`,
+        ],
+        ordered: true,
+        explanation: `PGA は${lab.pga}である。CO₂ はまず RuBP と結合して PGA になるので、¹⁴C は最初に PGA に現れ、そのあと PGA からつくられる糖などへ広がっていくからである。`,
+      };
+    },
+  },
+  {
+    id: 'a23-first-term',
+    stage: 'a23',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['first', 'rubisco']);
+      if (which === 'first') {
+        return {
+          text: '緑藻に ¹⁴C を含む CO₂ を数秒間だけ与えて反応を止めると、¹⁴C が最初に検出される物質はどれか。',
+          correct: 'PGA（ホスホグリセリン酸）',
+          wrong: ['グルコース', 'RuBP（リブロースビスリン酸）', 'デンプン', 'ATP'],
+          explanation: 'カルビン回路では、CO₂ がまず RuBP（C₅）と結合し、2分子の PGA（C₃）ができる。そのため ¹⁴C は最初に PGA に現れ、そのあと糖などに広がる。',
+        };
+      }
+      return {
+        text: 'カルビン回路で、RuBP に CO₂ を結合させる反応を触媒する酵素はどれか。',
+        correct: 'ルビスコ（RuBisCO）',
+        wrong: ['カタラーゼ', 'アミラーゼ', 'ATP 合成酵素', 'DNA ポリメラーゼ'],
+        explanation: 'RuBP に CO₂ を結合させる酵素はルビスコで、葉緑体のストロマにある。CO₂ を有機物に取り込む最初の反応を進めるので、植物の葉に非常に多く含まれている。',
+      };
+    },
+  },
+  {
+    id: 'a23-place-term',
+    stage: 'a23',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['stroma', 'thylakoid']);
+      if (which === 'stroma') {
+        return {
+          text: 'カルビン回路の反応が行われる場所はどこか。',
+          correct: '葉緑体のストロマ',
+          wrong: ['葉緑体のチラコイド膜', 'ミトコンドリアのマトリックス', '細胞質基質', 'ミトコンドリアの内膜'],
+          explanation: 'カルビン回路は葉緑体のストロマで行われる。ストロマにはルビスコなどの酵素があり、チラコイドでつくられた ATP と NADPH を使って CO₂ から有機物をつくるからである。',
+        };
+      }
+      return {
+        text: 'カルビン回路で PGA を還元するのに使われる ATP と NADPH は、どこでつくられるか。',
+        correct: '葉緑体のチラコイド膜（光エネルギーを使う反応）',
+        wrong: ['葉緑体のストロマ（カルビン回路の中）', 'ミトコンドリアのマトリックス', '細胞膜'],
+        explanation: 'ATP と NADPH は、チラコイド膜で光エネルギーを吸収して進む反応でつくられる。そのため光が当たらなくなると ATP と NADPH が不足し、カルビン回路も止まる。',
+      };
+    },
+  },
+  {
+    id: 'a23-glucose-calc',
+    stage: 'a23',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const co2 = rng.pick([66, 88, 132, 264, 396, 528]);
+      const ans = glucoseFromCO2(co2);
+      const d = distinctNumbers(ans, [(co2 * 180) / 44, (co2 * 44) / 180, co2 / 6, (co2 * 180) / (12 * 44), (co2 * 6 * 44) / 180], ' mg', 1);
+      return {
+        text: `ある植物が光合成で CO₂ を ${co2} mg 吸収した。これがすべてグルコースになったとすると、つくられたグルコースは何 mg か。光合成の反応式は 6CO₂ ＋ 12H₂O → C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O、分子量は CO₂ ＝ 44、グルコース ＝ 180 とする。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `反応式から CO₂ 6分子（6 × 44 ＝ 264）からグルコース 1分子（180）ができるので、${co2} × 180 ÷ 264 ＝ ${fmt(ans, 1)} mg となる。分子の数の比が 6：1 なので、質量は分子量をかけて比べる必要があるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a23-o2-calc',
+    stage: 'a23',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const glc = rng.pick([45, 90, 180, 270, 360]);
+      const ans = o2FromGlucose(glc);
+      const d = distinctNumbers(ans, [(glc * 32) / 180, (glc * 12 * 32) / 180, (glc * 180) / 192, glc, (glc * 6 * 44) / 180], ' mg', 1);
+      return {
+        text: `ある植物が光合成でグルコースを ${glc} mg つくった。このとき発生した O₂ は何 mg か。光合成の反応式は 6CO₂ ＋ 12H₂O → C₆H₁₂O₆ ＋ 6O₂ ＋ 6H₂O、分子量はグルコース ＝ 180、O₂ ＝ 32 とする。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `グルコース 1分子（180）ができるとき O₂ が 6分子（6 × 32 ＝ 192）発生するので、${glc} × 192 ÷ 180 ＝ ${fmt(ans, 1)} mg となる。反応式の係数の比が分子の数の比を表しているからである。`,
+      };
+    },
+  },
+  {
+    id: 'a23-pga-calc',
+    stage: 'a23',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const ask = rng.pick(['pga', 'co2']);
+      if (ask === 'pga') {
+        const n = rng.pick([3, 6, 12, 18, 30]);
+        const d = distinctNumbers(2 * n, [n, 3 * n, n / 2, 5 * n, 6 * n], ' 分子', 0);
+        return {
+          text: `カルビン回路で、RuBP（炭素数5）が CO₂ を1分子ずつ取り込むと、PGA（炭素数3）ができる。CO₂ を ${n} 分子固定したとき、できる PGA は何分子か。`,
+          correct: d.correct,
+          wrong: d.wrong,
+          explanation: `RuBP 1分子（C₅）と CO₂ 1分子（C₁）から、PGA 2分子（C₃ × 2 ＝ C₆）ができるので、${n} × 2 ＝ ${2 * n} 分子となる。反応の前後で炭素の数は 5 ＋ 1 ＝ 3 × 2 のように変わらないからである。`,
+        };
+      }
+      const k = rng.pick([1, 2, 3, 5, 10]);
+      const d = distinctNumbers(6 * k, [k, 3 * k, 12 * k, 2 * k, 18 * k], ' 分子', 0);
+      return {
+        text: `カルビン回路でグルコース（C₆H₁₂O₆）を ${k} 分子つくるのに、固定する必要がある CO₂ は何分子か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `グルコース 1分子は炭素を6個含み、CO₂ 1分子は炭素を1個含むので、${k} × 6 ＝ ${6 * k} 分子となる。グルコースの炭素はすべて、カルビン回路で固定された CO₂ に由来するからである。`,
+      };
+    },
+  },
+  {
+    id: 'a23-light-calc',
+    stage: 'a23',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      // 見かけの光合成速度と呼吸速度から、光合成でつくられたグルコースを求める
+      const app = rng.pick([22, 44, 66, 88]);
+      const resp = rng.pick([11, 22]);
+      const h = rng.pick([2, 3, 5, 10]);
+      const co2 = (app + resp) * h;
+      const ans = glucoseFromCO2(co2);
+      const d = distinctNumbers(ans, [glucoseFromCO2(app * h), glucoseFromCO2((app - resp) * h), glucoseFromCO2(app + resp), (co2 * 180) / 44, glucoseFromCO2(resp * h), co2, glucoseFromCO2(co2) * 6], ' mg', 1);
+      return {
+        text: `ある植物の葉で、光を当てたときの CO₂ 吸収速度（見かけの光合成速度）が 1時間あたり ${app} mg、暗所での CO₂ 放出速度（呼吸速度）が 1時間あたり ${resp} mg であった。同じ光を ${h} 時間当てたとき、光合成でつくられたグルコースは何 mg か（分子量 CO₂ ＝ 44、グルコース ＝ 180）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `光合成で固定した CO₂ は（見かけの光合成速度 ＋ 呼吸速度）× 時間 ＝ (${app} ＋ ${resp}) × ${h} ＝ ${co2} mg なので、グルコースは ${co2} × 180 ÷ 264 ＝ ${fmt(ans, 1)} mg となる。光を当てている間も呼吸は続いており、見かけの吸収量には呼吸で出た CO₂ の分が差し引かれているからである。`,
+      };
+    },
+  },
+];
+return { A23 };
+})();
+
+// ---- questions/a24.js ----
+__m["questions/a24.js"] = (function () {
+// A24 種間競争と生態的地位 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { run, DAYS } = __m["models/competition.js"];
+
+const A24 = [
+  {
+    id: 'a24-mixed-graph',
+    stage: 'a24',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const r = run('aurelia', 1, true);
+      const caudIsA = rng.chance(0.5);
+      const lab = caudIsA ? { caud: KATA[0], aur: KATA[1] } : { caud: KATA[1], aur: KATA[0] };
+      const line = (key, isA) => ({ points: r.map((q) => [q.t, q[key]]), color: isA ? 'c1' : 'c2', dash: isA ? 'solid' : 'dash', width: 3 });
+      return {
+        text: 'ゾウリムシとヒメゾウリムシを別々に飼育すると、どちらも一定の数まで増えた。図は、この2種を同じ容器で飼育（混合飼育）したときの個体数の変化で、ア（実線）・イ（破線）はいずれかの種である。図から読み取れることとして最も適当なものはどれか。',
+        chart: {
+          x: { min: 0, max: DAYS, label: '日数', step: 4 },
+          y: { min: 0, max: 180, label: '個体数（相対値）', step: 40 },
+          series: caudIsA ? [line('n1', true), line('n2', false)] : [line('n2', true), line('n1', false)],
+          alt: '混合飼育（ア：実線、イ：破線）',
+        },
+        correct: `${lab.caud}は種間競争に負けて排除された（競争的排除）`,
+        wrong: [
+          `${lab.aur}は種間競争に負けて排除された（競争的排除）`,
+          '2種は生態的地位が異なるので共存している',
+          `${lab.caud}は${lab.aur}に捕食されて減った`,
+          `${lab.aur}は${lab.caud}と相利共生をしているので増えた`,
+        ],
+        explanation: `${lab.caud}は、はじめ増えたあと減り続けて、ほとんどいなくなった。ゾウリムシとヒメゾウリムシは食物や生活場所などの生態的地位がよく似ているので、同じ容器では資源を奪い合い、競争に弱いほうが排除されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a24-exclusion-term',
+    stage: 'a24',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['exclusion', 'niche']);
+      if (which === 'exclusion') {
+        return {
+          text: '生態的地位が大きく重なる2種が同じ場所で生活すると、資源をめぐる種間競争の結果、一方の種が排除されることがある。これを何というか。',
+          correct: '競争的排除',
+          wrong: ['すみわけ', '食いわけ', '相利共生', '間接効果'],
+          explanation: 'これは競争的排除で、ガウゼがゾウリムシとヒメゾウリムシを混合飼育する実験で示した。必要とする資源がほぼ同じだと、わずかに競争に強い種が資源を多く使い、弱い種が減っていくからである。',
+        };
+      }
+      return {
+        text: '生物が生態系の中で占める位置（食物・生活場所・活動する時間など、どのような資源をどのように利用するか）を何というか。',
+        correct: '生態的地位（ニッチ）',
+        wrong: ['栄養段階', '環境収容力', 'キーストーン種', '個体群密度'],
+        explanation: 'これは生態的地位（ニッチ）である。生態的地位が重なる種どうしは同じ資源を奪い合うので、種間競争が強くはたらく。',
+      };
+    },
+  },
+  {
+    id: 'a24-coexist-term',
+    stage: 'a24',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ゾウリムシとミドリゾウリムシを同じ容器で飼育すると、2種は共存した。その理由として最も適当なものはどれか。',
+        correct: '2種は容器の中で主に生活する場所や食物が異なり、生態的地位の重なりが小さいから',
+        wrong: ['2種は生態的地位が同じなので、資源を同じように分け合えるから', 'ミドリゾウリムシがゾウリムシを捕食して、数を調節しているから', '2種の間には種間競争がまったくはたらかず、単独飼育と同じ数まで増えるから'],
+        explanation: '2種は容器の中で主に生活する場所や食物が異なるので、生態的地位の重なりが小さく、資源の奪い合いが弱い。そのため競争的排除が起こらず共存できるが、それぞれの数は単独飼育のときより少なくなることが多い。',
+      };
+    },
+  },
+  {
+    id: 'a24-share-calc',
+    stage: 'a24',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const single = rng.pick([80, 100, 120, 150, 200]);
+      const pct = rng.pick([40, 50, 60, 75, 80]);
+      const mixed = (single * pct) / 100;
+      const d = distinctNumbers(pct, [100 - pct, (single / mixed) * 100, pct / 2, Math.min(99, pct + 10)], ' %', 0);
+      return {
+        text: `ある種の生物を単独飼育すると、個体数は最大 ${single} で一定になった。生態的地位が一部重なる別の種と混合飼育すると、最大 ${fmt(mixed, 0)} で一定になり、2種は共存した。混合飼育での最大の個体数は、単独飼育のときの何 % か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `${fmt(mixed, 0)} ÷ ${single} × 100 ＝ ${pct} % となる。共存していても、重なる部分の資源をもう一方の種と分け合うので、単独飼育のときより少ない数で一定になるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a24-day-graph',
+    stage: 'a24',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const r = run('aurelia', 1, true);
+      // ゾウリムシの数が最大になる日
+      let best = r[0];
+      for (const q of r) if (q.n1 > best.n1) best = q;
+      const peak = Math.round(best.t);
+      const d = distinctNumbers(peak, [2, 6, 10, 14, 18, 22].filter((v) => Math.abs(v - peak) >= 3), ' 日目ごろ', 0);
+      return {
+        text: '図は、ゾウリムシとヒメゾウリムシを混合飼育したときの、ゾウリムシの個体数の変化である。ゾウリムシの個体数が最も多くなったのは何日目ごろか。',
+        chart: {
+          x: { min: 0, max: DAYS, label: '日数', step: 2 },
+          y: { min: 0, max: 70, label: 'ゾウリムシの個体数（相対値）', step: 10 },
+          series: [{ points: r.map((q) => [q.t, q.n1]), color: 'c1', width: 3 }],
+          alt: 'ゾウリムシの個体数の変化',
+        },
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `グラフの山の頂点は ${peak} 日目ごろである。はじめは資源に余裕があるので両種とも増えるが、ヒメゾウリムシが増えると資源を奪われ、ゾウリムシは減っていくからである。`,
+      };
+    },
+  },
+  {
+    id: 'a24-relation-term',
+    stage: 'a24',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const Q = rng.pick([
+        { text: '2種がともに同じ資源を利用し、互いに不利益を受ける関係', correct: '種間競争' },
+        { text: '一方が他方を食べ、食べる側は利益を、食べられる側は不利益を受ける関係', correct: '被食者－捕食者の関係' },
+        { text: 'アリとアブラムシのように、2種がともに利益を受ける関係', correct: '相利共生' },
+        { text: 'カクレウオとナマコのように、一方だけが利益を受け、他方は利益も不利益も受けない関係', correct: '片利共生' },
+      ]);
+      const all = ['種間競争', '被食者－捕食者の関係', '相利共生', '片利共生', '寄生'];
+      return {
+        text: `異なる種の生物の間の関係のうち、「${Q.text}」を何というか。`,
+        correct: Q.correct,
+        wrong: all.filter((x) => x !== Q.correct),
+        explanation: `これは${Q.correct}である。種間の関係は、それぞれの種が利益を受けるか、不利益を受けるか、どちらでもないかの組合せで区別されるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a24-partition-term',
+    stage: 'a24',
+    level: 2,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['sumiwake', 'kuiwake']);
+      if (which === 'sumiwake') {
+        return {
+          text: '川の上流と下流のように、生態的地位が似た2種が生活する場所を分け合うことで共存していることを何というか。',
+          correct: 'すみわけ',
+          wrong: ['食いわけ', '競争的排除', '縄張り', '順位制'],
+          explanation: 'これはすみわけで、イワナとヤマメの例が知られる。生活する場所を分けると、生態的地位の重なりが小さくなり、種間競争が弱まるので共存できる。',
+        };
+      }
+      return {
+        text: '同じ場所にすむ似た種が、異なる食物を食べることで共存していることを何というか。',
+        correct: '食いわけ',
+        wrong: ['すみわけ', '競争的排除', '相利共生', '寄生'],
+        explanation: 'これは食いわけである。食物を分けると生態的地位の重なりが小さくなり、同じ資源を奪い合う種間競争が弱まるので、似た種が共存できる。',
+      };
+    },
+  },
+  {
+    id: 'a24-intra-term',
+    stage: 'a24',
+    level: 1,
+    kind: 'term',
+    make() {
+      return {
+        text: 'ゾウリムシを1種だけで飼育すると、個体数はある数まで増えたあと、それ以上増えなくなった。その主な理由として最も適当なものはどれか。',
+        correct: '個体数が増えると、同じ種の個体どうしで食物や生活空間を奪い合うようになるから（種内競争）',
+        wrong: ['他の種との種間競争が起こるから', '捕食者に食べられるから', 'ゾウリムシは一定の数になると分裂する能力を失うから'],
+        explanation: '1種だけの飼育でも、個体数が増えると食物や生活空間が不足し、同じ種の個体どうしで奪い合う種内競争が起こる。そのため増え方がしだいに小さくなり、環境収容力の付近で一定になる。',
+      };
+    },
+  },
+  {
+    id: 'a24-displacement-term',
+    stage: 'a24',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '【発展】ガラパゴス諸島で、2種のフィンチが同じ島にすむ場合には、別々の島にすむ場合よりも、くちばしの大きさの差が大きくなっていた。この現象の説明として最も適当なものはどれか。',
+        correct: '同じ島では種間競争が起こり、食物（種子の大きさ）が重ならない方向へ形質が変化した（形質置換）',
+        wrong: ['同じ島では2種が交雑して、くちばしの大きさが平均化した', '同じ島では食物が豊富なので、くちばしが大きくなった', 'くちばしの大きさは環境の影響を受けず、偶然に差ができた'],
+        explanation: '同じ島にすむと、似た大きさの種子を食べる個体どうしで種間競争が起こる。そのため、相手と重ならない大きさの種子を食べられる個体が生き残りやすく、くちばしの大きさの差が広がった（形質置換）。',
+      };
+    },
+  },
+];
+return { A24 };
+})();
+
+// ---- questions/a25.js ----
+__m["questions/a25.js"] = (function () {
+// A25 自然選択と遺伝子頻度 の問題
+const { fmt } = __m["lib/format.js"];
+const { KATA, distinctNumbers } = __m["questions/common.js"];
+const { trajectory, fitness, lethalQ, nextQ } = __m["models/selection.js"];
+
+const A25 = [
+  {
+    id: 'a25-lethal-calc',
+    stage: 'a25',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const q0 = rng.pick([0.5, 0.25, 0.2, 0.1]);
+      const n = rng.pick([1, 2, 3, 5, 10]);
+      const ans = lethalQ(q0, n);
+      const d = distinctNumbers(ans, [q0 / (n + 1), Math.pow(q0, n + 1), q0 / Math.pow(2, n), q0 * (1 - n * q0 / 2), q0 / (1 + q0), q0 * q0, q0, lethalQ(q0, n + 1), 2 * ans], '', 3);
+      return {
+        text: `ある集団で、潜性の致死遺伝子 a の遺伝子頻度が ${q0} である。aa の個体は生まれてもすぐに死んで子を残さず、それ以外の条件ではハーディー・ワインベルグの法則が成り立つとする。${n} 世代後の a の遺伝子頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `aa がすべて取り除かれると、a の遺伝子頻度は1世代ごとに q → q ÷ (1 ＋ q) となるので、${n} 世代後は q₀ ÷ (1 ＋ n·q₀) ＝ ${q0} ÷ (1 ＋ ${n} × ${q0}) ＝ ${fmt(ans, 3)} となる。aa だけが除かれ、Aa の中の a は次の世代に伝わるので、a はなかなかなくならないからである。`,
+      };
+    },
+  },
+  {
+    id: 'a25-onegen-calc',
+    stage: 'a25',
+    level: 2,
+    kind: 'calc',
+    make(rng) {
+      const p = rng.pick([0.6, 0.7, 0.8, 0.5]);
+      const q = 1 - p;
+      const N = 100;
+      const AA = Math.round(N * p * p);
+      const Aa = Math.round(N * 2 * p * q);
+      const aa = N - AA - Aa;
+      const ans = Aa / (2 * (AA + Aa));
+      const d = distinctNumbers(ans, [q, (Aa + 2 * aa) / (2 * N), Aa / (AA + Aa), q / 2, q * q, Aa / (2 * N)], '', 3);
+      return {
+        text: `ある集団の個体数は、AA が ${AA}、Aa が ${Aa}、aa が ${aa} であった。aa の個体がすべて子を残さずに死んだとき、残った個体がもつ遺伝子のうち、a の遺伝子頻度はいくらか。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `残るのは AA ${AA} 個体と Aa ${Aa} 個体で、遺伝子は全部で 2 × ${AA + Aa} ＝ ${2 * (AA + Aa)} 個、そのうち a は Aa がもつ ${Aa} 個なので、${Aa} ÷ ${2 * (AA + Aa)} ＝ ${fmt(ans, 3)} となる。aa が除かれても、Aa がもつ a は残るからである。`,
+      };
+    },
+  },
+  {
+    id: 'a25-pheno-calc',
+    stage: 'a25',
+    level: 1,
+    kind: 'calc',
+    make(rng) {
+      const q = rng.pick([0.1, 0.2, 0.3, 0.4, 0.6, 0.7]);
+      const ask = rng.pick(['rec', 'dom']);
+      const ans = ask === 'rec' ? q * q * 100 : (1 - q * q) * 100;
+      const d = distinctNumbers(ans, [q * 100, (1 - q) * 100, 2 * q * (1 - q) * 100, (1 - q) * (1 - q) * 100, 100 - q * 100 / 2], ' %', 0);
+      return {
+        text: `工業地帯のガの集団で、明色型の遺伝子 c（潜性）の遺伝子頻度が ${q}、暗色型の遺伝子 C（顕性）の遺伝子頻度が ${fmt(1 - q, 1)} になった。自由に交配して生まれた次の世代で、${ask === 'rec' ? '明色型（cc）' : '暗色型（CC と Cc）'}の個体は何 % か。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: ask === 'rec'
+          ? `明色型は cc なので、その割合は q² ＝ ${q}² ＝ ${fmt(q * q, 2)}、つまり ${fmt(ans, 0)} % となる。自由交配では、遺伝子型の頻度がハーディー・ワインベルグの法則にしたがって決まるからである。`
+          : `暗色型は CC と Cc で、明色型 cc（q² ＝ ${fmt(q * q, 2)}）以外のすべてなので、1 − ${fmt(q * q, 2)} ＝ ${fmt(1 - q * q, 2)}、つまり ${fmt(ans, 0)} % となる。C は顕性なので、ヘテロ接合体 Cc も暗色型になるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a25-strength-graph',
+    stage: 'a25',
+    level: 2,
+    kind: 'graph',
+    make(rng) {
+      const strengths = rng.shuffle([0.1, 0.2, 0.4]);
+      const strongest = strengths.indexOf(0.4);
+      const weakest = strengths.indexOf(0.1);
+      const ask = rng.pick(['strong', 'weak']);
+      const styles = [{ color: 'c1', dash: 'solid' }, { color: 'c2', dash: 'dash' }, { color: 'c3', dash: 'dot' }];
+      const series = strengths.map((s, i) => {
+        const tr = trajectory(0.99, fitness('industrial', s), 60);
+        return { points: tr.map((q, g) => [g, 1 - q * q]), ...styles[i], width: 3 };
+      });
+      const idx = ask === 'strong' ? strongest : weakest;
+      return {
+        text: `図は、ガの集団で、明色型（潜性）が鳥に食べられる割合を3通りに変えたときの、暗色型（顕性）の個体の割合の変化をシミュレーションしたものである（ア：実線、イ：破線、ウ：点線）。明色型が食べられる割合が最も${ask === 'strong' ? '大きい' : '小さい'}のはどれか。`,
+        chart: {
+          x: { min: 0, max: 60, label: '世代', step: 10 },
+          y: { min: 0, max: 1, label: '暗色型の割合', step: 0.2, digits: 1 },
+          series,
+          alt: '暗色型の割合の変化（ア：実線、イ：破線、ウ：点線）',
+        },
+        correct: KATA[idx],
+        wrong: [KATA[0], KATA[1], KATA[2], 'ア〜ウで差はない'],
+        explanation: `明色型が食べられる割合が${ask === 'strong' ? '大きい' : '小さい'}ほど、暗色型の遺伝子が増える速さが${ask === 'strong' ? '大きくなる' : '小さくなる'}ので、暗色型の割合が最も${ask === 'strong' ? '早く' : 'ゆっくり'}増える${KATA[idx]}である。自然選択の強さが、遺伝子頻度の変化の速さを決めるからである。`,
+      };
+    },
+  },
+  {
+    id: 'a25-selection-term',
+    stage: 'a25',
+    level: 1,
+    kind: 'term',
+    make(rng) {
+      const which = rng.pick(['selection', 'industrial']);
+      if (which === 'selection') {
+        return {
+          text: '同じ種の個体の間にある遺伝的な変異のうち、その環境で生存や繁殖に有利な形質をもつ個体がより多くの子を残すことで、集団の遺伝子頻度が変化すること。これを何というか。',
+          correct: '自然選択',
+          wrong: ['遺伝的浮動', '突然変異', '隔離', '用不用'],
+          explanation: 'これは自然選択である。有利な形質を決める遺伝子が次の世代により多く伝わるので、世代を重ねると、その遺伝子の頻度が集団の中で高くなる。',
+        };
+      }
+      return {
+        text: 'イギリスの工業地帯で、樹皮がすすで黒くなるとともに、オオシモフリエダシャクの暗色型が増えた。この理由として最も適当なものはどれか。',
+        correct: '黒い樹皮の上では明色型が鳥に見つかりやすく、暗色型のほうが多く生き残って子を残したから',
+        wrong: ['すすを浴びたガの体の色が黒くなり、その形質が子に遺伝したから', '黒い樹皮に合わせて、ガが自分で体の色を変えようとしたから', '大気汚染によって、暗色型の遺伝子の突然変異が毎世代多く起こったから'],
+        explanation: '暗色型と明色型はもともと集団の中にあった遺伝的な変異で、黒い樹皮では明色型が鳥に食べられやすくなった。そのため暗色型が多く子を残し、暗色型の遺伝子の頻度が高くなった（工業暗化）。',
+      };
+    },
+  },
+  {
+    id: 'a25-factor-term',
+    stage: 'a25',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '集団の遺伝子頻度を変化させる要因のうち、環境に適応する方向に遺伝子頻度を変化させるものはどれか。',
+        correct: '自然選択',
+        wrong: ['遺伝的浮動', 'びん首効果', '創始者効果'],
+        explanation: '自然選択は、その環境で生存や繁殖に有利な形質の遺伝子を増やすので、集団は環境に適応する方向へ変化する。遺伝的浮動やびん首効果・創始者効果は偶然による変化なので、有利・不利に関係なく遺伝子頻度が変わる。',
+      };
+    },
+  },
+  {
+    id: 'a25-recessive-term',
+    stage: 'a25',
+    level: 2,
+    kind: 'term',
+    make() {
+      return {
+        text: '生存に不利な潜性の遺伝子は、自然選択がはたらいても、集団からなかなかなくならない。その理由として最も適当なものはどれか。',
+        correct: 'その遺伝子の多くは、表現型に現れないヘテロ接合体の中にあり、選択を受けないから',
+        wrong: ['潜性の遺伝子は、顕性の遺伝子より突然変異で生じやすいから', '潜性の遺伝子は、減数分裂で配偶子に入りやすいから', '不利な形質をもつ個体ほど、多くの子を残すから'],
+        explanation: '潜性の遺伝子の頻度が小さいと、その多くはヘテロ接合体（Aa）の中にあり、顕性の形質を示すので選択を受けない。選択を受けるのは q² の割合の aa だけなので、q が小さくなるほど減り方がゆっくりになる。',
+      };
+    },
+  },
+  {
+    id: 'a25-hetero-term',
+    stage: 'a25',
+    level: 3,
+    kind: 'term',
+    make() {
+      return {
+        text: '【発展】鎌状赤血球貧血症の原因となる遺伝子は、ホモ接合体では重い貧血を起こすのに、マラリアが多く発生する地域では高い頻度で見られる。この理由として最も適当なものはどれか。',
+        correct: 'ヘテロ接合体はマラリアにかかりにくく、その地域では最も生存に有利だから',
+        wrong: ['その地域では、この遺伝子の突然変異が特に起こりやすいから', 'マラリアの病原体が、この遺伝子を人から人へ運ぶから', 'ホモ接合体は貧血を起こすが、マラリアの地域では貧血が有利になるから'],
+        explanation: 'マラリアの多い地域では、正常型のホモ接合体はマラリアに、鎌状のホモ接合体は貧血に苦しむので、ヘテロ接合体が最も多く子を残す。そのため両方の遺伝子が集団に残り、鎌状赤血球の遺伝子も高い頻度で保たれる。',
+      };
+    },
+  },
+  {
+    id: 'a25-next-calc',
+    stage: 'a25',
+    level: 3,
+    kind: 'calc',
+    make(rng) {
+      const q = rng.pick([0.4, 0.5, 0.6, 0.8]);
+      const surv = rng.pick([0.5, 0.25]);
+      const w = { AA: 1, Aa: 1, aa: surv };
+      const ans = nextQ(q, w);
+      const p = 1 - q;
+      const d = distinctNumbers(ans, [q, q * surv, (q - q * q * (1 - surv)), q / (1 + q), q * q * surv, nextQ(q, { AA: 1, Aa: surv, aa: surv })], '', 3);
+      return {
+        text: `ガの集団で、明色型の遺伝子 c（潜性）の遺伝子頻度が ${q} である。自由交配で生まれた子のうち、明色型（cc）は ${fmt(surv * 100, 0)}% しか生き残れず、暗色型（CC・Cc）はすべて生き残るとする。生き残った個体の集団での c の遺伝子頻度はいくらか（小数第3位まで）。`,
+        correct: d.correct,
+        wrong: d.wrong,
+        explanation: `生まれた子は CC ${fmt(p * p, 2)}・Cc ${fmt(2 * p * q, 2)}・cc ${fmt(q * q, 2)} の割合で、cc は ${fmt(q * q * surv, 3)} だけ残るので、c の頻度は（Cc のもつ c は半分なので ${fmt(p * q, 2)}、これに cc の ${fmt(q * q * surv, 3)} を加えて）(${fmt(p * q, 2)} ＋ ${fmt(q * q * surv, 3)}) ÷ (${fmt(p * p + 2 * p * q, 2)} ＋ ${fmt(q * q * surv, 3)}) ＝ ${fmt(ans, 3)} となる。明色型が多く食べられるので、c の頻度が ${q} より小さくなるからである。`,
+      };
+    },
+  },
+];
+return { A25 };
+})();
+
 // ---- questions/index.js ----
 __m["questions/index.js"] = (function () {
 // 4択問題ジェネレーターの登録表
@@ -17094,9 +18711,13 @@ const { A18 } = __m["questions/a18.js"];
 const { A19 } = __m["questions/a19.js"];
 const { A20 } = __m["questions/a20.js"];
 const { A21 } = __m["questions/a21.js"];
+const { A22 } = __m["questions/a22.js"];
+const { A23 } = __m["questions/a23.js"];
+const { A24 } = __m["questions/a24.js"];
+const { A25 } = __m["questions/a25.js"];
 const { generate } = __m["questions/common.js"];
 
-const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...B14, ...B15, ...B16, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21];
+const GENERATORS = [...B1, ...B2, ...B3, ...B4, ...B5, ...B6, ...B7, ...B8, ...B9, ...B10, ...B11, ...B12, ...B13, ...B14, ...B15, ...B16, ...A1, ...A2, ...A3, ...A4, ...A5, ...A6, ...A7, ...A8, ...A9, ...A10, ...A11, ...A12, ...A13, ...A14, ...A15, ...A16, ...A17, ...A18, ...A19, ...A20, ...A21, ...A22, ...A23, ...A24, ...A25];
 
 function generatorById(id) {
   return GENERATORS.find((g) => g.id === id) || null;
@@ -18125,6 +19746,38 @@ const GLOSSARY = {
     { term: '温室効果', desc: 'CO₂ などの温室効果ガスが、地表から出ていく熱（赤外線）を吸収し、その一部を地表にもどすはたらき。' },
     { term: '地球温暖化', desc: '温室効果ガスの増加などによって、地球全体の平均気温が上がること。' },
     { term: 'CO₂ 濃度の季節変動', desc: '北半球では、初夏から夏（5月ごろから9月ごろ）に光合成がさかんになって CO₂ 濃度が下がり、秋から翌年の春に上がる。' },
+  ],
+  a22: [
+    { term: '半保存的複製', desc: 'DNA の2本鎖がほどけてそれぞれが鋳型になり、新しい2本鎖には、もとの鎖が1本ずつ受けつがれる複製のしかた。' },
+    { term: 'メセルソンとスタールの実験', desc: '¹⁵N で DNA に目印をつけた大腸菌を ¹⁴N の培地に移して分裂させ、DNA の重さの変化から半保存的複製を確かめた実験。' },
+    { term: '密度勾配遠心法', desc: '密度が少しずつ変わる液の中で遠心し、物質を密度の違いで分ける方法。重い DNA ほど管の底に近い位置に集まる。' },
+    { term: '¹⁵N（重い窒素）', desc: 'ふつうの窒素 ¹⁴N より中性子が1個多い同位体。DNA の塩基に取り込まれると、DNA が少し重くなる。' },
+    { term: '中間の DNA', desc: '¹⁵N の鎖と ¹⁴N の鎖が1本ずつ組になった DNA。半保存的複製では、何世代たってもはじめの DNA 1分子から2分子ずつできる。' },
+    { term: '保存的複製・分散的複製', desc: '半保存的複製とともに考えられていた仮説。保存的複製はもとの2本鎖がそのまま残る、分散的複製はもとの鎖と新しい鎖が混ざる。実験の結果で否定された。' },
+  ],
+  a23: [
+    { term: 'RuBP（リブロースビスリン酸）', desc: 'カルビン回路で CO₂ を受け取る炭素数5の物質。CO₂ と結合すると PGA 2分子になる。' },
+    { term: 'PGA（ホスホグリセリン酸）', desc: 'CO₂ が RuBP と結合してできる炭素数3の物質。ATP と NADPH を使って還元され、糖などや RuBP がつくられる。' },
+    { term: 'ルビスコ（RuBisCO）', desc: 'RuBP に CO₂ を結合させる反応を触媒する酵素。葉緑体のストロマにあり、葉に非常に多く含まれる。' },
+    { term: 'ストロマ', desc: '葉緑体の内部のチラコイド以外の部分。カルビン回路の反応が行われる。' },
+    { term: 'チラコイド', desc: '葉緑体の内部にある膜の袋。光エネルギーを吸収して ATP と NADPH をつくる反応が行われる。' },
+    { term: 'トレーサー法', desc: '放射性同位体などで目印をつけた物質を与え、その物質がどの物質に変わっていくかを追跡する方法。カルビンは ¹⁴CO₂ を使った。' },
+  ],
+  a24: [
+    { term: '種間競争', desc: '異なる種の生物が、食物や生活場所などの同じ資源を奪い合うこと。' },
+    { term: '種内競争', desc: '同じ種の個体どうしが、食物や生活空間などを奪い合うこと。個体群の成長が環境収容力で頭打ちになる原因の1つ。' },
+    { term: '生態的地位（ニッチ）', desc: '生物が生態系の中で占める位置。どのような食物・生活場所・時間などの資源を、どのように利用するか。' },
+    { term: '競争的排除', desc: '生態的地位が大きく重なる2種が同じ場所にいると、種間競争の結果、一方が排除されること。ガウゼのゾウリムシの実験。' },
+    { term: 'すみわけ・食いわけ', desc: '生態的地位が似た種が、生活する場所（すみわけ）や食物（食いわけ）を分けることで、種間競争を弱めて共存すること。' },
+    { term: '形質置換（発展）', desc: '同じ場所にすむ近縁な種の間で、種間競争の結果、くちばしの大きさなどの形質の差が大きくなること。' },
+  ],
+  a25: [
+    { term: '自然選択', desc: '生存や繁殖に有利な形質をもつ個体がより多くの子を残すことで、集団の遺伝子頻度が変化すること。' },
+    { term: '工業暗化', desc: '工業地帯で樹皮が黒くなると、ガの暗色型が鳥に見つかりにくく多く生き残り、暗色型の割合が増えた現象。オオシモフリエダシャクの例が有名。' },
+    { term: '適応', desc: '生物が、生存や繁殖に有利な形質をもつように、その環境に合った性質をもつこと。自然選択によって進む。' },
+    { term: '致死遺伝子', desc: 'ホモ接合になると個体が死んでしまう遺伝子。潜性の致死遺伝子はヘテロ接合体の中に残るので、集団からなかなかなくならない。' },
+    { term: '鎌状赤血球貧血症（発展）', desc: 'ヘモグロビンの遺伝子の1塩基の置換で起こる貧血症。ヘテロ接合体はマラリアにかかりにくいので、マラリアの多い地域では遺伝子の頻度が高い。' },
+    { term: '遺伝子頻度の変化', desc: '自然選択は環境に適応する方向に、遺伝的浮動は偶然によって、集団の遺伝子頻度を変える。どちらも進化の要因である。' },
   ],
 };
 return { GLOSSARY };
