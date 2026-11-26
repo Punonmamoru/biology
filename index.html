@@ -36,6 +36,9 @@
   --region-2: rgba(196, 68, 26, 0.08);
   --region-3: rgba(30, 127, 69, 0.22);
   --region-4: rgba(138, 106, 0, 0.10);
+  --biome-forest: rgba(30, 127, 69, 0.32);
+  --biome-grass: rgba(176, 128, 20, 0.26);
+  --biome-barren: rgba(120, 120, 120, 0.12);
   --day: #fff1a8;   /* 明期（明るい黄） */
   --night: #3a3f47; /* 暗期（濃い灰） */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -67,6 +70,9 @@
     --region-2: rgba(255, 154, 107, 0.12);
     --region-3: rgba(111, 220, 149, 0.22);
     --region-4: rgba(240, 201, 90, 0.10);
+  --biome-forest: rgba(111, 220, 149, 0.30);
+  --biome-grass: rgba(240, 190, 80, 0.24);
+  --biome-barren: rgba(200, 200, 200, 0.10);
     --day: #e8d36a;
     --night: #050607;
     --shadow: none;
@@ -98,6 +104,9 @@
   --region-2: rgba(255, 154, 107, 0.12);
   --region-3: rgba(111, 220, 149, 0.22);
   --region-4: rgba(240, 201, 90, 0.10);
+  --biome-forest: rgba(111, 220, 149, 0.30);
+  --biome-grass: rgba(240, 190, 80, 0.24);
+  --biome-barren: rgba(200, 200, 200, 0.10);
   --day: #e8d36a;
   --night: #050607;
   --shadow: none;
@@ -334,6 +343,17 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 .legend .swatch.rep { clip-path: polygon(0 0, 100% 0, 100% 60%, 70% 60%, 70% 100%, 30% 100%, 30% 60%, 0 60%); border: 0; }
 .legend .swatch.wave { height: 4px; border: 0; vertical-align: 3px; }
 table.data tr.hl td { background: var(--accent-soft); font-weight: 700; }
+
+/* 横にスクロールできる表は、端に影を出してスクロールできることを示す */
+.table-scroll {
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), transparent) right / 10px 100% no-repeat scroll;
+}
+/* テーマ切替ボタンの記号を見やすく */
+#btn-theme { font-size: 1.6rem; color: var(--fg); }
 
 </style>
 </head>
@@ -652,14 +672,17 @@ function drawSpec(ctx, W, H, spec) {
   ctx.setLineDash([]);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'right';
-  for (const t of ticksFor(y)) {
-    if (t.v < y.min - 1e-9 || t.v > y.max + 1e-9) continue;
+  // 目盛りの文字が重なるほど間隔がせまいときは、文字だけを間引く（線はすべて引く）
+  const yTicks = ticksFor(y).filter((t) => t.v >= y.min - 1e-9 && t.v <= y.max + 1e-9);
+  const yGap = yTicks.length > 1 ? Math.min(...yTicks.slice(1).map((t, i) => Math.abs(Y(t.v) - Y(yTicks[i].v)))) : Infinity;
+  const yEvery = Math.max(1, Math.ceil((fs + 3) / yGap));
+  yTicks.forEach((t, i) => {
     const py = Y(t.v);
     ctx.strokeStyle = grid;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + pw, py); ctx.stroke();
     ctx.fillStyle = muted;
-    ctx.fillText(t.text || tickText(y, t.v), pad.l - 6, py);
-  }
+    if (i % yEvery === 0) ctx.fillText(t.text || tickText(y, t.v), pad.l - 6, py);
+  });
   if (y2) {
     ctx.textAlign = 'left';
     for (const t of ticksFor(y2)) {
@@ -671,16 +694,19 @@ function drawSpec(ctx, W, H, spec) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   if (!spec.bars) {
-    for (const t of ticksFor(x)) {
-      if (t.v < x.min - 1e-9 || t.v > x.max + 1e-9) continue;
+    const xTicks = ticksFor(x).filter((t) => t.v >= x.min - 1e-9 && t.v <= x.max + 1e-9);
+    const xw = Math.max(...xTicks.map((t) => ctx.measureText(t.text || tickText(x, t.v)).width), 1);
+    const xGap = xTicks.length > 1 ? Math.min(...xTicks.slice(1).map((t, i) => Math.abs(X(t.v) - X(xTicks[i].v)))) : Infinity;
+    const xEvery = Math.max(1, Math.ceil((xw + 6) / xGap));
+    xTicks.forEach((t, i) => {
       const px = X(t.v);
       if (x.grid !== false) {
         ctx.strokeStyle = grid;
         ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + ph); ctx.stroke();
       }
       ctx.fillStyle = muted;
-      ctx.fillText(t.text || tickText(x, t.v), px, pad.t + ph + 5);
-    }
+      if (i % xEvery === 0) ctx.fillText(t.text || tickText(x, t.v), px, pad.t + ph + 5);
+    });
   }
 
   // 軸
@@ -699,17 +725,28 @@ function drawSpec(ctx, W, H, spec) {
     ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(pad.l + pw, Y(0)); ctx.stroke();
   }
 
-  // 軸ラベル
+  // 軸ラベル（入りきらないときは文字を小さくする）
   ctx.fillStyle = fg;
-  ctx.font = `bold ${fs}px ${font}`;
+  const fitFont = (text, room) => {
+    let size = fs;
+    ctx.font = `bold ${size}px ${font}`;
+    while (size > 8.5 && ctx.measureText(text).width > room) {
+      size -= 0.5;
+      ctx.font = `bold ${size}px ${font}`;
+    }
+  };
   if (x.label) {
+    fitFont(x.label, W - 8);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(x.label, pad.l + pw / 2, H - 2);
+    const half = ctx.measureText(x.label).width / 2;
+    ctx.fillText(x.label, Math.min(Math.max(pad.l + pw / 2, half + 4), W - half - 4), H - 2);
   }
   if (y.label) {
+    fitFont(y.label, H - 8);
+    const half = ctx.measureText(y.label).width / 2;
     ctx.save();
-    ctx.translate(fs / 2 + 3, pad.t + ph / 2);
+    ctx.translate(fs / 2 + 3, Math.min(Math.max(pad.t + ph / 2, half + 4), H - half - 4));
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -717,8 +754,10 @@ function drawSpec(ctx, W, H, spec) {
     ctx.restore();
   }
   if (y2 && y2.label) {
+    fitFont(y2.label, H - 8);
+    const half = ctx.measureText(y2.label).width / 2;
     ctx.save();
-    ctx.translate(W - fs / 2 - 3, pad.t + ph / 2);
+    ctx.translate(W - fs / 2 - 3, Math.min(Math.max(pad.t + ph / 2, half + 4), H - half - 4));
     ctx.rotate(Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -842,13 +881,42 @@ function drawSpec(ctx, W, H, spec) {
   }
   ctx.restore();
 
+  // 文字どうしの重なりを避けて置く。候補の位置を順に試し、すでに置いた文字と重ならない最初の位置に書く
+  const placed = [];
+  const lh = fs + 2;
+  const boxOf = (text, x, y, align, base) => {
+    const w = ctx.measureText(text).width;
+    const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+    const y0 = base === 'top' ? y : base === 'bottom' ? y - lh : y - lh / 2;
+    return { x0: x0 - 3, y0: y0 - 1, x1: x0 + w + 3, y1: y0 + lh + 1 };
+  };
+  const hits = (b) => placed.some((q) => b.x0 < q.x1 && q.x0 < b.x1 && b.y0 < q.y1 && q.y0 < b.y1);
+  // 図の枠（目盛りの文字を除いた描画範囲）の中に収まるか
+  const inside = (b) => b.x0 >= pad.l - 4 && b.x1 <= pad.l + pw + 4 && b.y0 >= pad.t - 4 && b.y1 <= pad.t + ph + 4;
+  function put(text, cands, color) {
+    let pick = null;
+    for (const c of cands) {
+      const b = boxOf(text, c.x, c.y, c.align, c.base);
+      if (inside(b) && !hits(b)) { pick = { c, b }; break; }
+    }
+    if (!pick) {
+      const c = cands[0];
+      pick = { c, b: boxOf(text, c.x, c.y, c.align, c.base) };
+    }
+    ctx.textAlign = pick.c.align;
+    ctx.textBaseline = pick.c.base;
+    haloText(ctx, text, pick.c.x, pick.c.y, color, bg);
+    placed.push(pick.b);
+  }
+  const shifts = [0, -lh, lh, -2 * lh, 2 * lh];
+
   // 多角形の名前
   for (const pg of spec.polygons || []) {
     if (!pg.label || !pg.at) continue;
     ctx.font = `${pg.bold ? 'bold ' : ''}${fs}px ${font}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    haloText(ctx, pg.label, X(pg.at[0]), yOf(pg.axis)(pg.at[1]), fg, bg);
+    const px = X(pg.at[0]);
+    const py = yOf(pg.axis)(pg.at[1]);
+    put(pg.label, shifts.map((d) => ({ x: px, y: py + d, align: 'center', base: 'middle' })), fg);
   }
   ctx.font = `${fs}px ${font}`;
 
@@ -868,11 +936,23 @@ function drawSpec(ctx, W, H, spec) {
     ctx.stroke();
     if (m.label) {
       ctx.font = `bold ${fs}px ${font}`;
-      ctx.textBaseline = 'bottom';
       const right = cx > pad.l + pw * 0.75;
-      ctx.textAlign = right ? 'right' : 'left';
-      const ly = Math.max(cy - 6, pad.t + fs + 2);
-      haloText(ctx, m.label, cx + (right ? -6 : 6), ly + (m.dy || 0), tokenColor(m.color || 'fg'), bg);
+      const a1 = right ? 'right' : 'left';
+      const a2 = right ? 'left' : 'right';
+      const sx = (a) => cx + (a === 'right' ? -6 : 6);
+      const ly = Math.max(cy - 6, pad.t + fs + 2) + (m.dy || 0);
+      put(m.label, [
+        { x: sx(a1), y: ly, align: a1, base: 'bottom' },
+        { x: sx(a1), y: cy + 8, align: a1, base: 'top' },
+        { x: sx(a2), y: ly, align: a2, base: 'bottom' },
+        { x: sx(a2), y: cy + 8, align: a2, base: 'top' },
+        { x: sx(a1), y: ly - lh, align: a1, base: 'bottom' },
+        { x: sx(a1), y: cy + 8 + lh, align: a1, base: 'top' },
+        { x: sx(a1), y: ly - 2 * lh, align: a1, base: 'bottom' },
+        { x: sx(a2), y: ly - lh, align: a2, base: 'bottom' },
+        { x: sx(a1), y: ly - 3 * lh, align: a1, base: 'bottom' },
+        { x: sx(a2), y: ly - 2 * lh, align: a2, base: 'bottom' },
+      ], tokenColor(m.color || 'fg'));
       ctx.font = `${fs}px ${font}`;
     }
   }
@@ -887,30 +967,40 @@ function drawSpec(ctx, W, H, spec) {
     if (Math.abs(cur.x - prev.x) < 120 && cur.y - prev.y < fs + 3) cur.y = prev.y + fs + 3;
   }
   for (const l of endLabels) {
-    ctx.textAlign = l.align;
-    const tx = l.align === 'right' ? Math.min(l.x - 4, pad.l + pw - 2) : l.x;
-    haloText(ctx, l.text, tx, l.y - (l.align === 'right' ? 10 : 12), l.color, bg);
+    const w = ctx.measureText(l.text).width;
+    // 中央そろえのラベルも、図の左右の端からはみ出さないようにする
+    const tx = l.align === 'right' ? Math.min(l.x - 4, pad.l + pw - 2) : Math.min(Math.max(l.x, pad.l + w / 2 + 2), pad.l + pw - w / 2 - 2);
+    const ty = l.y - (l.align === 'right' ? 10 : 12);
+    put(l.text, shifts.map((d) => ({ x: tx, y: ty + d, align: l.align, base: 'middle' })), l.color);
   }
 
   // 自由テキスト・垂直線ラベル
   for (const l of spec.vlines || []) {
     if (!l.label) continue;
     const xx = X(l.x);
-    ctx.textAlign = xx > pad.l + pw * 0.7 ? 'right' : 'left';
-    ctx.textBaseline = 'top';
-    haloText(ctx, l.label, xx + (ctx.textAlign === 'right' ? -4 : 4), pad.t + 2 + (l.dy || 0), tokenColor(l.color || 'muted'), bg);
+    const al = xx > pad.l + pw * 0.7 ? 'right' : 'left';
+    const vx = xx + (al === 'right' ? -4 : 4);
+    const vy = pad.t + 2 + (l.dy || 0);
+    put(l.label, [0, lh, 2 * lh, 3 * lh].map((d) => ({ x: vx, y: vy + d, align: al, base: 'top' })), tokenColor(l.color || 'muted'));
   }
   for (const l of spec.hlines || []) {
     if (!l.label) continue;
-    ctx.textAlign = l.align || 'left';
-    ctx.textBaseline = 'bottom';
-    const lx = l.align === 'right' ? pad.l + pw - 4 : pad.l + 4;
-    haloText(ctx, l.label, lx, yOf(l.axis)(l.y) - 3, tokenColor(l.color || 'muted'), bg);
+    const al = l.align || 'left';
+    const lx = al === 'right' ? pad.l + pw - 4 : pad.l + 4;
+    const hy = yOf(l.axis)(l.y);
+    const other = al === 'right' ? pad.l + 4 : pad.l + pw - 4;
+    put(l.label, [
+      { x: lx, y: hy - 3, align: al, base: 'bottom' },
+      { x: lx, y: hy + 3, align: al, base: 'top' },
+      { x: other, y: hy - 3, align: al === 'right' ? 'left' : 'right', base: 'bottom' },
+      { x: other, y: hy + 3, align: al === 'right' ? 'left' : 'right', base: 'top' },
+    ], tokenColor(l.color || 'muted'));
   }
   for (const t of spec.texts || []) {
     ctx.textAlign = t.align || 'center';
     ctx.textBaseline = 'middle';
     haloText(ctx, t.text, X(t.x), yOf(t.axis)(t.y), tokenColor(t.color || 'fg'), bg);
+    placed.push(boxOf(t.text, X(t.x), yOf(t.axis)(t.y), t.align || 'center', 'middle'));
   }
   if (spec.bars) {
     ctx.font = `bold ${fs}px ${font}`;
@@ -2591,7 +2681,7 @@ const dojo = {
         y: { min: 0, max: 100, label: '酸素ヘモグロビンの割合（%）', step: 10 },
         series,
         vlines: [
-          { x: st.lungO2, color: 'c1', dash: 'dot', label: '肺' },
+          { x: st.lungO2, color: 'c1', dash: 'dot', label: '肺', dy: 16 },
           { x: st.tisO2, color: 'c2', dash: 'dot', label: '組織', dy: 18 },
         ],
         hlines: [
@@ -2937,15 +3027,15 @@ function polygons() {
   return [
     { id: 'tundra', points: [[T_MIN, 0], [T_TUNDRA, 0], ...rev(env(T_MIN, T_TUNDRA))], at: [-10, 450] },
     { id: 'desert', points: [[T_TUNDRA, 0], [T_MAX, 0], ...rev(line(pDesert, T_TUNDRA, T_MAX))], at: [12.5, 140] },
-    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [9, 520] },
+    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [4, 470] },
     { id: 'taiga', points: [...grassLine(T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
     { id: 'temperate', points: [...grassLine(T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
-    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
+    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 1020] },
     { id: 'laurel', points: [[T_TEMPERATE, P_SCLERO], [T_WARM, P_SCLERO], ...rev(env(T_TEMPERATE, T_WARM))], at: [16.5, 2200] },
     { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), ...rev(grassLine(T_WARM, T_MAX))], at: [26, 800] },
     { id: 'monsoon', points: [...grassLine(T_WARM, T_MAX), [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25.5, 1650] },
-    { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2900] },
-    { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3100] },
+    { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2450] },
+    { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3650] },
   ];
 }
 
@@ -3016,7 +3106,7 @@ const { slider, segmented, explainBox, panel, modelNote } = __m["dojo/common.js"
 const { BIOMES, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, tempAt, LAPSE, warmthIndex, biomeByWI, WI_ZONES, T_MIN, T_MAX, P_MAX } = __m["models/biome.js"];
 
 // 森林・草原・荒原で塗りを分ける（色だけに頼らず、各区画に名前を書く）
-const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+const FILL = { 森林: 'biome-forest', 草原: 'biome-grass', 荒原: 'biome-barren' };
 
 // 月平均気温（平年値の概数、℃）
 const MONTHLY = {
@@ -3048,7 +3138,7 @@ const dojo = {
     root.append(top);
     top.append(h('h2', null, '年平均気温・年降水量とバイオーム ', modelNote()));
     const chart = createChart(top, { label: 'バイオームの分布図', aspect: 0.95, maxHeight: 540 });
-    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安をつないだ模式（森林と草原の境界は、気温が高いほど多くの降水量が必要になるなめらかな曲線）。濃い塗りが森林、中間が草原、うすい塗りが荒原。左上の白い部分は、そのような気候の地域がほとんどないことを表す。'));
+    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安をつないだ模式（森林と草原の境界は、気温が高いほど多くの降水量が必要になるなめらかな曲線）。濃い緑が森林、黄土色が草原、うすい灰色が荒原（各区画に名前を書いてある）。左上の塗っていない部分は、そのような気候の地域がほとんどないことを表す。'));
     const sT = slider({ label: '年平均気温', min: T_MIN, max: T_MAX, step: 0.5, value: st.T, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.T = v; st.city = null; segCity.set(null, true); update(); } });
     const sP = slider({ label: '年降水量', min: 0, max: P_MAX, step: 50, value: st.P, format: (v) => v + ' mm', onInput: (v) => { st.P = v; st.city = null; segCity.set(null, true); update(); } });
     const segCity = segmented({ label: '都市の気候（平年値の概数）', options: CITIES.map((c) => ({ value: c.name, label: c.name })), value: st.city, onChange: (v) => {
@@ -3123,7 +3213,7 @@ const dojo = {
         const a = v.from;
         const top2 = Math.min(v.to, PEAK);
         const pts = top2 >= PEAK ? [[xl(a), a], [xr(a), a], [50, PEAK]] : [[xl(a), a], [xr(a), a], [xr(top2), top2], [xl(top2), top2]];
-        return { points: pts, fill: v.biome ? FILL[BIOMES[v.biome].kind] : 'region-4', stroke: 'muted', label: `${v.zone}`, at: [50, (a + top2) / 2 - (top2 >= PEAK ? 120 : 0)] };
+        return { points: pts, fill: v.biome ? FILL[BIOMES[v.biome].kind] : 'biome-barren', stroke: 'muted', label: `${v.zone}`, at: [50, (a + top2) / 2 - (top2 >= PEAK ? 120 : 0)] };
       });
       const z = verticalZone(st.elev);
       const tHere = tempAt(st.baseT, 0, st.elev);
@@ -4065,7 +4155,7 @@ const dojo = {
     top.append(h('h2', null, '顕微鏡の視野 ', modelNote()));
     const canvas = h('canvas', { role: 'img', 'aria-label': '顕微鏡の視野の模式図' });
     const wrap = h('div', { class: 'cell-view', style: { justifyContent: 'center' } }, canvas);
-    top.append(wrap, h('p', { class: 'small muted' }, '黒い目盛りが接眼ミクロメーター（接眼レンズの中にあり、対物レンズでは拡大されない）。青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく対物レンズで拡大される）。対物4倍では青い目盛りが細かいので、5目盛りごとの長い線で数えるとよい。'));
+    top.append(wrap, h('p', { class: 'small muted' }, '上側の目盛りが接眼ミクロメーター（接眼レンズの中にあり、対物レンズでは拡大されない）。下側の青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく対物レンズで拡大される）。対物4倍では下側の目盛りが細かいので、5目盛りごとの長い線で数えるとよい。'));
 
     const segMag = segmented({ label: '対物レンズの倍率', options: LENSES.map((m) => ({ value: m, label: `${m}倍` })), value: st.mag, onChange: (v) => { st.mag = v; update(); } });
     const segView = segmented({ label: '見るもの', options: [{ value: 'obj', label: '対物ミクロメーター' }, ...SPECIMENS.map((s) => ({ value: s.id, label: s.name }))], value: st.view, onChange: (v) => { st.view = v; update(); } });
@@ -4592,9 +4682,10 @@ const dojo = {
       chart.draw({
         alt: `水 ${ppm(c[0])} ppm → 魚を食べる鳥 ${ppm(c[5])} ppm`,
         x: { min: -0.4, max: 5.4, label: '栄養段階（左ほど下位）', ticks: MARK.map((m, i) => ({ v: i, text: m })) },
-        y: { min: 1e-6, max: 1e4, log: true, label: '体内の濃度（ppm）' },
+        y: { min: st.preset === 'persistent' ? 1e-6 : 1e-7, max: 1e4, log: true, label: '体内の濃度（ppm）' },
         series: [{ points: pts, color: st.preset === 'persistent' ? 'c2' : 'c1', width: 3 }],
-        markers: pts.map(([i, v]) => ({ x: i, y: v, color: st.preset === 'persistent' ? 'c2' : 'c1', label: ppm(v) })),
+        // 分解されやすい物質では値が近くて文字が重なるので、値は下の計算欄に書く
+        markers: pts.map(([i, v]) => ({ x: i, y: v, color: st.preset === 'persistent' ? 'c2' : 'c1', label: st.preset === 'persistent' ? ppm(v) : null })),
         hlines: [{ y: c[0], color: 'muted', dash: 'dot', width: 1, label: '水中の濃度', align: 'right' }],
       });
       const r = ratio(c[5], c[0]);
@@ -4602,6 +4693,7 @@ const dojo = {
         h('p', null, h('b', null, '濃縮率 ＝ 生物の体内の濃度 ÷ 水中（環境中）の濃度')),
         h('p', null, `魚を食べる鳥：${ppm(c[5])} ÷ ${ppm(c[0])} ＝ `, h('b', null, `${r >= 1000 ? Math.round(r).toLocaleString('ja-JP') : fmt(r, 1)} 倍`)),
         h('p', { class: 'small muted' }, `植物プランクトン：${ppm(c[1])} ÷ ${ppm(c[0])} ＝ ${fmt(ratio(c[1], c[0]), 0)} 倍。それより上は1段上がるごとに ${fmt(f, 1)} 倍になる。`),
+        h('p', { class: 'small' }, '各段階の濃度（ppm）：', c.map((v, i) => `${MARK[i]} ${ppm(v)}`).join('、')),
       );
       const lines = [];
       if (st.preset === 'persistent') {
@@ -4763,7 +4855,7 @@ const dojo = {
       if (!st.lb) {
         const series = [];
         if (hasInh) series.push({ points: sample((S) => rate(S, base.Vmax, base.Km), 0, S_MAX, 200), color: 'muted', dash: 'long', width: 2, label: '阻害剤なし', legendLabel: '阻害剤なし' });
-        series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
+        series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, labelAt: S_MAX * 0.55, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
         chart.draw({
           alt: `Vmax ${fmt(cur.Vmax, 1)}、Km ${fmt(cur.Km, 1)}`,
           x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: niceStep(S_MAX, 8) },
@@ -4777,7 +4869,7 @@ const dojo = {
           markers: [{ x: cur.Km, y: cur.Vmax / 2, color: 'c2', label: `Km ＝ ${fmt(cur.Km, 1)}`, dy: 20 }],
         });
         leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
-        note.textContent = 'v ＝ Vmax[S]／(Km＋[S])。Km は反応速度が Vmax の半分になるときの基質濃度で、小さいほど基質と結合しやすい。';
+        note.textContent = '基質濃度を高くすると反応速度は最大速度 Vmax に近づく。【範囲外】v ＝ Vmax[S]／(Km＋[S])。Km は反応速度が Vmax の半分になるときの基質濃度で、小さいほど基質と結合しやすい。';
       } else {
         const L0 = lineweaver(base.Vmax, base.Km);
         const L = lineweaver(cur.Vmax, cur.Km);
@@ -4789,18 +4881,18 @@ const dojo = {
         if (hasInh) series.push({ points: line(L0), color: 'muted', dash: 'long', width: 2, label: '阻害剤なし', legendLabel: '阻害剤なし' });
         series.push({ points: line(L), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : '1/v', legendLabel: hasInh ? '阻害剤あり' : '1/v' });
         chart.draw({
-          alt: `y切片 ${fmt(L.yIntercept, 4)}、x切片 ${fmt(L.xIntercept, 3)}`,
+          alt: `y切片 ${fmt(L.yIntercept, 4)}、x切片 ${fmt(L.xIntercept, 3).replace('-', '−')}`,
           x: { min: xMin, max: xMax, label: '1/[S]', step: niceStep(xMax - xMin), digits: 2 },
           y: { min: 0, max: yMax, label: '1/v', step: niceStep(yMax), digits: 3 },
           series,
           markers: [
-            { x: 0, y: L.yIntercept, color: 'c2', label: `y切片 1/Vmax ＝ ${fmt(L.yIntercept, 4)}` },
-            { x: L.xIntercept, y: 0, color: 'c4', shape: 'diamond', label: `x切片 −1/Km ＝ ${fmt(L.xIntercept, 3)}`, dy: -14 },
+            { x: 0, y: L.yIntercept, color: 'c2', label: `y切片 ${fmt(L.yIntercept, 4)}` },
+            { x: L.xIntercept, y: 0, color: 'c4', shape: 'diamond', label: `x切片 ${fmt(L.xIntercept, 3).replace('-', '−')}`, dy: -14 },
           ],
           vlines: [{ x: 0, color: 'fg', dash: 'solid', width: 1 }],
         });
         leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
-        note.textContent = `1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax。傾き Km/Vmax ＝ ${fmt(L.slope, 4)}。y切片から Vmax、x切片から Km がわかる。`;
+        note.textContent = `【範囲外】1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax。y切片 ＝ 1/Vmax、x切片 ＝ −1/Km、傾き Km/Vmax ＝ ${fmt(L.slope, 4)}。y切片から Vmax、x切片から Km がわかる。`;
         if (hasInh) done.lbInh = true;
       }
       const lines = [];
@@ -7742,7 +7834,7 @@ const dojo = {
           { points: sample((t) => forest(t).net, 0, 150, 300), color: 'c3', dash: 'dot', width: 3, label: '純生産量', labelAt: best },
         ],
         vlines: [{ x: a, color: 'muted', dash: 'dot' }],
-        markers: [{ x: a, y: f.net, color: 'c3', shape: 'square', label: `純生産量 ${fmt(f.net, 0)}` }],
+        markers: [{ x: a, y: f.net, color: 'c3', shape: 'square', label: `${fmt(f.net, 0)}` }],
       });
       leg.replaceChildren(legend([{ label: '総生産量', color: 'c1' }, { label: '呼吸量', color: 'c2', dash: 'dash' }, { label: '純生産量（＝総生産量 − 呼吸量）', color: 'c3', dash: 'dot' }]));
       table.replaceChildren();
@@ -8198,6 +8290,11 @@ function draw(canvas, st) {
     g.font = `${bold ? 'bold ' : ''}${fs}px ${font}`;
     g.textAlign = align;
     g.textBaseline = 'middle';
+    // 線や図形の上でも読めるよう、背景色で縁取りしてから書く
+    g.lineJoin = 'round';
+    g.lineWidth = 4;
+    g.strokeStyle = bg;
+    g.strokeText(t, x, y);
     g.fillStyle = color;
     g.fillText(t, x, y);
   };
@@ -8598,7 +8695,7 @@ const dojo = {
       chart.draw({
         alt: `${fmt(t, 1)} 分：閾値 10^${fmt(v, 1)}`,
         x: { min: 0, max: 40, label: '暗い所に入ってからの時間（分）', step: 5 },
-        y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数・相対値）', ticks: [-2, -1, 0, 1, 2, 3, 4, 5].map((k) => ({ v: k, text: `10${k < 0 ? '⁻' : ''}${'⁰¹²³⁴⁵'[Math.abs(k)]}` })) },
+        y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数）', ticks: [-2, -1, 0, 1, 2, 3, 4, 5].map((k) => ({ v: k, text: `10${k < 0 ? '⁻' : ''}${'⁰¹²³⁴⁵'[Math.abs(k)]}` })) },
         series: [
           { points: sample((x) => Math.min(coneLog(x), 5.2), 0, 40, 300), color: 'c2', dash: 'dot', width: 1.5, label: '錐体', labelAt: 30 },
           { points: sample((x) => Math.min(rodLog(x), 5.2), 0, 40, 300), color: 'c1', dash: 'dot', width: 1.5, label: '桿体', labelAt: 34 },
@@ -8626,7 +8723,7 @@ const dojo = {
       title.replaceChildren('網膜の視細胞の分布 ', modelNote('ヒトの右眼の模式'));
       chart.draw({
         alt: `${a}°：錐体 ${fmt(c, 0)}、桿体 ${fmt(r, 0)}`,
-        x: { min: -60, max: 60, label: '網膜上の、黄斑の中心（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
+        x: { min: -60, max: 60, label: '中心窩からの角度（°）　← 耳側｜鼻側 →', step: 20 },
         y: { min: 0, max: 180, label: '視細胞の密度（千個/mm²）', step: 40 },
         regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: '盲斑' }],
         series: [
@@ -8917,7 +9014,7 @@ const dojo = {
       chart.draw({
         alt: `n ＝ ${n}：配偶子 ${g} 通り`,
         x: { min: 1, max: 23, label: '相同染色体の組の数 n', step: 2 },
-        y: { min: 1, max: 1e7, log: true, label: '配偶子の染色体の組合せ（通り・対数目盛り）', ticks: [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((v) => ({ v, text: v < 1e4 ? String(v) : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
+        y: { min: 1, max: 1e7, log: true, label: '組合せの数（通り・対数）', ticks: [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((v) => ({ v, text: v < 1e4 ? String(v) : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
         series: [{ points: pts, color: 'c1', width: 3 }],
         markers: [{ x: n, y: g, color: 'c2', label: big(g) }],
       });
@@ -10129,7 +10226,7 @@ const B4 = [
         text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とし、図の目盛りから整数で読み取ること。`,
         chart: {
           x: { min: 0, max: xMax, label: '光の強さ', step: 5 },
-          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: 1 },
+          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: Pmax + R > 12 ? 2 : 1 },
           series: [{ points: sample((I) => apparent(p, I), 0, xMax, 200), color: 'c2', width: 3 }],
           markers: [{ x: X, y: apparent(p, X), color: 'c2' }],
           vlines: [{ x: X, color: 'muted', dash: 'dot', label: `${X}` }],
@@ -10387,7 +10484,7 @@ const B5 = [
         text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは、3種の量（ラッコ・ウニは個体数、ケルプは現存量）を、それぞれ乱獲前を100とした相対値で表している。ア〜ウの組合せとして正しいものはどれか。',
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
+          y: { min: 0, max: 250, label: '乱獲前を100とした相対値', step: 50 },
           series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
           vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
           alt: '3種の個体数の変化ア・イ・ウ',
@@ -10981,7 +11078,7 @@ const { fmt } = __m["lib/format.js"];
 const { KATA, distinctNumbers } = __m["questions/common.js"];
 const { BIOMES, classify, polygons, T_MIN, T_MAX, P_MAX, VERTICAL, LAPSE, warmthIndex, biomeByWI, WI_ZONES, JAPAN_HORIZONTAL } = __m["models/biome.js"];
 
-const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+const FILL = { 森林: 'biome-forest', 草原: 'biome-grass', 荒原: 'biome-barren' };
 
 // 図：区画の名前を出す／隠して記号にする
 function biomeChart({ labels = true, marks = [], point = null }) {
@@ -12190,7 +12287,7 @@ const B13 = [
       for (let k = 0; k * step <= N + 1e-9; k++) series.push({ points: [[k * step, 0], [k * step, k % 5 === 0 ? -1.4 : -0.9]], color: 'c1', width: 1.6 });
       const d = distinctNumbers(u, [(10 * e) / o, o / e, u * 2, u / 2, 10 / u], ' μm', 2);
       return {
-        text: '図は、顕微鏡で見た接眼ミクロメーター（上側の黒い目盛り）と対物ミクロメーター（下側の青い目盛り、1目盛り 10 μm）である。左端で両方の0の線がそろっている。接眼ミクロメーター1目盛りの長さは何 μm か。',
+        text: '図は、顕微鏡で見た接眼ミクロメーター（上側の目盛り）と対物ミクロメーター（下側の目盛り、1目盛り 10 μm）である。左端で両方の0の線がそろっている。接眼ミクロメーター1目盛りの長さは何 μm か。',
         chart: {
           x: { min: -0.5, max: N + 0.5, label: '接眼ミクロメーターの目盛り', step: 5, grid: false },
           y: { min: -2, max: 2, ticks: [] },

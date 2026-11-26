@@ -67,7 +67,7 @@ export const B4 = [
         text: `図は、ある植物の光の強さと見かけの光合成速度（CO₂吸収速度）の関係である。光の強さが ${X} のときの光合成速度（呼吸速度を差し引く前の値）はいくらか。ただし呼吸速度は光の強さによらず一定とし、図の目盛りから整数で読み取ること。`,
         chart: {
           x: { min: 0, max: xMax, label: '光の強さ', step: 5 },
-          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: 1 },
+          y: { min: -R - 1, max: Pmax, label: 'CO₂吸収速度', step: Pmax + R > 12 ? 2 : 1 },
           series: [{ points: sample((I) => apparent(p, I), 0, xMax, 200), color: 'c2', width: 3 }],
           markers: [{ x: X, y: apparent(p, X), color: 'c2' }],
           vlines: [{ x: X, color: 'muted', dash: 'dot', label: `${X}` }],

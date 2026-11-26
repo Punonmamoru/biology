@@ -71,7 +71,7 @@ export const B5 = [
         text: 'ラッコ・ウニ・ケルプ（海藻）がいる海域で、20年目からラッコの乱獲が始まった。図のア〜ウは、3種の量（ラッコ・ウニは個体数、ケルプは現存量）を、それぞれ乱獲前を100とした相対値で表している。ア〜ウの組合せとして正しいものはどれか。',
         chart: {
           x: { min: 0, max: 120, label: '時間（年）', step: 20 },
-          y: { min: 0, max: yMaxFor(run), label: '乱獲前を100とした相対値', step: 100 },
+          y: { min: 0, max: 250, label: '乱獲前を100とした相対値', step: 50 },
           series: order.map((n, i) => ({ points: run.map((r) => [r.t, val[n](r)]), ...styles[i], width: 3, label: labels[i] })),
           vlines: [{ x: 20, color: 'muted', label: '乱獲開始' }],
           alt: '3種の個体数の変化ア・イ・ウ',

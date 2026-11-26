@@ -50,7 +50,7 @@ export const dojo = {
       chart.draw({
         alt: `${fmt(t, 1)} 分：閾値 10^${fmt(v, 1)}`,
         x: { min: 0, max: 40, label: '暗い所に入ってからの時間（分）', step: 5 },
-        y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数・相対値）', ticks: [-2, -1, 0, 1, 2, 3, 4, 5].map((k) => ({ v: k, text: `10${k < 0 ? '⁻' : ''}${'⁰¹²³⁴⁵'[Math.abs(k)]}` })) },
+        y: { min: -2, max: 5, label: '感じとれる最小の光の強さ（対数）', ticks: [-2, -1, 0, 1, 2, 3, 4, 5].map((k) => ({ v: k, text: `10${k < 0 ? '⁻' : ''}${'⁰¹²³⁴⁵'[Math.abs(k)]}` })) },
         series: [
           { points: sample((x) => Math.min(coneLog(x), 5.2), 0, 40, 300), color: 'c2', dash: 'dot', width: 1.5, label: '錐体', labelAt: 30 },
           { points: sample((x) => Math.min(rodLog(x), 5.2), 0, 40, 300), color: 'c1', dash: 'dot', width: 1.5, label: '桿体', labelAt: 34 },
@@ -78,7 +78,7 @@ export const dojo = {
       title.replaceChildren('網膜の視細胞の分布 ', modelNote('ヒトの右眼の模式'));
       chart.draw({
         alt: `${a}°：錐体 ${fmt(c, 0)}、桿体 ${fmt(r, 0)}`,
-        x: { min: -60, max: 60, label: '網膜上の、黄斑の中心（中心窩）からの角度（°）　耳側 ← → 鼻側', step: 20 },
+        x: { min: -60, max: 60, label: '中心窩からの角度（°）　← 耳側｜鼻側 →', step: 20 },
         y: { min: 0, max: 180, label: '視細胞の密度（千個/mm²）', step: 40 },
         regions: [{ x0: BLIND[0], x1: BLIND[1], fill: 'region-2', label: '盲斑' }],
         series: [

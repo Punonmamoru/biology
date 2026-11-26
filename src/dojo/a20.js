@@ -82,7 +82,7 @@ export const dojo = {
       chart.draw({
         alt: `n ＝ ${n}：配偶子 ${g} 通り`,
         x: { min: 1, max: 23, label: '相同染色体の組の数 n', step: 2 },
-        y: { min: 1, max: 1e7, log: true, label: '配偶子の染色体の組合せ（通り・対数目盛り）', ticks: [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((v) => ({ v, text: v < 1e4 ? String(v) : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
+        y: { min: 1, max: 1e7, log: true, label: '組合せの数（通り・対数）', ticks: [1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((v) => ({ v, text: v < 1e4 ? String(v) : `10${String(Math.log10(v)).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d])}` })) },
         series: [{ points: pts, color: 'c1', width: 3 }],
         markers: [{ x: n, y: g, color: 'c2', label: big(g) }],
       });

@@ -6,7 +6,7 @@ import { slider, segmented, explainBox, panel, modelNote } from './common.js';
 import { BIOMES, classify, polygons, CITIES, JAPAN_HORIZONTAL, VERTICAL, TREE_LINE, verticalZone, tempAt, LAPSE, warmthIndex, biomeByWI, WI_ZONES, T_MIN, T_MAX, P_MAX } from '../models/biome.js';
 
 // 森林・草原・荒原で塗りを分ける（色だけに頼らず、各区画に名前を書く）
-const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+const FILL = { 森林: 'biome-forest', 草原: 'biome-grass', 荒原: 'biome-barren' };
 
 // 月平均気温（平年値の概数、℃）
 const MONTHLY = {
@@ -38,7 +38,7 @@ export const dojo = {
     root.append(top);
     top.append(h('h2', null, '年平均気温・年降水量とバイオーム ', modelNote()));
     const chart = createChart(top, { label: 'バイオームの分布図', aspect: 0.95, maxHeight: 540 });
-    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安をつないだ模式（森林と草原の境界は、気温が高いほど多くの降水量が必要になるなめらかな曲線）。濃い塗りが森林、中間が草原、うすい塗りが荒原。左上の白い部分は、そのような気候の地域がほとんどないことを表す。'));
+    top.append(h('p', { class: 'small muted' }, '境界は教科書の図の目安をつないだ模式（森林と草原の境界は、気温が高いほど多くの降水量が必要になるなめらかな曲線）。濃い緑が森林、黄土色が草原、うすい灰色が荒原（各区画に名前を書いてある）。左上の塗っていない部分は、そのような気候の地域がほとんどないことを表す。'));
     const sT = slider({ label: '年平均気温', min: T_MIN, max: T_MAX, step: 0.5, value: st.T, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.T = v; st.city = null; segCity.set(null, true); update(); } });
     const sP = slider({ label: '年降水量', min: 0, max: P_MAX, step: 50, value: st.P, format: (v) => v + ' mm', onInput: (v) => { st.P = v; st.city = null; segCity.set(null, true); update(); } });
     const segCity = segmented({ label: '都市の気候（平年値の概数）', options: CITIES.map((c) => ({ value: c.name, label: c.name })), value: st.city, onChange: (v) => {
@@ -113,7 +113,7 @@ export const dojo = {
         const a = v.from;
         const top2 = Math.min(v.to, PEAK);
         const pts = top2 >= PEAK ? [[xl(a), a], [xr(a), a], [50, PEAK]] : [[xl(a), a], [xr(a), a], [xr(top2), top2], [xl(top2), top2]];
-        return { points: pts, fill: v.biome ? FILL[BIOMES[v.biome].kind] : 'region-4', stroke: 'muted', label: `${v.zone}`, at: [50, (a + top2) / 2 - (top2 >= PEAK ? 120 : 0)] };
+        return { points: pts, fill: v.biome ? FILL[BIOMES[v.biome].kind] : 'biome-barren', stroke: 'muted', label: `${v.zone}`, at: [50, (a + top2) / 2 - (top2 >= PEAK ? 120 : 0)] };
       });
       const z = verticalZone(st.elev);
       const tHere = tempAt(st.baseT, 0, st.elev);

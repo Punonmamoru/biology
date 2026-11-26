@@ -3,7 +3,7 @@ import { fmt } from '../lib/format.js';
 import { KATA, distinctNumbers } from './common.js';
 import { BIOMES, classify, polygons, T_MIN, T_MAX, P_MAX, VERTICAL, LAPSE, warmthIndex, biomeByWI, WI_ZONES, JAPAN_HORIZONTAL } from '../models/biome.js';
 
-const FILL = { 森林: 'region-3', 草原: 'region-2', 荒原: 'region-4' };
+const FILL = { 森林: 'biome-forest', 草原: 'biome-grass', 荒原: 'biome-barren' };
 
 // 図：区画の名前を出す／隠して記号にする
 function biomeChart({ labels = true, marks = [], point = null }) {

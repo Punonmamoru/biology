@@ -46,9 +46,10 @@ export const dojo = {
       chart.draw({
         alt: `水 ${ppm(c[0])} ppm → 魚を食べる鳥 ${ppm(c[5])} ppm`,
         x: { min: -0.4, max: 5.4, label: '栄養段階（左ほど下位）', ticks: MARK.map((m, i) => ({ v: i, text: m })) },
-        y: { min: 1e-6, max: 1e4, log: true, label: '体内の濃度（ppm）' },
+        y: { min: st.preset === 'persistent' ? 1e-6 : 1e-7, max: 1e4, log: true, label: '体内の濃度（ppm）' },
         series: [{ points: pts, color: st.preset === 'persistent' ? 'c2' : 'c1', width: 3 }],
-        markers: pts.map(([i, v]) => ({ x: i, y: v, color: st.preset === 'persistent' ? 'c2' : 'c1', label: ppm(v) })),
+        // 分解されやすい物質では値が近くて文字が重なるので、値は下の計算欄に書く
+        markers: pts.map(([i, v]) => ({ x: i, y: v, color: st.preset === 'persistent' ? 'c2' : 'c1', label: st.preset === 'persistent' ? ppm(v) : null })),
         hlines: [{ y: c[0], color: 'muted', dash: 'dot', width: 1, label: '水中の濃度', align: 'right' }],
       });
       const r = ratio(c[5], c[0]);
@@ -56,6 +57,7 @@ export const dojo = {
         h('p', null, h('b', null, '濃縮率 ＝ 生物の体内の濃度 ÷ 水中（環境中）の濃度')),
         h('p', null, `魚を食べる鳥：${ppm(c[5])} ÷ ${ppm(c[0])} ＝ `, h('b', null, `${r >= 1000 ? Math.round(r).toLocaleString('ja-JP') : fmt(r, 1)} 倍`)),
         h('p', { class: 'small muted' }, `植物プランクトン：${ppm(c[1])} ÷ ${ppm(c[0])} ＝ ${fmt(ratio(c[1], c[0]), 0)} 倍。それより上は1段上がるごとに ${fmt(f, 1)} 倍になる。`),
+        h('p', { class: 'small' }, '各段階の濃度（ppm）：', c.map((v, i) => `${MARK[i]} ${ppm(v)}`).join('、')),
       );
       const lines = [];
       if (st.preset === 'persistent') {

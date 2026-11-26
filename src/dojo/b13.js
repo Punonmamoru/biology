@@ -131,7 +131,7 @@ export const dojo = {
     top.append(h('h2', null, '顕微鏡の視野 ', modelNote()));
     const canvas = h('canvas', { role: 'img', 'aria-label': '顕微鏡の視野の模式図' });
     const wrap = h('div', { class: 'cell-view', style: { justifyContent: 'center' } }, canvas);
-    top.append(wrap, h('p', { class: 'small muted' }, '黒い目盛りが接眼ミクロメーター（接眼レンズの中にあり、対物レンズでは拡大されない）。青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく対物レンズで拡大される）。対物4倍では青い目盛りが細かいので、5目盛りごとの長い線で数えるとよい。'));
+    top.append(wrap, h('p', { class: 'small muted' }, '上側の目盛りが接眼ミクロメーター（接眼レンズの中にあり、対物レンズでは拡大されない）。下側の青い目盛りが対物ミクロメーター（1 mm を100等分、1目盛り＝10 μm。試料と同じく対物レンズで拡大される）。対物4倍では下側の目盛りが細かいので、5目盛りごとの長い線で数えるとよい。'));
 
     const segMag = segmented({ label: '対物レンズの倍率', options: LENSES.map((m) => ({ value: m, label: `${m}倍` })), value: st.mag, onChange: (v) => { st.mag = v; update(); } });
     const segView = segmented({ label: '見るもの', options: [{ value: 'obj', label: '対物ミクロメーター' }, ...SPECIMENS.map((s) => ({ value: s.id, label: s.name }))], value: st.view, onChange: (v) => { st.view = v; update(); } });

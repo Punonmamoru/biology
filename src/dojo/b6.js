@@ -57,7 +57,7 @@ export const dojo = {
         y: { min: 0, max: 100, label: '酸素ヘモグロビンの割合（%）', step: 10 },
         series,
         vlines: [
-          { x: st.lungO2, color: 'c1', dash: 'dot', label: '肺' },
+          { x: st.lungO2, color: 'c1', dash: 'dot', label: '肺', dy: 16 },
           { x: st.tisO2, color: 'c2', dash: 'dot', label: '組織', dy: 18 },
         ],
         hlines: [

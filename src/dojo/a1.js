@@ -72,7 +72,7 @@ export const dojo = {
       if (!st.lb) {
         const series = [];
         if (hasInh) series.push({ points: sample((S) => rate(S, base.Vmax, base.Km), 0, S_MAX, 200), color: 'muted', dash: 'long', width: 2, label: '阻害剤なし', legendLabel: '阻害剤なし' });
-        series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
+        series.push({ points: sample((S) => rate(S, cur.Vmax, cur.Km), 0, S_MAX, 200), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : null, labelAt: S_MAX * 0.55, legendLabel: hasInh ? `阻害剤あり（${st.inh === 'competitive' ? '競争的' : '非競争的'}）` : '反応速度 v' });
         chart.draw({
           alt: `Vmax ${fmt(cur.Vmax, 1)}、Km ${fmt(cur.Km, 1)}`,
           x: { min: 0, max: S_MAX, label: '基質濃度 [S]', step: niceStep(S_MAX, 8) },
@@ -86,7 +86,7 @@ export const dojo = {
           markers: [{ x: cur.Km, y: cur.Vmax / 2, color: 'c2', label: `Km ＝ ${fmt(cur.Km, 1)}`, dy: 20 }],
         });
         leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
-        note.textContent = 'v ＝ Vmax[S]／(Km＋[S])。Km は反応速度が Vmax の半分になるときの基質濃度で、小さいほど基質と結合しやすい。';
+        note.textContent = '基質濃度を高くすると反応速度は最大速度 Vmax に近づく。【範囲外】v ＝ Vmax[S]／(Km＋[S])。Km は反応速度が Vmax の半分になるときの基質濃度で、小さいほど基質と結合しやすい。';
       } else {
         const L0 = lineweaver(base.Vmax, base.Km);
         const L = lineweaver(cur.Vmax, cur.Km);
@@ -98,18 +98,18 @@ export const dojo = {
         if (hasInh) series.push({ points: line(L0), color: 'muted', dash: 'long', width: 2, label: '阻害剤なし', legendLabel: '阻害剤なし' });
         series.push({ points: line(L), color: 'c1', width: 3, label: hasInh ? '阻害剤あり' : '1/v', legendLabel: hasInh ? '阻害剤あり' : '1/v' });
         chart.draw({
-          alt: `y切片 ${fmt(L.yIntercept, 4)}、x切片 ${fmt(L.xIntercept, 3)}`,
+          alt: `y切片 ${fmt(L.yIntercept, 4)}、x切片 ${fmt(L.xIntercept, 3).replace('-', '−')}`,
           x: { min: xMin, max: xMax, label: '1/[S]', step: niceStep(xMax - xMin), digits: 2 },
           y: { min: 0, max: yMax, label: '1/v', step: niceStep(yMax), digits: 3 },
           series,
           markers: [
-            { x: 0, y: L.yIntercept, color: 'c2', label: `y切片 1/Vmax ＝ ${fmt(L.yIntercept, 4)}` },
-            { x: L.xIntercept, y: 0, color: 'c4', shape: 'diamond', label: `x切片 −1/Km ＝ ${fmt(L.xIntercept, 3)}`, dy: -14 },
+            { x: 0, y: L.yIntercept, color: 'c2', label: `y切片 ${fmt(L.yIntercept, 4)}` },
+            { x: L.xIntercept, y: 0, color: 'c4', shape: 'diamond', label: `x切片 ${fmt(L.xIntercept, 3).replace('-', '−')}`, dy: -14 },
           ],
           vlines: [{ x: 0, color: 'fg', dash: 'solid', width: 1 }],
         });
         leg.replaceChildren(legend(series.map((s) => ({ label: s.legendLabel, color: s.color, dash: s.dash }))));
-        note.textContent = `1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax。傾き Km/Vmax ＝ ${fmt(L.slope, 4)}。y切片から Vmax、x切片から Km がわかる。`;
+        note.textContent = `【範囲外】1/v ＝ (Km/Vmax)(1/[S]) ＋ 1/Vmax。y切片 ＝ 1/Vmax、x切片 ＝ −1/Km、傾き Km/Vmax ＝ ${fmt(L.slope, 4)}。y切片から Vmax、x切片から Km がわかる。`;
         if (hasInh) done.lbInh = true;
       }
       const lines = [];
