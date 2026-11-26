@@ -70,8 +70,8 @@ function drawTubes(canvas, st) {
   }
   g.textBaseline = 'top';
   g.fillStyle = muted;
-  g.textAlign = 'left';
-  g.fillText('↓ 遠心管の底（重い DNA ほど底に近い）', left, bot + 4);
+  g.textAlign = 'center';
+  g.fillText(W < 340 ? '重い DNA ほど管の底に近い' : '↓ 遠心管の底（重い DNA ほど底に近い）', (left + W - 6) / 2, bot + 4);
 }
 
 export const dojo = {

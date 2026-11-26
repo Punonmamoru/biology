@@ -76,10 +76,16 @@ export const dojo = {
         ],
         hlines: eq != null && s > 0 ? [{ y: eq, color: 'c4', dash: 'dot', label: `平衡 ${fmt(eq, 2)}` }] : [],
         vlines: [{ x: gen, color: 'muted', dash: 'dot' }],
-        markers: [
-          { x: gen, y: q, color: 'c1', label: `q ＝ ${fmt(q, 3)}` },
-          { x: gen, y: pheno, color: 'c3', shape: 'square', label: `${fmt(pheno * 100, 1)}%` },
-        ],
+        // 2つの点が近いときは、文字を1つにまとめて重ならないようにする
+        markers: Math.abs(q - pheno) < 0.12
+          ? [
+            { x: gen, y: q, color: 'c1', label: `q ＝ ${fmt(q, 3)}・${fmt(pheno * 100, 1)}%` },
+            { x: gen, y: pheno, color: 'c3', shape: 'square' },
+          ]
+          : [
+            { x: gen, y: q, color: 'c1', label: `q ＝ ${fmt(q, 3)}` },
+            { x: gen, y: pheno, color: 'c3', shape: 'square', label: `${fmt(pheno * 100, 1)}%` },
+          ],
       });
       leg.replaceChildren(legend([{ label: qName, color: 'c1' }, { label: pName, color: 'c3', dash: 'dash' }, ...(eq != null && s > 0 ? [{ label: '平衡の頻度', color: 'c4', dash: 'dot' }] : [])]));
       note.textContent = '毎世代、自由交配で AA : Aa : aa ＝ p² : 2pq : q² の子が生まれ、遺伝子型ごとに子を残せる割合が違うとした模式図（集団は十分に大きく、突然変異・移入・移出はない）。';
