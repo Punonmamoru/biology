@@ -7,18 +7,18 @@ export const A25 = [
   {
     id: 'a25-lethal-calc',
     stage: 'a25',
-    level: 3,
+    level: 2,
     kind: 'calc',
     make(rng) {
       const q0 = rng.pick([0.5, 0.25, 0.2, 0.1]);
-      const n = rng.pick([1, 2, 3, 5, 10]);
+      const n = rng.pick([1, 2, 3]);
       const ans = lethalQ(q0, n);
-      const d = distinctNumbers(ans, [q0 / (n + 1), Math.pow(q0, n + 1), q0 / Math.pow(2, n), q0 * (1 - n * q0 / 2), q0 / (1 + q0), q0 * q0, q0, lethalQ(q0, n + 1), 2 * ans], '', 3);
+      const d = distinctNumbers(ans, [q0 / (n + 1), Math.pow(q0, n + 1), q0 / Math.pow(2, n), q0 * (1 - n * q0 / 2), q0 / (1 + q0), q0 * q0, q0, 2 * ans, q0 * (1 - q0)].filter((v) => v >= 0.001), '', 3);
       return {
-        text: `ある集団で、潜性の致死遺伝子 a の遺伝子頻度が ${q0} である。aa の個体は生まれてもすぐに死んで子を残さず、それ以外の条件ではハーディー・ワインベルグの法則が成り立つとする。${n} 世代後の a の遺伝子頻度はいくらか。`,
+        text: `ある集団で、潜性の致死遺伝子 a の遺伝子頻度が ${q0} である。aa の個体は生まれてもすぐに死んで子を残さず、それ以外の条件ではハーディー・ワインベルグの法則が成り立つとする。このとき、a の遺伝子頻度は1世代ごとに q から q ÷ (1 ＋ q) に変わる。${n} 世代後の a の遺伝子頻度はいくらか（小数第3位まで）。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `aa がすべて取り除かれると、a の遺伝子頻度は1世代ごとに q → q ÷ (1 ＋ q) となるので、${n} 世代後は q₀ ÷ (1 ＋ n·q₀) ＝ ${q0} ÷ (1 ＋ ${n} × ${q0}) ＝ ${fmt(ans, 3)} となる。aa だけが除かれ、Aa の中の a は次の世代に伝わるので、a はなかなかなくならないからである。`,
+        explanation: `q ÷ (1 ＋ q) を${n}回くり返すと、${[0, 1, 2, 3].slice(0, n + 1).map((k) => fmt(lethalQ(q0, k), 3)).join(' → ')} となり、答えは ${fmt(ans, 3)} である（まとめると q₀ ÷ (1 ＋ n·q₀) ＝ ${q0} ÷ (1 ＋ ${n} × ${q0})）。aa だけが除かれ、Aa の中の a は次の世代に伝わるので、a はなかなかなくならないからである。`,
       };
     },
   },

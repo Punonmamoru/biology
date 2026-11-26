@@ -81,7 +81,7 @@ export const dojo = {
       if (L === 0 && C === 0) {
         lines.push('光も CO₂ もないと、2つの反応がどちらも止まるので、RuBP も PGA も量が変わらない（このモデルの場合）。');
       } else if (Math.abs(dR) < 0.05) {
-        lines.push('光と CO₂ のバランスが変わらないので、RuBP と PGA の量はほとんど変わらない。');
+        lines.push('光と CO₂ のバランスが変わらないので、RuBP と PGA の量はほとんど変わらない（このモデルの場合）。');
       } else if (dR < 0) {
         lines.push(`RuBP が減り（${fmt(s0.rubp, 1)} → ${fmt(end.rubp, 1)}）、PGA が増える（${fmt(s0.pga, 1)} → ${fmt(end.pga, 1)}）。`);
         lines.push(L < 1

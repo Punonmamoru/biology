@@ -48,6 +48,8 @@ export const dojo = {
       sS.el.hidden = st.preset === 'lethal';
       const lab = sS.el.querySelector('label');
       if (lab) lab.textContent = st.preset === 'industrial' ? '明色型（cc）が鳥に食べられて子を残せない割合' : '正常型（AA）がマラリアで子を残せない割合';
+      const labQ = sQ.el.querySelector('label');
+      if (labQ) labQ.textContent = { industrial: 'はじめの明色の遺伝子 c の頻度 q₀', lethal: 'はじめの致死遺伝子 a の頻度 q₀', hetero: 'はじめの鎌状赤血球の遺伝子 a の頻度 q₀' }[st.preset];
       update();
     }
 

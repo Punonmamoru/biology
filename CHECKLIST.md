@@ -60,8 +60,8 @@
 | ☐ | A21 炭素の循環 | 炭素の出入りの値（億トン/年）、CO₂ 濃度の季節変動の振れ幅。「生物」に置いたこと | | [開く](https://punonmamoru.github.io/biology/#/dojo/a21) |
 | ☐ | A22 DNAの複製 | 遠心管のバンドの位置（軽い・中間・重い）、保存的・分散的複製を「仮説」として示したこと | | [開く](https://punonmamoru.github.io/biology/#/dojo/a22) |
 | ☐ | A23 カルビン回路 | 光・CO₂ を止めたときの RuBP・PGA の増減、略称（RuBP・PGA）とルビスコの表記 | | [開く](https://punonmamoru.github.io/biology/#/dojo/a23) |
-| ☐ | A24 種間競争 | ゾウリムシ・ヒメゾウリムシ・ミドリゾウリムシの呼び方、混合飼育のグラフの形（日数は目安） | | [開く](https://punonmamoru.github.io/biology/#/dojo/a24) |
-| ☐ | A25 自然選択 | 工業暗化の世代数の目安、鎌状赤血球貧血症を（発展）としたこと | | [開く](https://punonmamoru.github.io/biology/#/dojo/a25) |
+| ☐ | A24 種間競争 | ゾウリムシ・ヒメゾウリムシ・ミドリゾウリムシの呼び方、混合飼育のグラフの形（日数は目安）、形質置換を（発展）としたこと | | [開く](https://punonmamoru.github.io/biology/#/dojo/a24) |
+| ☐ | A25 自然選択 | 工業暗化の世代数の目安、鎌状赤血球貧血症のヘテロ接合体の有利を（発展）としたこと、「鎌状赤血球症」の表記を使う教科書かどうか | | [開く](https://punonmamoru.github.io/biology/#/dojo/a25) |
 
 ## 2. 用語・表記
 

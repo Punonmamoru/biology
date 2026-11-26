@@ -7,7 +7,7 @@ import { bands, profile, MODES, molecules } from '../models/replication.js';
 import { sample } from '../lib/series.js';
 
 const GMAX = 4;
-const KIND_NAME = { heavy: '重い（¹⁵N／¹⁵N）', hybrid: '中間（¹⁵N／¹⁴N）', light: '軽い（¹⁴N／¹⁴N）', mixed: '1本だけ' };
+const KIND_NAME = { heavy: '重い（¹⁵N／¹⁵N）', hybrid: '中間（¹⁵N／¹⁴N）', light: '軽い（¹⁴N／¹⁴N）', mixed: '1本（すべて同じ密度）' };
 
 // 遠心管の模式図：0〜4世代の管を横に並べ、DNA のバンドを描く（重いものほど底に近い）
 function drawTubes(canvas, st) {
