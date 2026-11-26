@@ -28,7 +28,7 @@ export function distanceMatrix({ pair = ['A', 'B'], t1, t2, t3, rate }) {
   return m;
 }
 
-// 違いの数の表から、最も近い2つの組を順にまとめて系統樹を作る（UPGMA 法の考え方）
+// 違いの数の表から、最も近い2つの組を順にまとめて系統樹をつくる（UPGMA 法の考え方）
 // 返り値：[{ members: ['A','B'], height: 違いの数 ÷ 2 }, ...]（まとめた順）
 export function upgma(matrix, names = SPECIES) {
   let clusters = names.map((n) => ({ id: n, members: [n], height: 0 }));

@@ -34,9 +34,9 @@ export function measure(divs, unit) {
 // 観察する試料（長さの目安。教科書に出てくる大きさの概数）
 export const SPECIMENS = [
   { id: 'paramecium', name: 'ゾウリムシ', length: 200, width: 55, shape: 'slipper' },
-  { id: 'cheek', name: 'ヒトの口腔上皮細胞', length: 63, width: 49, shape: 'polygon' },
-  { id: 'rbc', name: 'ヒトの赤血球', length: 7.7, width: 7.7, shape: 'disc' },
-  { id: 'ecoli', name: '大腸菌', length: 2.8, width: 0.9, shape: 'rod' },
+  { id: 'cheek', name: 'ヒトの口腔上皮細胞', length: 60, width: 47, shape: 'polygon' },
+  { id: 'rbc', name: 'ヒトの赤血球', length: 7.5, width: 7.5, shape: 'disc' },
+  { id: 'ecoli', name: '大腸菌', length: 3, width: 1, shape: 'rod' },
 ];
 
 // 原形質流動などの速さ（μm/秒）

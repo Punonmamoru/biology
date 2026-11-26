@@ -42,7 +42,7 @@ export function renderTransfer(app) {
     h('div', { class: 'hero' }, h('h1', null, '引き継ぎ・設定')),
     storageAvailable() ? null : h('div', { class: 'panel' }, h('b', null, 'この端末（ブラウザ）では学習記録を保存できません。'), h('p', { class: 'small' }, 'プライベートモードなどでは、画面を閉じると記録が消えます。引き継ぎコードを作ってメモしておくと、あとで続きから再開できます。')),
     h('section', { class: 'panel' },
-      h('h2', null, '引き継ぎコードを作る'),
+      h('h2', null, '引き継ぎコードをつくる'),
       h('p', { class: 'small muted' }, '進捗・やってみよう・バッジ・ミスサマリー（最新30問）をコードにする。コードは通信せず、この画面に表示するだけ。別の端末の「読み込む」に貼り付けると続きから使える。'),
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'btn primary grow', onclick: () => {
@@ -83,7 +83,7 @@ export function renderTransfer(app) {
     h('section', { class: 'panel' },
       h('h2', null, '記録の消去'),
       h('button', { type: 'button', class: 'btn ghost block', onclick: () => {
-        if (!window.confirm('この端末の学習記録（進捗・バッジ・ミスサマリー）をすべて消去しますか？\n元に戻せません。')) return;
+        if (!window.confirm('この端末の学習記録（進捗・バッジ・ミスサマリー）をすべて消去しますか？\n元にもどせません。')) return;
         replaceProgress(emptyProgress());
         toast('記録を消去しました');
       } }, 'すべての記録を消去'),

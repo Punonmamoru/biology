@@ -14,8 +14,8 @@ function status(p, I) {
   if (I <= 0) return '暗黒（光の強さ0）：光合成は行われず、呼吸によるCO₂の放出だけが起こっている。このときのCO₂放出速度が呼吸速度である';
   if (Math.abs(I - ic) < Math.max(0.02, ic * 0.04)) return 'ほぼ補償点：光合成速度と呼吸速度が等しく、見かけ上CO₂の出入りがない';
   if (a < 0) return '補償点より弱い光：光合成は行っているが、呼吸速度のほうが大きいのでCO₂を放出している';
-  if (I >= saturationPoint(p)) return '光飽和点以上：これ以上光を強くしても光合成速度は増えない（CO₂濃度や温度が限定要因）';
-  return '補償点と光飽和点の間：光を強くするほど光合成速度が大きくなる（光の強さが限定要因）';
+  if (I >= saturationPoint(p)) return '光飽和点以上：これ以上光を強くしても光合成速度は増えない（CO₂濃度や温度など光以外の条件が速さを決めている。「生物」で限定要因として学ぶ）';
+  return '補償点と光飽和点の間：光を強くするほど光合成速度が大きくなる（光の強さが速さを決めている）';
 }
 
 export const dojo = {
@@ -94,7 +94,7 @@ export const dojo = {
       }
       lines.push(`補償点：陽生植物 約${fmt(compensationPoint(PLANTS.sun), 2)}、陰生植物 約${fmt(compensationPoint(PLANTS.shade), 2)} キロルクス。光飽和点：陽生植物 約${fmt(saturationPoint(PLANTS.sun), 0)}、陰生植物 約${fmt(saturationPoint(PLANTS.shade), 0)} キロルクス。`);
       if (st.I < 3) {
-        lines.push('森林の林床はこのくらい暗い。陽樹の芽生えは補償点が高く育ちにくいが、陰樹の芽生えは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
+        lines.push('森林の林床はこのくらい暗い。陽樹の芽ばえは補償点が高く育ちにくいが、陰樹の芽ばえは育つことができる。そのため遷移が進むと、陽樹林はやがて陰樹林に置きかわり、陰樹林が極相となる。');
       }
       exp.set(lines);
       ctx.update({ ...st, cross });

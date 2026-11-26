@@ -29,7 +29,7 @@ export const dojo = {
     top.append(h('h2', null, '栄養段階と体内の濃度（対数目盛り） ', modelNote()));
     const chart = createChart(top, { label: '栄養段階ごとの体内の濃度のグラフ', aspect: 0.7 });
     const names = h('p', { class: 'small' }, MARK.slice(1).map((m, i) => `${m} ${LEVELS[i + 1]}`).join('　'));
-    top.append(names, h('p', { class: 'small muted' }, `濃度の単位は ppm（百万分率。1 ppm は 1 kg あたり 1 mg）。教科書でよく使われる DDT の例（水 ${DEFAULT.c0} ppm、プランクトン 0.04 ppm、魚を食べる鳥 数十 ppm）を参考に、植物プランクトンは水から取りこんで ${DEFAULT.bcf} 倍、それより上は1段ごとに一定の倍率で濃くなるとした模式。縦軸は1目盛りで10倍になる。`));
+    top.append(names, h('p', { class: 'small muted' }, `濃度の単位は ppm（百万分率。1 ppm は 1 kg あたり 1 mg）。教科書でよく使われる DDT の例（水 ${DEFAULT.c0} ppm、プランクトン 0.04 ppm、魚を食べる鳥 数十 ppm）を参考に、植物プランクトンは水から取り込んで ${DEFAULT.bcf} 倍、それより上は1段ごとに一定の倍率で濃くなるとした模式。縦軸は1目盛りで10倍になる。`));
 
     const segP = segmented({ label: '物質の性質', options: Object.entries(SUBSTANCES).map(([value, p]) => ({ value, label: p.label })), value: st.preset, onChange: (v) => { st.preset = v; if (v === 'persistent') { st.f = sF.value; } update(); } });
     const sF = slider({ label: '1段ごとの濃縮倍率（食べる側 ÷ 食べられる側）', min: 1.5, max: 10, step: 0.1, value: st.f, format: (v) => `${fmt(v, 1)} 倍`, onInput: (v) => { st.f = v; update(); } });

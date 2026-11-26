@@ -1,4 +1,4 @@
-// グラフ用の点列を作る純粋関数（DOM に依存しないので Node の検証でも使える）
+// グラフ用の点列をつくる純粋関数（DOM に依存しないので Node の検証でも使える）
 export function sample(f, x0, x1, n = 160) {
   const pts = [];
   for (let i = 0; i <= n; i++) {

@@ -5,7 +5,7 @@ export const COURSES = [
 ];
 
 export const STAGES = [
-  { id: 'b1', code: 'B1', course: 'basic', title: '細胞周期とDNA量', unit: '遺伝子とそのはたらき', lead: 'S期でDNAが複製され、M期の終わりに2つの細胞へ分配される。' },
+  { id: 'b1', code: 'B1', course: 'basic', title: '細胞周期とDNA量', unit: '生物の特徴', lead: 'S期でDNAが複製され、M期の終わりに2つの細胞へ分配される。' },
   { id: 'b2', code: 'B2', course: 'basic', title: '血糖値の調節', unit: 'ヒトの体の調節', lead: 'インスリンとグルカゴンが負のフィードバックで血糖値を一定に保つ。' },
   { id: 'b3', code: 'B3', course: 'basic', title: '免疫の一次応答・二次応答', unit: 'ヒトの体の調節', lead: '記憶細胞があると、2回目は速く・多く抗体がつくられる。' },
   { id: 'b4', code: 'B4', course: 'basic', title: '光の強さと光合成', unit: '生物の多様性と生態系', lead: '陽生植物と陰生植物で、補償点・光飽和点が違う。' },
@@ -13,8 +13,8 @@ export const STAGES = [
   { id: 'b6', code: 'B6', course: 'basic', title: '酸素解離曲線', unit: 'ヒトの体の調節', lead: 'S字曲線とCO₂分圧による右方移動。組織で酸素を放出する割合を計算。' },
   { id: 'b7', code: 'B7', course: 'basic', title: '腎臓のはたらき', unit: 'ヒトの体の調節', lead: 'イヌリンの濃縮率から原尿量を求め、物質ごとの再吸収率を計算する。' },
   { id: 'b8', code: 'B8', course: 'basic', title: 'バイオーム', unit: '生物の多様性と生態系', lead: '年平均気温と年降水量でバイオームが決まる。日本の水平分布・垂直分布。' },
-  { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '遺伝子とそのはたらき', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
-  { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '遺伝子とそのはたらき', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
+  { id: 'b9', code: 'B9', course: 'basic', title: 'DNAとタンパク質合成', unit: '生物の特徴', lead: 'DNA→mRNA→アミノ酸。置換と欠失（フレームシフト）の違いを体験（突然変異は「生物」の内容）。' },
+  { id: 'b10', code: 'B10', course: 'basic', title: 'DNAの塩基組成', unit: '生物の特徴', lead: 'シャルガフの規則（A＝T、G＝C）と、塩基対の数・DNAの長さの計算。' },
   { id: 'b11', code: 'B11', course: 'basic', title: '植生の遷移', unit: '生物の多様性と生態系', lead: '裸地から極相林まで。林床の明るさと、陽樹・陰樹の芽ばえの育ち方。' },
   { id: 'b12', code: 'B12', course: 'basic', title: 'ホルモンと負のフィードバック', unit: 'ヒトの体の調節', lead: 'TRH → TSH → チロキシン。甲状腺の除去やチロキシンの注射で、ホルモンの量はどう変わるか。' },
   { id: 'b13', code: 'B13', course: 'basic', title: '細胞の大きさとミクロメーター', unit: '生物の特徴', lead: '接眼ミクロメーター1目盛りの長さを対物ミクロメーターで求め、細胞の大きさを測る。' },
@@ -22,7 +22,7 @@ export const STAGES = [
   { id: 'b15', code: 'B15', course: 'basic', title: '心臓の拍動と自律神経', unit: 'ヒトの体の調節', lead: '運動すると交感神経がはたらき、心拍数が増える。心拍出量（1回拍出量×心拍数）の計算（発展）も。' },
   { id: 'b16', code: 'B16', course: 'basic', title: '生物濃縮', unit: '生物の多様性と生態系', lead: '分解されにくい物質は、食物連鎖を通して上位の生物ほど高い濃度でたまる。外来生物・富栄養化も確認。' },
   { id: 'a1', code: 'A1', course: 'advanced', title: '酵素の反応速度', unit: '生命現象と物質', lead: '基質濃度・阻害剤・温度・pHで反応速度がどう変わるか。' },
-  { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
+  { id: 'a2', code: 'A2', course: 'advanced', title: '遺伝の分離比', unit: '生物の進化', lead: '交配をくり返すと理論比に近づく。連鎖と組換え価も体験。' },
   { id: 'a3', code: 'A3', course: 'advanced', title: '個体群の成長', unit: '生態と環境', lead: 'ロジスティック成長と、被食者・捕食者の周期的な変動。' },
   { id: 'a4', code: 'A4', course: 'advanced', title: '興奮の伝導', unit: '生物の環境応答', lead: '活動電位の波形、閾値と全か無かの法則。2点刺激で伝導速度を計算する。' },
   { id: 'a5', code: 'A5', course: 'advanced', title: '光合成の限定要因', unit: '生命現象と物質', lead: '光の強さ・CO₂濃度・温度のうち、最も不足している要因が光合成速度を決める。' },
@@ -40,7 +40,7 @@ export const STAGES = [
   { id: 'a17', code: 'A17', course: 'advanced', title: '光周性と花芽形成', unit: '生物の環境応答', lead: '連続した暗期と限界暗期。短日植物・長日植物と光中断。' },
   { id: 'a18', code: 'A18', course: 'advanced', title: '視覚', unit: '生物の環境応答', lead: '暗順応の曲線、錐体と桿体の分布、盲斑の大きさの計算。' },
   { id: 'a19', code: 'A19', course: 'advanced', title: '発生と位置情報', unit: '遺伝情報の発現と発生', lead: 'ビコイドの濃度勾配が前後軸を決める。母性効果遺伝子と位置情報。' },
-  { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化（有性生殖と遺伝子の組合せ）', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
+  { id: 'a20', code: 'A20', course: 'advanced', title: '減数分裂と遺伝的多様性', unit: '生物の進化', lead: '減数分裂での DNA 量・染色体数の変化と、配偶子の組合せ 2ⁿ の計算。' },
   { id: 'a21', code: 'A21', course: 'advanced', title: '炭素の循環', unit: '生態と環境', lead: '光合成と呼吸・分解・燃焼による大気中の CO₂ の出入りと、CO₂ 濃度の季節変動。' },
 ];
 

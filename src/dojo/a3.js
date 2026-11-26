@@ -30,7 +30,7 @@ export const dojo = {
     const note = h('p', { class: 'small muted' });
     top.append(leg, note);
 
-    const sr = slider({ label: '内的自然増加率 r', min: 0.1, max: 1.5, step: 0.05, value: st.r, format: (v) => fmt(v, 2), onInput: (v) => { st.r = v; update(); } });
+    const sr = slider({ label: '内的自然増加率 r（範囲外）', min: 0.1, max: 1.5, step: 0.05, value: st.r, format: (v) => fmt(v, 2), onInput: (v) => { st.r = v; update(); } });
     const sK = slider({ label: '環境収容力 K', min: 100, max: 1000, step: 50, value: st.K, format: (v) => String(v), onInput: (v) => { st.K = v; seen.k = seen.k || v >= 600; update(); } });
     const sN0 = slider({ label: '最初の個体数 N₀', min: 2, max: 1200, step: 2, value: st.N0, format: (v) => String(v), onInput: (v) => { st.N0 = v; update(); } });
     const ctlLog = h('div', null, sr.el, sK.el, sN0.el);
@@ -66,7 +66,7 @@ export const dojo = {
         hlines: [{ y: K, color: 'c3', dash: 'dot', label: `環境収容力 K ＝ ${K}` }],
         markers: ti != null && ti < T_LOG ? [{ x: ti, y: K / 2, color: 'c1', label: `K/2：増加速度が最大（dN/dt＝${fmt(logisticRate(K / 2, r, K), 1)}）` }] : [],
       });
-      leg.replaceChildren(legend([{ label: 'ロジスティック成長 dN/dt ＝ rN(K−N)/K', color: 'c1' }, { label: '指数関数的成長 dN/dt ＝ rN（比較）', color: 'c2', dash: 'dash' }, { label: '環境収容力 K', color: 'c3', dash: 'dot' }]));
+      leg.replaceChildren(legend([{ label: 'ロジスティック成長（式は範囲外：dN/dt ＝ rN(K−N)/K）', color: 'c1' }, { label: '指数関数的成長 dN/dt ＝ rN（比較）', color: 'c2', dash: 'dash' }, { label: '環境収容力 K', color: 'c3', dash: 'dot' }]));
       note.textContent = '時間・個体数の単位は任意（模式図）。';
       const lines = [];
       if (N0 < K) {

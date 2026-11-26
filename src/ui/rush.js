@@ -11,7 +11,7 @@ import { loadJSON, saveJSON } from '../lib/storage.js';
 
 const ROUND = 10;
 const KEYS = ['A', 'B', 'C', 'D'];
-let saved = null; // 途中のラウンド（図解道場へ移動して戻ってきたときに再開する）
+let saved = null; // 途中のラウンド（図解道場へ移動してもどってきたときに再開する）
 
 function scopeOf(key) {
   if (key.startsWith('mix-')) {

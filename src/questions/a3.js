@@ -15,7 +15,7 @@ export const A3 = [
         return {
           text: 'ある環境で、個体群が維持できる最大の個体数を何というか。',
           correct: '環境収容力',
-          wrong: ['内的自然増加率', '個体群密度', '生存曲線', '密度効果'],
+          wrong: ['生物濃縮', '個体群密度', '生存曲線', '密度効果'],
           explanation: 'これは環境収容力（K）である。食物や生活空間などの資源には限りがあるので、ある環境が養える個体数には上限があるからである。',
         };
       }
@@ -61,7 +61,7 @@ export const A3 = [
       const K = rng.pick([200, 400, 600, 800, 1000, 1200]);
       const d = distinctNumbers(K / 2, [K, K / 4, (K * 3) / 4, K / 10, K * 2], ' 個体', 0);
       return {
-        text: `個体数 N が dN/dt ＝ rN(K − N)/K にしたがって増える（ロジスティック成長）個体群がある。環境収容力 K ＝ ${K} のとき、個体数の増加速度 dN/dt が最大になるのは、個体数がいくらのときか。`,
+        text: `【範囲外】個体数 N が dN/dt ＝ rN(K − N)/K にしたがって増える（ロジスティック成長）個体群がある。環境収容力 K ＝ ${K} のとき、個体数の増加速度 dN/dt が最大になるのは、個体数がいくらのときか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -82,7 +82,7 @@ export const A3 = [
       const ans = (r * N * (K - N)) / K;
       const d = distinctNumbers(ans, [r * N, r * (K - N), (r * N * K) / (K - N), r * K, ans * 2, (r * N * N) / K, (r * N * (K + N)) / K, ans / 2, ans * 4], '', 2);
       return {
-        text: `個体数 N が dN/dt ＝ rN(K − N)/K にしたがって増えている。r ＝ ${r}、K ＝ ${K}、現在の個体数 N ＝ ${N} のとき、増加速度 dN/dt はいくらか。`,
+        text: `【範囲外】個体数 N が dN/dt ＝ rN(K − N)/K にしたがって増えている。r ＝ ${r}、K ＝ ${K}、現在の個体数 N ＝ ${N} のとき、増加速度 dN/dt はいくらか。`,
         correct: d.correct,
         wrong: d.wrong,
         ordered: true,
@@ -209,7 +209,7 @@ export const A3 = [
       const r2 = change === 'r' ? 0.8 : r;
       const K2 = change === 'K' ? 800 : K;
       return {
-        text: `図の実線は、ある個体群のロジスティック成長（r ＝ ${r}、K ＝ ${K}）を表す。条件を1つだけ変えたところ、破線のようになった。変えた条件として最も適当なものはどれか。`,
+        text: `【範囲外】図の実線は、ある個体群のロジスティック成長（r ＝ ${r}、K ＝ ${K}）を表す。条件を1つだけ変えたところ、破線のようになった。変えた条件として最も適当なものはどれか。`,
         chart: {
           x: { min: 0, max: 30, label: '時間', step: 5 },
           y: { min: 0, max: 1000, label: '個体数', step: 200 },

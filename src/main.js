@@ -48,7 +48,7 @@ backBtn.addEventListener('click', () => {
 });
 
 function sessionStorageSafe() {
-  // アプリ内で一度でも画面遷移していれば戻る、そうでなければホームへ
+  // アプリ内で一度でも画面遷移していればもどる、そうでなければホームへ
   return route.navigated === true;
 }
 

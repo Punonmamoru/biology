@@ -39,7 +39,7 @@ export function optimumTemp() {
   }
   return best;
 }
-// 温度 Th で処理したあと、最適温度に戻して測った反応速度（熱変性は不可逆なので戻らない）
+// 温度 Th で処理したあと、最適温度にもどして測った反応速度（熱変性は不可逆なのでもどらない）
 export function afterTreatment(Th) {
   const remain = Th > optimumTemp() ? activeFraction(Th) / activeFraction(optimumTemp()) : 1;
   return tempRate(optimumTemp()) * Math.min(1, remain);

@@ -19,7 +19,7 @@ export const dojo = {
     { id: 'noncomp', text: '「非競争的阻害」で阻害剤を濃くして（4以上）、Km が変わらないことを確かめよう。', short: '非競争的阻害：Km不変' },
     { id: 'lb', text: 'ラインウィーバー・バーク表示に切り替え、阻害剤ありの直線を見よう。', short: 'ラインウィーバー・バーク' },
     { id: 'opt', text: '「温度」で、反応速度が最大になる温度（最適温度）を探そう。', short: '最適温度を発見' },
-    { id: 'heat', text: '「温度」の処理実験で、60℃以上で処理してから最適温度に戻しても速度が回復しないことを確かめよう。', short: '熱変性は不可逆' },
+    { id: 'heat', text: '「温度」の処理実験で、60℃以上で処理してから最適温度にもどしても速度が回復しないことを確かめよう。', short: '熱変性は不可逆' },
     { id: 'pepsin', text: '「pH」で、ペプシンがよくはたらく pH に合わせよう。', short: 'ペプシンの最適pH' },
   ],
   mount(root, ctx) {
@@ -38,15 +38,15 @@ export const dojo = {
 
     // ① 基質濃度
     const sV = slider({ label: '最大速度 Vmax', min: 20, max: 100, step: 5, value: st.Vmax, format: (v) => String(v), onInput: (v) => { st.Vmax = v; update(); } });
-    const sK = slider({ label: 'ミカエリス定数 Km（発展）', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
+    const sK = slider({ label: 'ミカエリス定数 Km（範囲外）', min: 0.5, max: 10, step: 0.5, value: st.Km, format: (v) => fmt(v, 1), onInput: (v) => { st.Km = v; update(); } });
     const segI = segmented({ label: '阻害剤', options: [{ value: 'none', label: 'なし' }, { value: 'competitive', label: '競争的阻害' }, { value: 'noncompetitive', label: '非競争的阻害' }], value: st.inh, onChange: (v) => { st.inh = v; if (v !== 'none' && st.I === 0) { st.I = 4; sI.set(4, true); } update(); } });
     const sI = slider({ label: '阻害剤の濃度 [I]', min: 0, max: 10, step: 0.5, value: st.I, format: (v) => fmt(v, 1), onInput: (v) => { st.I = v; update(); } });
-    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク（発展）' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
+    const segLB = segmented({ label: '表示', options: [{ value: false, label: 'v−[S] グラフ' }, { value: true, label: 'ラインウィーバー・バーク（範囲外）' }], value: st.lb, onChange: (v) => { st.lb = v; update(); } });
     const ctlS = h('div', null, segI.el, sI.el, segLB.el, sV.el, sK.el);
 
     // ② 温度
     const sT = slider({ label: '温度', min: 0, max: 80, step: 0.5, value: st.T, format: (v) => fmt(v, 1) + ' ℃', onInput: (v) => { st.T = v; update(); } });
-    const sTh = slider({ label: '処理実験：この温度に10分置いてから最適温度に戻す', min: 0, max: 80, step: 5, value: st.Th, format: (v) => v + ' ℃', onInput: (v) => { st.Th = v; update(); } });
+    const sTh = slider({ label: '処理実験：この温度に10分置いてから最適温度にもどす', min: 0, max: 80, step: 5, value: st.Th, format: (v) => v + ' ℃', onInput: (v) => { st.Th = v; update(); } });
     const ctlT = h('div', null, sT.el, sTh.el);
 
     // ③ pH
@@ -116,10 +116,10 @@ export const dojo = {
       if (!hasInh) {
         lines.push(`[S] が小さいときは、基質が増えるほど酵素と出会う回数が増えるので v はほぼ比例して大きくなる。[S] が大きくなると、すべての酵素の活性部位が基質と結合した状態（飽和）に近づくから、v は Vmax（${st.Vmax}）に近づいて頭打ちになる。`);
       } else if (st.inh === 'competitive') {
-        lines.push(`競争的阻害：阻害剤は基質と似た形で、活性部位を基質と奪い合う。見かけの Km は ${fmt(st.Km, 1)} → ${fmt(cur.Km, 1)} に大きくなるが、[S] を十分に高くすれば基質が阻害剤に勝つから、Vmax は ${st.Vmax} のまま変わらない。`);
+        lines.push(`競争的阻害：阻害剤は基質と似た形で、活性部位を基質と奪い合う。基質濃度が低いと速度が大きく下がるが、[S] を十分に高くすれば基質が阻害剤に勝つから、最大速度 Vmax は ${st.Vmax} のまま変わらない。【範囲外】見かけの Km は ${fmt(st.Km, 1)} → ${fmt(cur.Km, 1)} に大きくなる。`);
         if (st.lb) lines.push('ラインウィーバー・バーク表示では、y切片（1/Vmax）が同じで、傾きだけが大きくなる。');
       } else {
-        lines.push(`非競争的阻害：阻害剤は活性部位以外の部分に結合し、酵素のはたらきを失わせる。基質を増やしても阻害は解けないから、Vmax は ${st.Vmax} → ${fmt(cur.Vmax, 1)} に下がるが、Km は ${fmt(st.Km, 1)} のまま変わらない。`);
+        lines.push(`非競争的阻害：阻害剤は活性部位以外の部分に結合し、酵素のはたらきを失わせる。基質を増やしても阻害は解けないから、最大速度 Vmax は ${st.Vmax} → ${fmt(cur.Vmax, 1)} に下がる。【範囲外】Km は ${fmt(st.Km, 1)} のまま変わらない。`);
         if (st.lb) lines.push('ラインウィーバー・バーク表示では、x切片（−1/Km）が同じで、y切片と傾きが大きくなる。');
       }
       exp.set(lines);
@@ -148,9 +148,9 @@ export const dojo = {
       else if (st.T <= To + 2) lines.push(`${fmt(st.T, 1)}℃：最適温度付近。温度上昇で速くなる効果と、熱変性で酵素が失活する効果のつり合いで、反応速度が最大になる。ヒトの酵素の多くは体温付近〜40℃くらいが最適温度である。`);
       else lines.push(`${fmt(st.T, 1)}℃：酵素はタンパク質でできているので、高温では立体構造が変化（変性）し、活性部位の形がくずれて失活する。熱変性していない酵素は約${fmt(activeFraction(st.T) * 100, 0)}%しかない。`);
       const kept = vAfter / tempRate(To);
-      if (kept < 0.98) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻しても、速度は ${fmt(vAfter, 2)}（処理しない場合の約${fmt(kept * 100, 0)}%）までしか回復しない。熱で変性した酵素は元に戻らない（不可逆的）からである。`);
-      else if (st.Th < To) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では反応がおそくなるだけで、変性は起こっていないからである。`);
-      else lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度に戻すと、速度は ${fmt(vAfter, 2)} で、ほぼもとどおりにはたらく。この温度では熱変性がほとんど起こっていないからである。`);
+      if (kept < 0.98) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度にもどしても、速度は ${fmt(vAfter, 2)}（処理しない場合の約${fmt(kept * 100, 0)}%）までしか回復しない。熱で変性した酵素は元にもどらない（不可逆的）からである。`);
+      else if (st.Th < To) lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度にもどすと、速度は ${fmt(vAfter, 2)} で、もとどおりにはたらく。低温では反応がおそくなるだけで、変性は起こっていないからである。`);
+      else lines.push(`処理実験：${st.Th}℃で処理した酵素を最適温度にもどすと、速度は ${fmt(vAfter, 2)} で、ほぼもとどおりにはたらく。この温度では熱変性がほとんど起こっていないからである。`);
       exp.set(lines);
     }
 

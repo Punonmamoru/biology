@@ -512,7 +512,7 @@ export function legend(items) {
   return ul;
 }
 
-// 仕様のseriesから凡例項目を作る
+// 仕様のseriesから凡例項目をつくる
 export function legendFromSpec(spec) {
   const items = (spec.series || []).filter((s) => s.legend !== false && (s.legendLabel || s.label)).map((s) => ({
     label: s.legendLabel || s.label,
