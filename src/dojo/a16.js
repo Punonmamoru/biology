@@ -33,6 +33,11 @@ function draw(canvas, st) {
     g.font = `${bold ? 'bold ' : ''}${fs}px ${font}`;
     g.textAlign = align;
     g.textBaseline = 'middle';
+    // 線や図形の上でも読めるよう、背景色で縁取りしてから書く
+    g.lineJoin = 'round';
+    g.lineWidth = 4;
+    g.strokeStyle = bg;
+    g.strokeText(t, x, y);
     g.fillStyle = color;
     g.fillText(t, x, y);
   };

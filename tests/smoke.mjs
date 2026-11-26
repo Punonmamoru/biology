@@ -5,6 +5,7 @@
 //  - スライダーがキーボード（矢印キー）で操作できるか
 //  - 全ステージで4択ラッシュを1ラウンド最後まで進められるか
 //  - localStorage が使えない環境でも動くか
+//  - 端末のエミュレーション（iPhone・iPad・Android・Chromebook の画面サイズ、縦横、タッチ操作、ライト/ダーク）
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,7 +21,7 @@ try {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const URL0 = pathToFileURL(join(ROOT, 'index.html')).href;
-const STAGES = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10', 'b11', 'b12', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20', 'a21'];
+const STAGES = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10', 'b11', 'b12', 'b13', 'b14', 'b15', 'b16', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11', 'a12', 'a13', 'a14', 'a15', 'a16', 'a17', 'a18', 'a19', 'a20', 'a21', 'a22', 'a23', 'a24', 'a25'];
 const ROUTES = ['#/home', ...STAGES.map((s) => '#/dojo/' + s), ...STAGES.map((s) => '#/rush/' + s), '#/rush/mix-basic', '#/rush/mix-advanced', '#/miss', '#/glossary', '#/badges', '#/transfer'];
 let failures = 0;
 const ok = (cond, msg) => {
@@ -130,6 +131,72 @@ console.log('# localStorage が使えない環境');
   await page.locator('.choice').first().click();
   ok(page.errors.length === 0, 'localStorage が例外を出しても動作する' + (page.errors.length ? '：' + page.errors[0] : ''));
   await page.context().close();
+}
+
+console.log('# 端末のエミュレーション（画面サイズ・タッチ操作。エンジンは Chromium）');
+{
+  // iPhone の Safari（WebKit）そのものではない。画面の大きさ・縦横・タッチ入力・高解像度表示を再現して確かめる
+  const { devices } = require('playwright');
+  const pick = (name) => {
+    const { defaultBrowserType, ...d } = devices[name];
+    return d;
+  };
+  const DEVICES = [
+    { name: 'iPhone SE（小さい画面）', opts: pick('iPhone SE') },
+    { name: 'iPhone 13', opts: pick('iPhone 13') },
+    { name: 'iPhone 13（横向き）', opts: pick('iPhone 13 landscape') },
+    { name: 'iPad Mini', opts: pick('iPad Mini') },
+    { name: 'Android（Pixel 7）', opts: pick('Pixel 7') },
+    { name: 'Chromebook（1366×768・タッチ）', opts: { viewport: { width: 1366, height: 768 }, hasTouch: true } },
+    { name: '幅320pxの小型端末', opts: { viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } },
+  ];
+  for (const dev of DEVICES) {
+    for (const scheme of ['light', 'dark']) {
+      const ctx = await browser.newContext({ ...dev.opts, colorScheme: scheme });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('dialog', (d) => d.accept());
+      const overflow = [];
+      const blank = [];
+      for (const r of ROUTES) {
+        await page.goto(URL0 + r);
+        await page.waitForTimeout(60);
+        const w = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        if (w > 1) overflow.push(`${r}(+${w}px)`);
+        if (r.startsWith('#/dojo/')) {
+          // グラフが描けているか（キャンバスの中央付近に背景以外の色の点があるか）
+          const drawn = await page.evaluate(() => {
+            const c = document.querySelector('.chart-wrap canvas');
+            if (!c) return true; // グラフのない道場（B9 など）
+            const g = c.getContext('2d');
+            const d = g.getImageData(0, 0, c.width, c.height).data;
+            const set = new Set();
+            for (let i = 0; i < d.length; i += 4 * 97) set.add(d[i] + ',' + d[i + 1] + ',' + d[i + 2]);
+            return set.size > 3;
+          });
+          if (!drawn) blank.push(r);
+        }
+      }
+      // タッチで4択に答えられるか
+      await page.goto(URL0 + '#/rush/b4');
+      await page.locator('.choice').first().tap();
+      const fb = await page.locator('.feedback').isVisible();
+      // タッチでスライダーを動かせるか（つまみ付近をタップ）
+      await page.goto(URL0 + '#/dojo/b4');
+      const range = page.locator('input[type="range"]').first();
+      await range.scrollIntoViewIfNeeded();
+      const before = await range.inputValue();
+      const box = await range.boundingBox();
+      await page.touchscreen.tap(box.x + box.width * 0.9, box.y + box.height / 2);
+      const after = await range.inputValue();
+      ok(overflow.length === 0 && blank.length === 0 && errors.length === 0 && fb && before !== after,
+        `${dev.name}・${scheme}：全${ROUTES.length}画面で横スクロールなし・グラフ描画・エラーなし、タップで解答とスライダー操作` +
+          (overflow.length ? `／横スクロール ${overflow.slice(0, 3).join(' ')}` : '') + (blank.length ? `／空のグラフ ${blank.slice(0, 3).join(' ')}` : '') +
+          (errors.length ? `／エラー ${errors[0]}` : '') + (!fb ? '／タップで解答できない' : '') + (before === after ? '／スライダーが動かない' : ''));
+      await ctx.close();
+    }
+  }
 }
 
 await browser.close();

@@ -54,7 +54,7 @@ export const A14 = [
       const ans = Math.ceil(need / e);
       const d = distinctNumbers(ans, [Math.floor(need / e), ans + 1, need, Math.round(70 / e), ans * 2], ' 個', 0);
       return {
-        text: `あるシナプス後細胞の静止電位は ${mv(REST)} mV、閾値は ${mv(THRESHOLD)} mV である。1つのシナプスからの EPSP が ${e} mV の脱分極を起こすとき、閾値に達するには、同時にいくつのシナプスから EPSP が生じる必要があるか（EPSP は単純に足し合わされるものとする）。`,
+        text: `あるシナプス後細胞の静止電位は ${mv(REST)} mV、活動電位が生じる膜電位（閾値に相当する膜電位）は ${mv(THRESHOLD)} mV である。1つのシナプスからの EPSP が ${e} mV の脱分極を起こすとき、閾値に達するには、同時にいくつのシナプスから EPSP が生じる必要があるか（EPSP は単純に足し合わされるものとする）。`,
         correct: d.correct,
         wrong: d.wrong,
         explanation: `閾値までに必要な脱分極は ${mv(THRESHOLD)} − (${mv(REST)}) ＝ ${need} mV で、${need} ÷ ${e} ＝ ${fmt(need / e, 2)} だから、${ans} 個以上必要である。複数のシナプスから同時に入力があると EPSP が足し合わされる（空間的加重）ので、1つでは閾値に届かなくても興奮が起こるのである。`,
@@ -74,7 +74,7 @@ export const A14 = [
       const v = REST + nE * e - nI * i;
       const fire = v >= THRESHOLD;
       return {
-        text: `静止電位 ${mv(REST)} mV、閾値 ${mv(THRESHOLD)} mV のシナプス後細胞に、${e} mV の EPSP を起こすシナプス ${nE} つと、${i} mV の IPSP を起こすシナプス ${nI} つから同時に入力があった。膜電位は何 mV になり、活動電位は生じるか（電位の変化は単純に足し合わされるものとする）。`,
+        text: `静止電位 ${mv(REST)} mV、閾値に相当する膜電位 ${mv(THRESHOLD)} mV のシナプス後細胞に、${e} mV の EPSP を起こすシナプス ${nE} つと、${i} mV の IPSP を起こすシナプス ${nI} つから同時に入力があった。膜電位は何 mV になり、活動電位は生じるか（電位の変化は単純に足し合わされるものとする）。`,
         correct: `${mv(v)} mV で、活動電位は${fire ? '生じる' : '生じない'}`,
         wrong: [`${mv(v)} mV で、活動電位は${fire ? '生じない' : '生じる'}`, `${mv(REST + nE * e)} mV で、活動電位は生じる`, `${mv(REST + nE * e + nI * i)} mV で、活動電位は生じる`, `${mv(REST - nE * e + nI * i)} mV で、活動電位は生じない`],
         explanation: `${mv(REST)} ＋ ${e} × ${nE} − ${i} × ${nI} ＝ ${mv(v)} mV となり、閾値 ${mv(THRESHOLD)} mV ${fire ? '以上なので活動電位が生じる' : 'に達しないので活動電位は生じない'}。EPSP は膜電位を上げ、IPSP は下げるので、両方の和で興奮するかどうかが決まるからである。`,

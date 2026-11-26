@@ -53,12 +53,12 @@ export const dojo = {
         y: { min: -90, max: 50, label: '膜電位（mV）', step: 20 },
         series: [{ points: sample(tr.f, 0, T_END, 800), color: 'c1', width: 3 }],
         hlines: [
-          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値 ${mv(THRESHOLD)} mV`, align: 'right' },
+          { y: THRESHOLD, color: 'c2', dash: 'dash', label: `閾値に相当する膜電位 ${mv(THRESHOLD)} mV`, align: 'right' },
           { y: REST, color: 'c3', dash: 'dot', label: `静止電位 ${mv(REST)} mV` },
         ],
         markers: inputs.map((i) => ({ x: i.t, y: -86, color: i.amp > 0 ? (i.from === 'A' ? 'c1' : 'c4') : 'c2', shape: i.amp > 0 ? 'diamond' : 'square' })),
       });
-      leg.replaceChildren(legend([{ label: 'シナプス後細胞の膜電位', color: 'c1' }, { label: '閾値', color: 'c2', dash: 'dash' }]), h('p', { class: 'small muted' }, '下の◆は興奮性ニューロン（A：青、B：紫）、■は抑制性ニューロンC からの入力の時刻。'));
+      leg.replaceChildren(legend([{ label: 'シナプス後細胞の膜電位', color: 'c1' }, { label: '閾値に相当する膜電位', color: 'c2', dash: 'dash' }]), h('p', { class: 'small muted' }, '下の◆は興奮性ニューロン（A：青、B：紫）、■は抑制性ニューロンC からの入力の時刻。'));
       const lines = [];
       lines.push('シナプス前細胞の末端に興奮が伝わると、神経伝達物質がシナプス間隙に放出され、シナプス後細胞の受容体に結合する。興奮性シナプスでは Na⁺ などが流入して脱分極（EPSP）、抑制性シナプスでは Cl⁻ が流入するなどして過分極（IPSP）が起こる。');
       if (tr.tc != null) lines.push(`膜電位の和が閾値に達したので（${fmt(tr.tc, 1)} ミリ秒）、シナプス後細胞に活動電位が生じた。`);

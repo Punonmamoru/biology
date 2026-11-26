@@ -33,7 +33,7 @@ export const dojo = {
       legend([
         { label: '血糖値（左の目盛り）', color: 'c2' },
         { label: 'インスリン（右の目盛り）', color: 'c1', dash: 'dash' },
-        { label: 'グルカゴン（右の目盛り）', color: 'c3', dash: 'dot' },
+        { label: 'グルカゴン（右の目盛り・「健康」の設定のみ）', color: 'c3', dash: 'dot' },
         { label: '健康な人の血糖値（比較）', color: 'muted', dash: 'long' },
       ]),
       h('p', { class: 'small muted' }, 'ホルモン量は「健康な人の空腹時＝1」とした相対値。食事は時刻0にとる。'),
@@ -76,6 +76,10 @@ export const dojo = {
       const cur = at(run, cursor);
       const toH = (pts) => pts.map(([m, v]) => [m / 60, v]);
       const gMax = Math.max(300, Math.ceil(sm.peakG / 50) * 50);
+      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
+      // 糖尿病の設定ではグルカゴンを描かない（このモデルはグルカゴンを血糖値だけで決めており、
+      // インスリンが少ないときにグルカゴンが抑えられにくいことを表せないため）
+      const showN = kind === 'healthy';
       chart.draw({
         alt: `血糖値は空腹時 ${fmt(sm.fastingG, 0)}、最大 ${fmt(sm.peakG, 0)} mg/100mL（食後${fmt(sm.peakT, 0)}分）`,
         x: { min: 0, max: MINUTES / 60, label: '食事からの時間（時間）', step: 1 },
@@ -87,7 +91,7 @@ export const dojo = {
           !healthyRun ? null : { points: toH(healthyRun.map((r) => [r.t, r.G])), color: 'muted', dash: 'long', width: 1.8 },
           { points: toH(run.map((r) => [r.t, r.G])), color: 'c2', width: 3, label: '血糖値', labelAt: sm.peakT / 60 },
           { points: toH(run.map((r) => [r.t, r.I / ref.I])), color: 'c1', dash: 'dash', axis: 'y2', label: 'インスリン' },
-          { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
+          !showN ? null : { points: toH(run.map((r) => [r.t, r.N / ref.N])), color: 'c3', dash: 'dot', axis: 'y2', label: 'グルカゴン' },
         ].filter(Boolean),
         markers: [{ x: cursor / 60, y: cur.G, color: 'c2' }],
       });
@@ -96,12 +100,11 @@ export const dojo = {
       const Nrel = cur.N / ref.N;
       readout.replaceChildren(
         h('b', null, `食後 ${cursor} 分：`),
-        `血糖値 ${fmt(cur.G, 0)} mg/100mL、インスリン ${fmt(Irel, 1)}、グルカゴン ${fmt(Nrel, 1)}（相対値）`,
+        `血糖値 ${fmt(cur.G, 0)} mg/100mL、インスリン ${fmt(Irel, 1)}${showN ? `、グルカゴン ${fmt(Nrel, 1)}` : ''}（相対値）`,
       );
 
       const lines = [];
       const fast = sm.fastingG;
-      const kind = prm.cap < 0.15 ? 'type1' : prm.cap < 0.9 || prm.sens < 0.9 ? 'type2' : 'healthy';
       const rising = cursor < sm.peakT && cur.G > fast + 3;
       const high = cur.G > fast + 3;
       if (kind === 'type1') {
@@ -115,9 +118,9 @@ export const dojo = {
       } else if (rising) {
         lines.push('食事で吸収されたグルコースが血液に入り、血糖値が上がっている。血糖値の上昇をすい臓ランゲルハンス島のB細胞が直接感知するほか、間脳の視床下部も感知して副交感神経を通じてB細胞を刺激するので、インスリンの分泌が増える。グルカゴンの分泌は減る。');
       } else if (high) {
-        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。血糖値が下がるにつれてインスリンの分泌も減り、空腹時の値に戻ったところで落ち着く。');
+        lines.push('インスリンのはたらきで、肝臓や筋肉などの細胞がグルコースを取り込み、肝臓ではグリコーゲンが合成されるので、血糖値が下がっていく。血糖値が下がるにつれてインスリンの分泌も減り、空腹時の値にもどったところで落ち着く。');
       } else if (cur.G < fast - 3) {
-        lines.push('血糖値が空腹時より下がっている。ランゲルハンス島のA細胞からグルカゴンの分泌が増え、肝臓のグリコーゲンの分解を促して血糖値を元に戻す。');
+        lines.push('血糖値が空腹時より下がっている。ランゲルハンス島のA細胞からグルカゴンの分泌が増え、肝臓のグリコーゲンの分解を促して血糖値を元にもどす。');
       } else {
         lines.push('血糖値は空腹時の値（約100 mg/100mL）に保たれている。血糖値の変化がホルモンの分泌を変え、その結果がもとの変化を打ち消す向きにはたらく（負のフィードバック）。');
       }
@@ -129,10 +132,11 @@ export const dojo = {
       } else if (prm.meal === 0) {
         lines.push('食事をしていないので、血糖値は空腹時の値のまま保たれる。');
       } else if (prm.meal >= 1.5) {
-        lines.push('食事量が多いので血糖値は大きく上がるが、インスリンも多く分泌されるので、2時間ほどで空腹時の値に戻る。健康な人では、血糖値が高いまま下がらないことはない。');
+        lines.push('食事量が多いので血糖値は大きく上がるが、インスリンも多く分泌されるので、2時間ほどで空腹時の値にもどる。健康な人では、血糖値が高いまま下がらないことはない。');
       } else {
-        lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値に戻るとインスリンも元の量に戻る。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
+        lines.push('血糖値が上がるとインスリンが増え、血糖値が空腹時の値にもどるとインスリンも元の量にもどる。インスリンの山が血糖値の山より遅れるのは、血糖値の上昇を感知してから分泌されるから。');
       }
+      if (!showN) lines.push('この設定ではグルカゴンの線は表示していない。実際の糖尿病では、インスリンが不足するとグルカゴンの分泌が抑えられにくくなるが、このモデルではその関係を扱っていないためである。');
       exp.set(lines);
       ctx.update({ preset, prm: { ...prm }, cursor, sm, cur, ref });
     }

@@ -25,6 +25,9 @@
   --region-2: rgba(196, 68, 26, 0.08);
   --region-3: rgba(30, 127, 69, 0.22);
   --region-4: rgba(138, 106, 0, 0.10);
+  --biome-forest: rgba(30, 127, 69, 0.32);
+  --biome-grass: rgba(176, 128, 20, 0.26);
+  --biome-barren: rgba(120, 120, 120, 0.12);
   --day: #fff1a8;   /* 明期（明るい黄） */
   --night: #3a3f47; /* 暗期（濃い灰） */
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -56,6 +59,9 @@
     --region-2: rgba(255, 154, 107, 0.12);
     --region-3: rgba(111, 220, 149, 0.22);
     --region-4: rgba(240, 201, 90, 0.10);
+  --biome-forest: rgba(111, 220, 149, 0.30);
+  --biome-grass: rgba(240, 190, 80, 0.24);
+  --biome-barren: rgba(200, 200, 200, 0.10);
     --day: #e8d36a;
     --night: #050607;
     --shadow: none;
@@ -87,6 +93,9 @@
   --region-2: rgba(255, 154, 107, 0.12);
   --region-3: rgba(111, 220, 149, 0.22);
   --region-4: rgba(240, 201, 90, 0.10);
+  --biome-forest: rgba(111, 220, 149, 0.30);
+  --biome-grass: rgba(240, 190, 80, 0.24);
+  --biome-barren: rgba(200, 200, 200, 0.10);
   --day: #e8d36a;
   --night: #050607;
   --shadow: none;
@@ -323,3 +332,14 @@ textarea.code { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Men
 .legend .swatch.rep { clip-path: polygon(0 0, 100% 0, 100% 60%, 70% 60%, 70% 100%, 30% 100%, 30% 60%, 0 60%); border: 0; }
 .legend .swatch.wave { height: 4px; border: 0; vertical-align: 3px; }
 table.data tr.hl td { background: var(--accent-soft); font-weight: 700; }
+
+/* 横にスクロールできる表は、端に影を出してスクロールできることを示す */
+.table-scroll {
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), transparent) right / 10px 100% no-repeat scroll;
+}
+/* テーマ切替ボタンの記号を見やすく */
+#btn-theme { font-size: 1.6rem; color: var(--fg); }

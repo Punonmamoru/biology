@@ -34,6 +34,14 @@ import * as vi from '../src/models/vision.js';
 import * as mg from '../src/models/morphogen.js';
 import * as me from '../src/models/meiosis.js';
 import { TEMPLATE as B9_TEMPLATE } from '../src/dojo/b9.js';
+import * as mic from '../src/models/micrometer.js';
+import * as cat from '../src/models/catalase.js';
+import * as hr from '../src/models/heart.js';
+import * as bio from '../src/models/bioaccumulation.js';
+import * as rep from '../src/models/replication.js';
+import * as cal from '../src/models/calvin.js';
+import * as cmp from '../src/models/competition.js';
+import * as sel from '../src/models/selection.js';
 
 const results = [];
 let current = '';
@@ -380,6 +388,66 @@ section('B10 DNAの塩基組成');
   check('10塩基対で3.4 nm（1塩基対 0.34 nm）', near(dn.lengthNm(10), 3.4, 1e-9));
   const human = dn.lengthNm(dn.GENOMES[0].bp * 2) * 1e-9;
   check('ヒトの体細胞のDNA（30億塩基対×2）の全長は約2 m', near(human, 2.04, 0.01), `${f(human, 2)} m`);
+}
+
+// ---------- B13 ----------
+section('B13 細胞の大きさとミクロメーター');
+{
+  check('接眼1目盛りの長さ ＝ 10 μm × 対物の目盛り数 ÷ 接眼の目盛り数（接眼25＝対物10 → 4 μm）', near(mic.calibrate(25, 10), 4, 1e-12));
+  check('対物レンズの倍率を4倍にすると、接眼1目盛りの長さは1/4になる（10倍→40倍）', near(mic.eyeUnit(40) * 4, mic.eyeUnit(10), 1e-12), `${mic.eyeUnit(10)} → ${mic.eyeUnit(40)} μm`);
+  const ok = mic.LENSES.every((m) => { const c = mic.coincidence(m); return c && near(mic.calibrate(c.eye, c.obj), mic.eyeUnit(m), 1e-9); });
+  check('各倍率で、目盛りが重なる組から求めた値が視野の目盛りと一致する', ok, mic.LENSES.map((m) => { const c = mic.coincidence(m); return `${m}倍：接眼${c.eye}＝対物${c.obj}`; }).join('、'));
+  const sz = Object.fromEntries(mic.SPECIMENS.map((s) => [s.id, s.length]));
+  check('大きさの順：大腸菌 ＜ 赤血球 ＜ 口腔上皮細胞 ＜ ゾウリムシ（教科書の目安：約3・7〜8・約60・約200 μm）', sz.ecoli < sz.rbc && sz.rbc < sz.cheek && sz.cheek < sz.paramecium && sz.rbc >= 7 && sz.rbc <= 8 && near(sz.paramecium, 200, 20));
+  check('分解能：電子顕微鏡 ＜ 光学顕微鏡 ＜ 肉眼（0.2 nm・0.2 μm・0.1 mm）', mic.RESOLUTION.electron < mic.RESOLUTION.light && mic.RESOLUTION.light < mic.RESOLUTION.eye && mic.RESOLUTION.light === 0.2 && mic.RESOLUTION.eye === 100);
+}
+
+// ---------- B14 ----------
+section('B14 酵素のはたらき（カタラーゼ）');
+{
+  const end = (o) => { const r = cat.simulate(o); return r[r.length - 1].o2; };
+  const at = (o, t) => cat.simulate(o).find((r) => r.t >= t - 1e-9).o2;
+  check('肝臓片・酸化マンガン(IV)：過酸化水素がほぼすべて分解される（総量 ＝ 過酸化水素水 1 mL あたり 10 mL）', near(end({ cat: 'liver' }), 20, 0.1) && near(end({ cat: 'mno2' }), 20, 0.2), `${f(end({ cat: 'liver' }), 1)}・${f(end({ cat: 'mno2' }), 1)} mL`);
+  check('煮沸した肝臓片・石英砂：酸素はほとんど発生しない', end({ cat: 'boiled' }) < 0.01 && end({ cat: 'sand' }) < 0.01);
+  check('過酸化水素水を2倍にすると、酸素の総量が2倍', near(end({ cat: 'liver', h2o2: 4 }), 2 * end({ cat: 'liver', h2o2: 2 }), 0.2));
+  const r0 = (o) => cat.simulate(o).find((q) => q.t >= 0.1 - 1e-9).o2 / 0.1;
+  check('同じ3%の液を2倍量にしても、はじめの反応の速さ（濃度で決まる）はほぼ同じ', near(r0({ cat: 'liver', h2o2: 4 }), r0({ cat: 'liver', h2o2: 2 }), r0({ cat: 'liver', h2o2: 2 }) * 0.1), `${f(r0({ cat: 'liver', h2o2: 2 }), 1)} → ${f(r0({ cat: 'liver', h2o2: 4 }), 1)} mL/分`);
+  check('何も入れないと、酸素はほとんど発生しない', end({ cat: 'none' }) < 0.01 && end({ cat: 'none', amount: 2 }) < 0.01);
+  check('肝臓片を2倍にすると、反応は速くなるが総量は変わらない', at({ cat: 'liver', amount: 2 }, 1) > at({ cat: 'liver', amount: 1 }, 1) && near(end({ cat: 'liver', amount: 2 }), end({ cat: 'liver', amount: 1 }), 0.1));
+  check('反応が止まったあと、過酸化水素水を追加すると再び酸素が発生する（酵素は変化しない）', end({ cat: 'liver', add: 'h2o2' }) > at({ cat: 'liver', add: 'h2o2' }, cat.T_ADD) + 15);
+  check('反応が止まったあと、肝臓片を追加しても酸素は発生しない（基質がない）', end({ cat: 'liver', add: 'cat' }) - at({ cat: 'liver', add: 'cat' }, cat.T_ADD) < 0.1);
+  let mono = true;
+  const run = cat.simulate({ cat: 'liver' });
+  for (let i = 2; i < run.length; i++) if (run[i].o2 - run[i - 1].o2 > run[i - 1].o2 - run[i - 2].o2 + 1e-9) mono = false;
+  check('はじめが最も速く、しだいに遅くなる（グラフの傾きが減っていく）', mono);
+}
+
+// ---------- B15 ----------
+section('B15 心臓の拍動と自律神経');
+{
+  check('心拍出量 ＝ 1回拍出量 × 心拍数（安静時 70 mL × 70 回 ≒ 4.9 L/分）', near(hr.cardiacOutput(hr.REST.hr, hr.REST.sv), 4.9, 1e-9));
+  const run = hr.simulate({ x: 0.8, t0: 2, t1: 8, tEnd: 20 });
+  const at = (t) => run.find((r) => r.t >= t - 1e-9);
+  check('運動中は心拍数・心拍出量が増え、運動をやめると安静時にもどる', at(7).hr > 140 && at(7).co > 3 * at(1).co && Math.abs(at(20).hr - hr.REST.hr) < 2, `運動中 ${f(at(7).hr, 0)} 回/分・${f(at(7).co, 1)} L/分 → 20分 ${f(at(20).hr, 0)} 回/分`);
+  check('上がるときより、もどるときのほうがゆっくり（1分後の変化の割合）', (at(3).hr - 70) / (at(7).hr - 70) > (at(7).hr - at(9).hr) / (at(7).hr - 70));
+  check('心拍数は最大でも上限（180回/分）を超えない', run.every((r) => r.hr <= hr.MAX.hr + 1e-9));
+  const bothSides = hr.AUTONOMIC.filter((r) => !r.p.startsWith('—'));
+  check('交感神経と副交感神経のはたらきは、両方が分布する器官では反対（拮抗的）', bothSides.every((r) => r.s !== r.p) && hr.AUTONOMIC.find((r) => r.organ === '心臓の拍動').s.startsWith('促進') && hr.AUTONOMIC.find((r) => r.organ === '瞳孔').s === '拡大');
+  const lw = hr.loewi();
+  const firstDrop = (k) => lw.find((r) => r[k] < 0.95).t;
+  check('レーウィの実験：迷走神経の刺激で心臓Aが遅くなり、心臓Bは遅れて遅くなる', firstDrop('a') < firstDrop('b') && Math.min(...lw.map((r) => r.b)) < 0.7, `Aは${firstDrop('a')}秒、Bは${firstDrop('b')}秒から`);
+}
+
+// ---------- B16 ----------
+section('B16 生物濃縮');
+{
+  const c = bio.chain();
+  check('分解されにくい物質（1段ごとの倍率 ＞ 1）では、栄養段階が上がるほど濃度が高い', c.every((v, i) => i === 0 || v > c[i - 1]), c.map((v) => v.toPrecision(2)).join(' → '));
+  check('既定値は教科書でよく引用される DDT の例と同程度（水 0.00005 ppm → 鳥 約25 ppm、約50万倍）', near(c[0], 0.00005, 1e-12) && near(c[5], 25, 0.5) && near(bio.ratio(c[5], c[0]), 500000, 1000));
+  const sd = bio.SUBSTANCES.degradable;
+  const d = bio.chain({ bcf: sd.bcf, f: sd.f });
+  check('分解・排出されやすい物質では、どの段階も水中の濃度をこえず（生物濃縮が起こらない）、上の段階ほど低い', d.every((v) => v <= d[0] + 1e-15) && d.slice(1).every((v, i, a) => i === 0 || v < a[i - 1]), d.map((v) => v.toPrecision(2)).join(' → '));
+  check('濃縮率 ＝ 体内の濃度 ÷ 水中の濃度', near(bio.ratio(25, 0.00005), 500000, 1e-6));
 }
 
 // ---------- A1 ----------
@@ -878,6 +946,78 @@ section('A20 減数分裂と遺伝的多様性');
   check('DNA 量：G1 2 → G2 4 → 第一分裂のあと 2 → 第二分裂のあと 1', me.dnaAt(at.G1) === 2 && me.dnaAt(at.G2) === 4 && me.dnaAt(acc - me.PHASES[4].len - 0.01) === 2 && me.dnaAt(acc) === 1);
   check('染色体数：第一分裂の終わりに 2n → n、第二分裂では n のまま', me.chromosomeSetsAt(at.G2) === 2 && me.chromosomeSetsAt(acc - me.PHASES[4].len - 0.01) === 1 && me.chromosomeSetsAt(acc) === 1);
   check('配偶子の組合せ 2ⁿ（ヒト n＝23 で 8,388,608 通り）、受精で 2ⁿ × 2ⁿ', me.gameteTypes(23) === 8388608 && me.zygoteTypes(3) === 64);
+}
+
+// ---------- A22 ----------
+section('A22 DNAの複製（半保存的複製）');
+{
+  const kinds = (g, m) => rep.bands(g, m).map((b) => b.kind).sort().join(',');
+  check('0世代は重いバンドだけ', kinds(0, 'semi') === 'heavy');
+  check('半保存的：1世代は中間だけ、2世代は中間と軽いが1：1', kinds(1, 'semi') === 'hybrid' && rep.bands(2, 'semi').every((b) => Math.abs(b.frac - 0.5) < 1e-12));
+  check('半保存的：中間の DNA はどの世代でも2分子（割合 2/2ⁿ）', [1, 2, 3, 4, 5].every((g) => Math.abs(rep.bands(g, 'semi').find((b) => b.kind === 'hybrid').frac - 2 / Math.pow(2, g)) < 1e-12));
+  check('半保存的：3世代で中間：軽い ＝ 1：3', (() => { const r = rep.hybridLightRatio(3); return r.light / r.hybrid === 3; })());
+  check('保存的（仮説）：1世代で重いと軽いが1：1、中間はできない', kinds(1, 'cons') === 'heavy,light' && rep.bands(1, 'cons').every((b) => b.frac === 0.5));
+  check('分散的（仮説）：1世代は中間の1本、2世代は軽い側へ移った1本（半保存的の2本と区別できる）', kinds(1, 'disp') === 'mixed' && rep.bands(1, 'disp')[0].pos === 0.5 && rep.bands(2, 'disp').length === 1 && rep.bands(2, 'disp')[0].pos === 0.25);
+  check('どの仮説でも割合の合計は1', ['semi', 'cons', 'disp'].every((m) => [0, 1, 2, 3, 4].every((g) => Math.abs(rep.bands(g, m).reduce((a, b) => a + b.frac, 0) - 1) < 1e-12)));
+  check('¹⁵N の鎖の割合は 1/2ⁿ', rep.heavyStrandFraction(3) === 1 / 8);
+}
+
+// ---------- A23 ----------
+section('A23 カルビン回路');
+{
+  const s0 = cal.steady(1, 1);
+  check('ふだん（光も CO₂ も十分）は PGA が RuBP より多い', s0.pga > s0.rubp);
+  const dark = cal.at(cal.T_END, 0, 1);
+  check('光を消すと RuBP が減り PGA が増える', dark.rubp < s0.rubp * 0.1 && dark.pga > s0.pga);
+  const noco2 = cal.at(cal.T_END, 1, 0);
+  check('CO₂ をなくすと RuBP が増え PGA が減る', noco2.rubp > s0.rubp && noco2.pga < s0.pga * 0.1);
+  let mono = true;
+  for (let t = cal.T_CHANGE; t < cal.T_END; t += 0.05) if (cal.at(t + 0.05, 0, 1).rubp > cal.at(t, 0, 1).rubp + 1e-12) mono = false;
+  check('光を消したあと RuBP は単調に減る（はね返りがない）', mono);
+  check('操作の前は一定、合計量は保たれる', Math.abs(cal.at(1, 0, 1).rubp - s0.rubp) < 1e-12 && Math.abs(dark.rubp + dark.pga - cal.TOTAL) < 1e-9);
+  const l1 = cal.label(1);
+  const l60 = cal.label(60);
+  check('¹⁴CO₂：最初はほとんど PGA に、時間がたつと糖などが多くなる', l1.pga > 90 && l60.sugar > l60.pga);
+  check('質量の計算：CO₂ 264 mg → グルコース 180 mg、グルコース 180 mg → O₂ 192 mg', Math.abs(cal.glucoseFromCO2(264) - 180) < 1e-9 && Math.abs(cal.o2FromGlucose(180) - 192) < 1e-9);
+}
+
+// ---------- A24 ----------
+section('A24 種間競争と生態的地位');
+{
+  const single = cmp.run('aurelia', 1, false);
+  const e = single[single.length - 1];
+  check('単独飼育ではどちらも環境収容力まで増える', Math.abs(e.n1 - cmp.SPECIES.caudatum.K) < 1 && Math.abs(e.n2 - cmp.SPECIES.aurelia.K) < 1);
+  const mix = cmp.run('aurelia', 1, true);
+  const m = mix[mix.length - 1];
+  let peak = mix[0];
+  for (const q of mix) if (q.n1 > peak.n1) peak = q;
+  check('ヒメゾウリムシとの混合飼育：ゾウリムシは一度増えてから減り、ほぼいなくなる（競争的排除）', cmp.outcome('aurelia', 1) === 'exclude1' && peak.t > 3 && peak.t < 12 && m.n1 < 3 && m.n2 > 150);
+  const bur = cmp.run('bursaria', cmp.PAIRS.bursaria.overlap, true);
+  const b = bur[bur.length - 1];
+  check('ミドリゾウリムシとの混合飼育：共存し、どちらも単独飼育より少ない', cmp.outcome('bursaria', cmp.PAIRS.bursaria.overlap) === 'coexist' && b.n1 > 50 && b.n1 < cmp.SPECIES.caudatum.K && b.n2 > 30 && b.n2 < cmp.SPECIES.bursaria.K);
+  check('生態的地位の重なりが小さいとヒメゾウリムシとも共存できる', cmp.outcome('aurelia', 0.5) === 'coexist');
+  let monoOv = true;
+  for (let d = 0; d < 6; d += 0.1) if (cmp.overlapOfDistance(d + 0.1) >= cmp.overlapOfDistance(d)) monoOv = false;
+  check('資源の利用曲線：山が離れるほど重なりが小さい、逆算も一致', monoOv && Math.abs(cmp.overlapOfDistance(cmp.distanceOfOverlap(0.4)) - 0.4) < 1e-4);
+}
+
+// ---------- A25 ----------
+section('A25 自然選択と遺伝子頻度');
+{
+  const ind = sel.trajectory(0.99, sel.fitness('industrial', 0.2), 80);
+  let mono = true;
+  for (let g = 1; g < ind.length; g++) if (ind[g] > ind[g - 1] + 1e-12) mono = false;
+  check('工業暗化：明色の遺伝子 c は単調に減り、暗色型の割合が 50% をこえる', mono && 1 - ind[80] ** 2 > 0.9);
+  const strong = sel.trajectory(0.99, sel.fitness('industrial', 0.4), 30);
+  check('選択が強いほど早く変化する', strong[30] < ind[30]);
+  check('選択がない（0%）と遺伝子頻度は変わらない（ハーディー・ワインベルグ）', Math.abs(sel.trajectory(0.3, sel.fitness('industrial', 0), 50)[50] - 0.3) < 1e-12);
+  const lt = sel.trajectory(0.5, sel.fitness('lethal', 0), 20);
+  check('潜性致死：q_n ＝ q₀ ÷ (1 ＋ n·q₀) と一致', [1, 5, 10, 20].every((n) => Math.abs(lt[n] - sel.lethalQ(0.5, n)) < 1e-12));
+  check('潜性致死：q が小さくなるほど減り方がゆっくり', lt[1] - lt[2] > lt[10] - lt[11]);
+  const eq = sel.heteroEquilibrium(0.3, 1 - sel.fitness('hetero', 0).aa);
+  const h1 = sel.trajectory(0.05, sel.fitness('hetero', 0.3), 200)[200];
+  const h2 = sel.trajectory(0.9, sel.fitness('hetero', 0.3), 200)[200];
+  check('ヘテロ接合体有利：はじめの頻度によらず平衡の頻度 s÷(s＋t) に近づく', Math.abs(h1 - eq) < 1e-3 && Math.abs(h2 - eq) < 1e-3);
 }
 
 const ng = results.filter((r) => !r.ok);

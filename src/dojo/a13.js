@@ -121,7 +121,7 @@ export const dojo = {
           { points: sample((t) => forest(t).net, 0, 150, 300), color: 'c3', dash: 'dot', width: 3, label: '純生産量', labelAt: best },
         ],
         vlines: [{ x: a, color: 'muted', dash: 'dot' }],
-        markers: [{ x: a, y: f.net, color: 'c3', shape: 'square', label: `純生産量 ${fmt(f.net, 0)}` }],
+        markers: [{ x: a, y: f.net, color: 'c3', shape: 'square', label: `${fmt(f.net, 0)}` }],
       });
       leg.replaceChildren(legend([{ label: '総生産量', color: 'c1' }, { label: '呼吸量', color: 'c2', dash: 'dash' }, { label: '純生産量（＝総生産量 − 呼吸量）', color: 'c3', dash: 'dot' }]));
       table.replaceChildren();

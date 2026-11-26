@@ -4,6 +4,9 @@ import { KATA, distinctNumbers } from './common.js';
 import { dnaAt, TOTAL, PHASES, gameteTypes } from '../models/meiosis.js';
 import { sample } from '../lib/series.js';
 
+// べき乗の指数を上付き文字で書く（例：2³）
+const sup = (k) => String(k).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+
 export const A20 = [
   {
     id: 'a20-dna-graph',
@@ -46,7 +49,7 @@ export const A20 = [
         text: `体細胞の染色体数が 2n ＝ ${2 * n} の生物がある。乗換えが起こらないとすると、1個体がつくる配偶子の染色体の組合せは何通りか。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `相同染色体は ${n} 組あり、第一分裂でそれぞれの組のどちらが配偶子に入るかは独立に決まるので、2^${n} ＝ ${ans} 通りとなる。各組で2通りずつの選び方があり、それを ${n} 組分かけ合わせるからである。`,
+        explanation: `相同染色体は ${n} 組あり、第一分裂でそれぞれの組のどちらが配偶子に入るかは独立に決まるので、2${sup(n)} ＝ ${ans} 通りとなる。各組で2通りずつの選び方があり、それを ${n} 組分かけ合わせるからである。`,
       };
     },
   },
@@ -64,7 +67,7 @@ export const A20 = [
         text: `2n ＝ ${2 * n} の生物で、両親の配偶子が受精して子ができる。乗換えが起こらないとすると、子の染色体の組合せは何通り考えられるか（両親はそれぞれ異なる染色体の組をもつものとする）。`,
         correct: d.correct,
         wrong: d.wrong,
-        explanation: `1個体の配偶子は 2^${n} ＝ ${g} 通りで、父親と母親の配偶子が無作為に組み合わさるので、${g} × ${g} ＝ ${ans} 通りとなる。受精で両親の配偶子が組み合わさることも、子の遺伝的多様性を大きくするからである。`,
+        explanation: `1個体の配偶子は 2${sup(n)} ＝ ${g} 通りで、父親と母親の配偶子が無作為に組み合わさるので、${g} × ${g} ＝ ${ans} 通りとなる。受精で両親の配偶子が組み合わさることも、子の遺伝的多様性を大きくするからである。`,
       };
     },
   },
@@ -146,7 +149,7 @@ export const A20 = [
       const ask = rng.pick(['gamete', 'zygote']);
       const g = gameteTypes(23);
       const ans = ask === 'gamete' ? g : g * g;
-      const fmtBig = (x) => `約 ${fmt(x / Math.pow(10, Math.floor(Math.log10(x))), 1)} × 10^${Math.floor(Math.log10(x))}`;
+      const fmtBig = (x) => `約 ${fmt(x / Math.pow(10, Math.floor(Math.log10(x))), 1)} × 10${sup(Math.floor(Math.log10(x)))}`;
       const correct = `${fmtBig(ans)} 通り`;
       const wrong = [fmtBig(g * 2), fmtBig(46), fmtBig(g * g * 2), fmtBig(g), fmtBig(g * g), fmtBig(Math.pow(2, 46) * 2)].map((x) => `${x} 通り`);
       return {
@@ -156,8 +159,8 @@ export const A20 = [
         correct,
         wrong,
         explanation: ask === 'gamete'
-          ? `相同染色体は23組なので、2^23 ＝ ${g.toLocaleString('ja-JP')}、つまり ${correct} である。各組で2通りずつの選び方があるので、23組分をかけ合わせればよいからである。`
-          : `1人の配偶子は 2^23 ≒ 8.4 × 10^6 通りで、両親の配偶子が組み合わさるので 2^23 × 2^23 ＝ 2^46、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも、一卵性双生児を除いて遺伝的に同じ子はほぼ生まれない。`,
+          ? `相同染色体は23組なので、2²³ ＝ ${g.toLocaleString('ja-JP')}、つまり ${correct} である。各組で2通りずつの選び方があるので、23組分をかけ合わせればよいからである。`
+          : `1人の配偶子は 2²³ ≒ 8.4 × 10⁶ 通りで、両親の配偶子が組み合わさるので 2²³ × 2²³ ＝ 2⁴⁶、つまり ${correct} である。乗換えも考えると組合せはさらに多くなるので、同じ両親からでも、一卵性双生児を除いて遺伝的に同じ子はほぼ生まれない。`,
       };
     },
   },

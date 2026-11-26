@@ -1,6 +1,7 @@
 // 自動検証スクリプト：node tests/validate.mjs
 //  1. 全問題ジェネレーターを各5,000回実行し、問題文・選択肢・解説・図の不備を検査する
 //  2. 各ステージのジェネレーター数（8種類以上）と、計算・グラフ読み取り・用語の3系統がそろうか
+//     あわせて、各ステージに図解道場（課題3つ以上）・用語帳（5語以上）・形の検証・画面テスト・README・CHECKLIST がそろうか
 //  3. 用語チェック（旧用語が残っていないか）
 //  4. 単一HTML・完全オフライン（外部への参照がないか）
 //  5. ライト/ダーク両テーマの色トークンのコントラスト
@@ -12,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { GENERATORS } from '../src/questions/index.js';
 import { generate } from '../src/questions/common.js';
 import { STAGES } from '../src/stages.js';
+import { DOJOS } from '../src/dojo/index.js';
+import { GLOSSARY } from '../src/glossary.js';
 import { emptyProgress, normalize } from '../src/progress.js';
 import { encodeProgress, decodeProgress } from '../src/transfer.js';
 
@@ -121,6 +124,51 @@ for (const s of STAGES) {
 const ids = GENERATORS.map((g) => g.id);
 if (new Set(ids).size !== ids.length) fail('ジェネレーターIDが重複しています');
 log('');
+
+// ---------- 2b. ステージの構成 ----------
+log('# 2b. ステージの構成（図解道場・用語帳・検証・文書）');
+log('');
+{
+  // 学習指導要領（2022年度〜）の大項目
+  const UNITS = {
+    basic: ['生物の特徴', '遺伝子とそのはたらき', 'ヒトの体の調節', '生物の多様性と生態系'],
+    advanced: ['生物の進化', '生命現象と物質', '遺伝情報の発現と発生', '生物の環境応答', '生態と環境'],
+  };
+  const modelsSrc = readFileSync(join(ROOT, 'tests/models.mjs'), 'utf8');
+  const smokeSrc = readFileSync(join(ROOT, 'tests/smoke.mjs'), 'utf8');
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const checklist = readFileSync(join(ROOT, 'CHECKLIST.md'), 'utf8');
+  let nOk = 0;
+  for (const s of STAGES) {
+    const errs = [];
+    if (s.code.toLowerCase() !== s.id) errs.push('ID とコードが対応しない');
+    if (!UNITS[s.course] || !UNITS[s.course].some((u) => s.unit.startsWith(u))) errs.push(`単元名「${s.unit}」が学習指導要領の大項目にない`);
+    const d = DOJOS[s.id];
+    if (!d) errs.push('図解道場がない');
+    else {
+      if (d.tasks.length < 3) errs.push(`「やってみよう」が${d.tasks.length}個（3個以上）`);
+      if (d.tasks.some((t) => typeof t.check !== 'function' || !t.id || !t.text)) errs.push('判定のない課題がある');
+      if (new Set(d.tasks.map((t) => t.id)).size !== d.tasks.length) errs.push('課題IDの重複');
+    }
+    const g = GLOSSARY[s.id] || [];
+    if (g.length < 5) errs.push(`用語帳が${g.length}語（5語以上）`);
+    if (new Set(g.map((t) => t.term)).size !== g.length) errs.push('用語帳の中で用語が重複');
+    if (g.some((t) => !t.term.trim() || !t.desc.trim() || /。。|、、/.test(t.desc))) errs.push('用語帳の説明に空欄・句読点の重なり');
+    if (!modelsSrc.includes(`section('${s.code} `)) errs.push('tests/models.mjs に形の検証がない');
+    if (!smokeSrc.includes(`'${s.id}'`)) errs.push('tests/smoke.mjs の対象に入っていない');
+    if (!readme.includes(`| ${s.code} `)) errs.push('README.md のステージ表にない');
+    if (!checklist.includes(`| ${s.code} `)) errs.push('CHECKLIST.md にない');
+    if (errs.length) fail(`${s.code}: ${errs.join('、')}`);
+    else nOk++;
+  }
+  log(`${STAGES.length} ステージ中 ${nOk} ステージで、図解道場（課題3つ以上）・用語帳（5語以上）・形の検証・画面テスト・README・CHECKLIST がそろっている`);
+  // 複数のステージに同じ用語がある場合は一覧にする（内容の食い違いは目で確認する）
+  const seen = {};
+  for (const [id, list] of Object.entries(GLOSSARY)) for (const t of list) (seen[t.term] = seen[t.term] || []).push(id);
+  const dup = Object.entries(seen).filter(([, a]) => a.length > 1);
+  if (dup.length) log(`複数のステージの用語帳にある用語（説明が食い違わないか目で確認）：${dup.map(([t, a]) => `${t}（${a.map((x) => x.toUpperCase()).join('・')}）`).join('、')}`);
+  log('');
+}
 
 // ---------- 3. 用語チェック ----------
 log('# 3. 用語チェック（旧用語）');

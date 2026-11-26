@@ -16,7 +16,7 @@ function curveChart(order) {
   };
 }
 
-// 生命表（区分ごとの はじめの生存数）を作る：死亡率の列を指定して整数で作る
+// 生命表（区分ごとの はじめの生存数）をつくる：死亡率の列を指定して整数でつくる
 function tableFrom(start, rates) {
   const lx = [start];
   for (const r of rates) lx.push(Math.round(lx[lx.length - 1] * (1 - r)));

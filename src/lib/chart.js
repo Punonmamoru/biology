@@ -166,14 +166,17 @@ export function drawSpec(ctx, W, H, spec) {
   ctx.setLineDash([]);
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'right';
-  for (const t of ticksFor(y)) {
-    if (t.v < y.min - 1e-9 || t.v > y.max + 1e-9) continue;
+  // 目盛りの文字が重なるほど間隔がせまいときは、文字だけを間引く（線はすべて引く）
+  const yTicks = ticksFor(y).filter((t) => t.v >= y.min - 1e-9 && t.v <= y.max + 1e-9);
+  const yGap = yTicks.length > 1 ? Math.min(...yTicks.slice(1).map((t, i) => Math.abs(Y(t.v) - Y(yTicks[i].v)))) : Infinity;
+  const yEvery = Math.max(1, Math.ceil((fs + 3) / yGap));
+  yTicks.forEach((t, i) => {
     const py = Y(t.v);
     ctx.strokeStyle = grid;
     ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(pad.l + pw, py); ctx.stroke();
     ctx.fillStyle = muted;
-    ctx.fillText(t.text || tickText(y, t.v), pad.l - 6, py);
-  }
+    if (i % yEvery === 0) ctx.fillText(t.text || tickText(y, t.v), pad.l - 6, py);
+  });
   if (y2) {
     ctx.textAlign = 'left';
     for (const t of ticksFor(y2)) {
@@ -185,16 +188,19 @@ export function drawSpec(ctx, W, H, spec) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   if (!spec.bars) {
-    for (const t of ticksFor(x)) {
-      if (t.v < x.min - 1e-9 || t.v > x.max + 1e-9) continue;
+    const xTicks = ticksFor(x).filter((t) => t.v >= x.min - 1e-9 && t.v <= x.max + 1e-9);
+    const xw = Math.max(...xTicks.map((t) => ctx.measureText(t.text || tickText(x, t.v)).width), 1);
+    const xGap = xTicks.length > 1 ? Math.min(...xTicks.slice(1).map((t, i) => Math.abs(X(t.v) - X(xTicks[i].v)))) : Infinity;
+    const xEvery = Math.max(1, Math.ceil((xw + 6) / xGap));
+    xTicks.forEach((t, i) => {
       const px = X(t.v);
       if (x.grid !== false) {
         ctx.strokeStyle = grid;
         ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + ph); ctx.stroke();
       }
       ctx.fillStyle = muted;
-      ctx.fillText(t.text || tickText(x, t.v), px, pad.t + ph + 5);
-    }
+      if (i % xEvery === 0) ctx.fillText(t.text || tickText(x, t.v), px, pad.t + ph + 5);
+    });
   }
 
   // 軸
@@ -213,17 +219,28 @@ export function drawSpec(ctx, W, H, spec) {
     ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(pad.l + pw, Y(0)); ctx.stroke();
   }
 
-  // 軸ラベル
+  // 軸ラベル（入りきらないときは文字を小さくする）
   ctx.fillStyle = fg;
-  ctx.font = `bold ${fs}px ${font}`;
+  const fitFont = (text, room) => {
+    let size = fs;
+    ctx.font = `bold ${size}px ${font}`;
+    while (size > 8.5 && ctx.measureText(text).width > room) {
+      size -= 0.5;
+      ctx.font = `bold ${size}px ${font}`;
+    }
+  };
   if (x.label) {
+    fitFont(x.label, W - 8);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(x.label, pad.l + pw / 2, H - 2);
+    const half = ctx.measureText(x.label).width / 2;
+    ctx.fillText(x.label, Math.min(Math.max(pad.l + pw / 2, half + 4), W - half - 4), H - 2);
   }
   if (y.label) {
+    fitFont(y.label, H - 8);
+    const half = ctx.measureText(y.label).width / 2;
     ctx.save();
-    ctx.translate(fs / 2 + 3, pad.t + ph / 2);
+    ctx.translate(fs / 2 + 3, Math.min(Math.max(pad.t + ph / 2, half + 4), H - half - 4));
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -231,8 +248,10 @@ export function drawSpec(ctx, W, H, spec) {
     ctx.restore();
   }
   if (y2 && y2.label) {
+    fitFont(y2.label, H - 8);
+    const half = ctx.measureText(y2.label).width / 2;
     ctx.save();
-    ctx.translate(W - fs / 2 - 3, pad.t + ph / 2);
+    ctx.translate(W - fs / 2 - 3, Math.min(Math.max(pad.t + ph / 2, half + 4), H - half - 4));
     ctx.rotate(Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -356,13 +375,42 @@ export function drawSpec(ctx, W, H, spec) {
   }
   ctx.restore();
 
+  // 文字どうしの重なりを避けて置く。候補の位置を順に試し、すでに置いた文字と重ならない最初の位置に書く
+  const placed = [];
+  const lh = fs + 2;
+  const boxOf = (text, x, y, align, base) => {
+    const w = ctx.measureText(text).width;
+    const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+    const y0 = base === 'top' ? y : base === 'bottom' ? y - lh : y - lh / 2;
+    return { x0: x0 - 3, y0: y0 - 1, x1: x0 + w + 3, y1: y0 + lh + 1 };
+  };
+  const hits = (b) => placed.some((q) => b.x0 < q.x1 && q.x0 < b.x1 && b.y0 < q.y1 && q.y0 < b.y1);
+  // 図の枠（目盛りの文字を除いた描画範囲）の中に収まるか
+  const inside = (b) => b.x0 >= pad.l - 4 && b.x1 <= pad.l + pw + 4 && b.y0 >= pad.t - 4 && b.y1 <= pad.t + ph + 4;
+  function put(text, cands, color) {
+    let pick = null;
+    for (const c of cands) {
+      const b = boxOf(text, c.x, c.y, c.align, c.base);
+      if (inside(b) && !hits(b)) { pick = { c, b }; break; }
+    }
+    if (!pick) {
+      const c = cands[0];
+      pick = { c, b: boxOf(text, c.x, c.y, c.align, c.base) };
+    }
+    ctx.textAlign = pick.c.align;
+    ctx.textBaseline = pick.c.base;
+    haloText(ctx, text, pick.c.x, pick.c.y, color, bg);
+    placed.push(pick.b);
+  }
+  const shifts = [0, -lh, lh, -2 * lh, 2 * lh];
+
   // 多角形の名前
   for (const pg of spec.polygons || []) {
     if (!pg.label || !pg.at) continue;
     ctx.font = `${pg.bold ? 'bold ' : ''}${fs}px ${font}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    haloText(ctx, pg.label, X(pg.at[0]), yOf(pg.axis)(pg.at[1]), fg, bg);
+    const px = X(pg.at[0]);
+    const py = yOf(pg.axis)(pg.at[1]);
+    put(pg.label, shifts.map((d) => ({ x: px, y: py + d, align: 'center', base: 'middle' })), fg);
   }
   ctx.font = `${fs}px ${font}`;
 
@@ -380,13 +428,26 @@ export function drawSpec(ctx, W, H, spec) {
     else ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    placed.push({ x0: cx - 7, y0: cy - 7, x1: cx + 7, y1: cy + 7 }); // 点そのものにもほかの文字を重ねない
     if (m.label) {
       ctx.font = `bold ${fs}px ${font}`;
-      ctx.textBaseline = 'bottom';
       const right = cx > pad.l + pw * 0.75;
-      ctx.textAlign = right ? 'right' : 'left';
-      const ly = Math.max(cy - 6, pad.t + fs + 2);
-      haloText(ctx, m.label, cx + (right ? -6 : 6), ly + (m.dy || 0), tokenColor(m.color || 'fg'), bg);
+      const a1 = right ? 'right' : 'left';
+      const a2 = right ? 'left' : 'right';
+      const sx = (a) => cx + (a === 'right' ? -6 : 6);
+      const ly = Math.max(cy - 6, pad.t + fs + 2) + (m.dy || 0);
+      put(m.label, [
+        { x: sx(a1), y: ly, align: a1, base: 'bottom' },
+        { x: sx(a1), y: cy + 8, align: a1, base: 'top' },
+        { x: sx(a2), y: ly, align: a2, base: 'bottom' },
+        { x: sx(a2), y: cy + 8, align: a2, base: 'top' },
+        { x: sx(a1), y: ly - lh, align: a1, base: 'bottom' },
+        { x: sx(a1), y: cy + 8 + lh, align: a1, base: 'top' },
+        { x: sx(a1), y: ly - 2 * lh, align: a1, base: 'bottom' },
+        { x: sx(a2), y: ly - lh, align: a2, base: 'bottom' },
+        { x: sx(a1), y: ly - 3 * lh, align: a1, base: 'bottom' },
+        { x: sx(a2), y: ly - 2 * lh, align: a2, base: 'bottom' },
+      ], tokenColor(m.color || 'fg'));
       ctx.font = `${fs}px ${font}`;
     }
   }
@@ -401,30 +462,40 @@ export function drawSpec(ctx, W, H, spec) {
     if (Math.abs(cur.x - prev.x) < 120 && cur.y - prev.y < fs + 3) cur.y = prev.y + fs + 3;
   }
   for (const l of endLabels) {
-    ctx.textAlign = l.align;
-    const tx = l.align === 'right' ? Math.min(l.x - 4, pad.l + pw - 2) : l.x;
-    haloText(ctx, l.text, tx, l.y - (l.align === 'right' ? 10 : 12), l.color, bg);
+    const w = ctx.measureText(l.text).width;
+    // 中央そろえのラベルも、図の左右の端からはみ出さないようにする
+    const tx = l.align === 'right' ? Math.min(l.x - 4, pad.l + pw - 2) : Math.min(Math.max(l.x, pad.l + w / 2 + 2), pad.l + pw - w / 2 - 2);
+    const ty = l.y - (l.align === 'right' ? 10 : 12);
+    put(l.text, shifts.map((d) => ({ x: tx, y: ty + d, align: l.align, base: 'middle' })), l.color);
   }
 
   // 自由テキスト・垂直線ラベル
   for (const l of spec.vlines || []) {
     if (!l.label) continue;
     const xx = X(l.x);
-    ctx.textAlign = xx > pad.l + pw * 0.7 ? 'right' : 'left';
-    ctx.textBaseline = 'top';
-    haloText(ctx, l.label, xx + (ctx.textAlign === 'right' ? -4 : 4), pad.t + 2 + (l.dy || 0), tokenColor(l.color || 'muted'), bg);
+    const al = xx > pad.l + pw * 0.7 ? 'right' : 'left';
+    const vx = xx + (al === 'right' ? -4 : 4);
+    const vy = pad.t + 2 + (l.dy || 0);
+    put(l.label, [0, lh, 2 * lh, 3 * lh].map((d) => ({ x: vx, y: vy + d, align: al, base: 'top' })), tokenColor(l.color || 'muted'));
   }
   for (const l of spec.hlines || []) {
     if (!l.label) continue;
-    ctx.textAlign = l.align || 'left';
-    ctx.textBaseline = 'bottom';
-    const lx = l.align === 'right' ? pad.l + pw - 4 : pad.l + 4;
-    haloText(ctx, l.label, lx, yOf(l.axis)(l.y) - 3, tokenColor(l.color || 'muted'), bg);
+    const al = l.align || 'left';
+    const lx = al === 'right' ? pad.l + pw - 4 : pad.l + 4;
+    const hy = yOf(l.axis)(l.y);
+    const other = al === 'right' ? pad.l + 4 : pad.l + pw - 4;
+    put(l.label, [
+      { x: lx, y: hy - 3, align: al, base: 'bottom' },
+      { x: lx, y: hy + 3, align: al, base: 'top' },
+      { x: other, y: hy - 3, align: al === 'right' ? 'left' : 'right', base: 'bottom' },
+      { x: other, y: hy + 3, align: al === 'right' ? 'left' : 'right', base: 'top' },
+    ], tokenColor(l.color || 'muted'));
   }
   for (const t of spec.texts || []) {
     ctx.textAlign = t.align || 'center';
     ctx.textBaseline = 'middle';
     haloText(ctx, t.text, X(t.x), yOf(t.axis)(t.y), tokenColor(t.color || 'fg'), bg);
+    placed.push(boxOf(t.text, X(t.x), yOf(t.axis)(t.y), t.align || 'center', 'middle'));
   }
   if (spec.bars) {
     ctx.font = `bold ${fs}px ${font}`;
@@ -512,7 +583,7 @@ export function legend(items) {
   return ul;
 }
 
-// 仕様のseriesから凡例項目を作る
+// 仕様のseriesから凡例項目をつくる
 export function legendFromSpec(spec) {
   const items = (spec.series || []).filter((s) => s.legend !== false && (s.legendLabel || s.label)).map((s) => ({
     label: s.legendLabel || s.label,

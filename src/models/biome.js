@@ -75,15 +75,15 @@ export function polygons() {
   return [
     { id: 'tundra', points: [[T_MIN, 0], [T_TUNDRA, 0], ...rev(env(T_MIN, T_TUNDRA))], at: [-10, 450] },
     { id: 'desert', points: [[T_TUNDRA, 0], [T_MAX, 0], ...rev(line(pDesert, T_TUNDRA, T_MAX))], at: [12.5, 140] },
-    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [9, 520] },
+    { id: 'steppe', points: [...line(pDesert, T_TUNDRA, T_WARM), ...rev(grassLine(T_TUNDRA, T_WARM))], at: [4, 470] },
     { id: 'taiga', points: [...grassLine(T_TUNDRA, T_TAIGA), ...rev(env(T_TUNDRA, T_TAIGA))], at: [0, 1300] },
     { id: 'temperate', points: [...grassLine(T_TAIGA, T_TEMPERATE), ...rev(env(T_TAIGA, T_TEMPERATE))], at: [9, 1500] },
-    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 950] },
+    { id: 'sclerophyll', points: [...grassLine(T_TEMPERATE, T_WARM), [T_WARM, P_SCLERO], [T_TEMPERATE, P_SCLERO]], at: [16.5, 1020] },
     { id: 'laurel', points: [[T_TEMPERATE, P_SCLERO], [T_WARM, P_SCLERO], ...rev(env(T_TEMPERATE, T_WARM))], at: [16.5, 2200] },
     { id: 'savanna', points: [...line(pDesert, T_WARM, T_MAX), ...rev(grassLine(T_WARM, T_MAX))], at: [26, 800] },
     { id: 'monsoon', points: [...grassLine(T_WARM, T_MAX), [T_MAX, P_RAIN], [T_WARM, P_RAIN]], at: [25.5, 1650] },
-    { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2900] },
-    { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3100] },
+    { id: 'subtropical', points: [[T_WARM, P_RAIN], [T_TROPICAL, P_RAIN], ...rev(env(T_WARM, T_TROPICAL))], at: [22, 2450] },
+    { id: 'tropical', points: [[T_TROPICAL, P_RAIN], [T_MAX, P_RAIN], ...rev(env(T_TROPICAL, T_MAX))], at: [27, 3650] },
   ];
 }
 
